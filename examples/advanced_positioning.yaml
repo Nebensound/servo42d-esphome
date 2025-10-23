@@ -1,0 +1,147 @@
+# Advanced Servo42D RS485 Example with Home Assistant Integration
+#
+# This example demonstrates:
+# - Position control with different modes
+# - Homing/Zeroing functionality
+# - Home Assistant integration
+# - Status monitoring
+
+esphome:
+  name: servo42d-advanced
+  friendly_name: "Servo42D Advanced Example"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Load component (adjust path if needed)
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [servo42d_rs485]
+
+# WiFi for Home Assistant integration
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot in case wifi connection fails
+  ap:
+    ssid: "Servo42D Fallback"
+    password: "fallback123"
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+# Enable OTA updates
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# UART for RS485 communication
+uart:
+  id: uart_bus
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 38400
+  parity: EVEN
+  stop_bits: 1
+
+# MODBUS-RTU Controller
+modbus:
+  id: modbus_bus
+  uart_id: uart_bus
+  send_wait_time: 50ms
+
+# Servo42D RS485 Stepper Motor
+stepper:
+  - platform: servo42d_rs485
+    id: my_stepper
+    max_speed: 3000 steps/s
+    acceleration: 1000 steps/s^2
+    deceleration: 1000 steps/s^2
+
+    # MODBUS configuration
+    modbus_id: modbus_bus
+    address: 0x01
+    update_interval: 500ms
+
+    # Optional: Configure motor parameters
+    # These can override motor settings temporarily
+    # working_current: 2000  # mA (0-5200)
+    # subdivision: 16        # Microsteps (1-256)
+
+# Example: Button to trigger homing sequence
+button:
+  - platform: template
+    name: "Home Motor"
+    on_press:
+      - servo42d_rs485.go_to_zero:
+          id: my_stepper
+          enable: true
+          speed: 800
+          direction: 0
+
+  - platform: template
+    name: "Calibrate Motor"
+    on_press:
+      - servo42d_rs485.calibrate:
+          id: my_stepper
+
+  - platform: template
+    name: "Emergency Stop"
+    on_press:
+      - servo42d_rs485.emergency_stop:
+          id: my_stepper
+
+  - platform: template
+    name: "Enable Motor"
+    on_press:
+      - servo42d_rs485.enable_motor:
+          id: my_stepper
+          enable: true
+
+  - platform: template
+    name: "Set High Current Mode"
+    on_press:
+      - servo42d_rs485.set_working_current:
+          id: my_stepper
+          current: 2000
+
+# Example: Number input for position control
+number:
+  - platform: template
+    name: "Target Position"
+    id: target_pos
+    min_value: -100000
+    max_value: 100000
+    step: 100
+    mode: box
+    optimistic: true
+
+  - platform: template
+    name: "Motor Speed"
+    id: motor_speed
+    min_value: 1
+    max_value: 3000
+    step: 10
+    initial_value: 500
+    mode: slider
+    optimistic: true
+
+# Example: Sensor to display current position
+sensor:
+  - platform: template
+    name: "Current Position"
+    id: current_position
+    unit_of_measurement: "steps"
+    accuracy_decimals: 0
+    # Note: Would need to be updated via component callback
