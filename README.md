@@ -6,6 +6,8 @@ An ESPHome component for controlling MKS Servo42D/57D closed-loop stepper motors
 
 This component provides ESPHome integration for MKS Servo42D/57D closed-loop stepper motors with **RS485 communication**. These are the **D-series** motors with built-in drivers, encoders, and Modbus RTU communication, making them ideal for precise positioning applications.
 
+This component uses the [ESPHome Modbus Component](https://esphome.io/components/modbus.html) for communication.
+
 **Important**: This component is specifically designed for the **D-series** motors (Servo42D/57D) with **RS485 communication**. It does **not** work with:
 - Servo42C (older version without RS485)
 - D-series motors with CAN communication
@@ -275,11 +277,16 @@ logger:
 
 ## Documentation
 
-The [`docs/`](docs/) directory contains:
-- Official motor manual (MKS SERVO42&57D_RS485 User Manual V1.0.5.pdf)
-- Additional technical documentation as needed
+### Motor Manual
 
-For the most up-to-date information, refer to the official MKS documentation.
+- **[MKS SERVO42&57D RS485 User Manual V1.0.5](docs/MKS%20SERVO42%2657D_RS485%20User%20Manual%20V1.0.5.pdf)** - Official documentation with register definitions and configuration details
+
+### ESPHome Resources
+
+- [ESPHome Modbus Component](https://esphome.io/components/modbus.html) - Modbus RTU documentation
+- [ESPHome Stepper Component](https://esphome.io/components/stepper/) - General stepper motor information
+
+For the most up-to-date motor information, refer to the official MKS documentation.
 
 ## License
 
