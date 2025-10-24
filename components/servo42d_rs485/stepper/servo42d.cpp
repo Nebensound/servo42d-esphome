@@ -1,6 +1,11 @@
 #include "servo42d.h"
 #include "servo42d_modbus_commands.h"
+#include "servo42d_motor_control.h"
+#include "servo42d_position.h"
+#include "servo42d_helpers.h"
 #include "esphome/core/log.h"
+#include <cmath>
+#include <climits>
 
 namespace esphome
 {
@@ -16,48 +21,115 @@ namespace esphome
       // Initialize command queue
       this->command_queue_ = std::make_unique<CommandQueue>();
 
+      // Initialize helper classes
+      this->motor_control_ = std::make_unique<Servo42dMotorControl>(this);
+      this->position_ = std::make_unique<Servo42dPosition>(this);
+
       // Wait a bit for motor to be ready
       this->set_interval("init_delay", 500, [this]()
                          {
     // Initial configuration sequence
     
-    // 1. Enable MODBUS-RTU mode (CRITICAL!)
-    auto enable_modbus = std::make_unique<WriteCommand>(
-        ModbusRegisters::Write::MODBUS_RTU_ENABLE, 0x0001);
-    enable_modbus->set_completion_callback([](BaseCommand*, bool success) {
+    ESP_LOGI(TAG, "=== Starting Motor Setup Sequence (7 steps) ===");
+    
+    // 1. Restart motor to synchronize with ESPHome boot
+    ESP_LOGI(TAG, "Step 1/7: Restarting motor controller...");
+    auto restart_motor = std::make_unique<WriteCommand>(
+        ModbusRegisters::Write::SYSTEM_RESET, 0x0001);
+    restart_motor->set_completion_callback([this](BaseCommand*, bool success) {
       if (success) {
-        ESP_LOGI(TAG, "MODBUS-RTU enabled successfully");
+        ESP_LOGI(TAG, "OK Motor controller restarted - encoder reset to 0");
+        this->encoder_base_value_ = 0;
+        this->encoder_base_set_ = true;
+        this->current_position = 0;
       } else {
-        ESP_LOGW(TAG, "Failed to enable MODBUS-RTU - motor may not respond!");
+        ESP_LOGW(TAG, "FAIL Motor restart failed!");
       }
     });
-    this->command_queue_->enqueue(std::move(enable_modbus));
+    this->command_queue_->enqueue(std::move(restart_motor));
     
-    // 2. Set work mode to SR_vFOC (mode 5 - recommended for serial control)
-    auto set_mode = std::make_unique<WriteCommand>(
-        ModbusRegisters::Write::WORK_MODE, ModbusRegisters::WorkMode::SR_VFOC);
-    set_mode->set_completion_callback([](BaseCommand*, bool success) {
-      if (success) {
-        ESP_LOGI(TAG, "Work mode set to SR_vFOC");
-      }
-    });
-    this->command_queue_->enqueue(std::move(set_mode));
+        // 2. Set work mode (includes holding current for OPEN/CLOSE modes)
+    ESP_LOGI(TAG, "Step 2/7: Setting work mode...");
+    this->motor_control_->set_work_mode(this->control_mode_);
     
-    // 3. Set subdivision (microsteps)
-    auto set_subdivision = std::make_unique<WriteCommand>(
+    // 3. Set Microstepping
+    ESP_LOGI(TAG, "Step 3/7: Setting up microstepping...");
+    auto set_microstepping = std::make_unique<WriteCommand>(
         ModbusRegisters::Write::SUBDIVISION, this->microsteps_);
-    set_subdivision->set_completion_callback([this](BaseCommand*, bool success) {
+    set_microstepping->set_completion_callback([this](BaseCommand *, bool success)
+                                               {
       if (success) {
-        ESP_LOGI(TAG, "Subdivision set to %d microsteps", this->microsteps_);
+        ESP_LOGI(TAG, "OK Microstepping set to %d steps", this->microsteps_);
+      } });
+    this->command_queue_->enqueue(std::move(set_microstepping));
+
+    // 4. Set working current
+    ESP_LOGI(TAG, "Step 4/7: Setting working current to %d mA...", this->working_current_);
+    auto set_current = std::make_unique<WriteCommand>(
+        ModbusRegisters::Write::WORKING_CURRENT, this->working_current_);
+    set_current->set_completion_callback([this](BaseCommand*, bool success) {
+      if (success) {
+        ESP_LOGI(TAG, "OK Working current set to %d mA", this->working_current_);
       }
     });
-    this->command_queue_->enqueue(std::move(set_subdivision));
+    this->command_queue_->enqueue(std::move(set_current));
     
-    // 4. Query initial motor status
+    // Note: Holding current is now set automatically by set_work_mode() for OPEN/CLOSE modes
+    
+    // 5. Set EN pin active mode
+    ESP_LOGI(TAG, "Step 5/7: Setting EN pin active mode...");
+    auto set_en_active = std::make_unique<WriteCommand>(
+        ModbusRegisters::Write::EN_ACTIVE, this->en_pin_active_);
+    set_en_active->set_completion_callback([this](BaseCommand*, bool success) {
+      if (success) {
+        const char* mode_str = (this->en_pin_active_ == 0) ? "LOW" : (this->en_pin_active_ == 1) ? "HIGH" : "ALWAYS";
+        ESP_LOGI(TAG, "OK EN pin active set to %s", mode_str);
+      }
+    });
+    this->command_queue_->enqueue(std::move(set_en_active));
+    
+    // 6. Set auto screen off
+    ESP_LOGI(TAG, "Step 6/7: Setting auto screen off: %s...", this->auto_screen_off_ ? "ON" : "OFF");
+    auto set_screen = std::make_unique<WriteCommand>(
+        ModbusRegisters::Write::AUTO_SCREEN_OFF, this->auto_screen_off_ ? 0x0001 : 0x0000);
+    set_screen->set_completion_callback([this](BaseCommand*, bool success) {
+      if (success) {
+        ESP_LOGI(TAG, "OK Auto screen off: %s", this->auto_screen_off_ ? "enabled" : "disabled");
+      }
+    });
+    this->command_queue_->enqueue(std::move(set_screen));
+    
+    // 7. Enable motor (drive enable)
+    ESP_LOGI(TAG, "Step 7/7: Enabling motor...");
+    auto enable_motor_cmd = std::make_unique<WriteCommand>(
+        ModbusRegisters::Write::EN_CONTROL, 0x0001);
+    enable_motor_cmd->set_completion_callback([](BaseCommand*, bool success) {
+      if (success) {
+        ESP_LOGI(TAG, "OK Motor enabled");
+        ESP_LOGI(TAG, "=== Setup Complete ===");
+      } else {
+        ESP_LOGW(TAG, "FAIL Failed to enable motor");
+      }
+    });
+    this->command_queue_->enqueue(std::move(enable_motor_cmd));
+    
+  // Query initial status
     this->query_motor_status();
+    this->query_encoder_value();
     
-    // Cancel this one-time setup interval
-    this->cancel_interval("init_delay"); });
+  // After motor restart, both encoder and target are 0
+  // No need to send initial move command - wait for user's first set_target
+  this->target_synced_ = true;
+
+  // Cancel this one-time setup interval
+  this->cancel_interval("init_delay"); });
+
+      // Set up periodic polling for motor status (replaces PollingComponent::update)
+      // update() calls query_encoder_value(), query_motor_speed(), query_motor_status(), and query_protection_status()
+      this->set_interval("status_poll", 500, [this]()
+                         {
+                           this->update(); // Call our update method periodically
+                         });
     }
 
     void Servo42dRs485::dump_config()
@@ -74,25 +146,174 @@ namespace esphome
 
     void Servo42dRs485::loop()
     {
+      static uint32_t loop_counter = 0;
+      static uint32_t last_log = 0;
+      uint32_t now = millis();
+
+      loop_counter++;
+      if (now - last_log > 10000)
+      {
+        ESP_LOGD(TAG, "loop() called %u times in last 10s, queue=%p, size=%d",
+                 loop_counter, this->command_queue_.get(),
+                 this->command_queue_ ? this->command_queue_->size() : -1);
+        loop_counter = 0;
+        last_log = now;
+      }
+
       // Process command queue
       if (this->command_queue_)
       {
-        // CommandQueue loop would be called here if it had one
-        // For now, commands are processed via MODBUS callbacks
+        // Process and execute commands from the queue (no per-loop logging to reduce output)
+        this->command_queue_->process_next();
+        this->command_queue_->execute_next(this);
       }
     }
 
     void Servo42dRs485::update()
     {
-      // Regular status polling
-      this->query_motor_status();
+      // Continuously poll encoder, speed, and status (like in original code)
+      // These are queued but won't duplicate if already in queue
+      this->position_->query_encoder_value();
+      this->position_->query_motor_speed();
+      this->position_->query_motor_status();
+      this->position_->query_protection_status();
 
-      // Optionally query other parameters
-      if (this->get_update_interval() < 500)
+      // Sleep when done: Disable motor if target reached and motor is idle
+      if (this->sleep_when_done_)
       {
-        // Fast polling - also get speed
-        this->query_motor_speed();
+        if (!this->is_motor_moving())
+        {
+          // Check if we're at the target position (within a small tolerance)
+          int32_t position_error = abs(this->target_position - this->current_position);
+          if (position_error <= 2 && !this->motor_auto_disabled_)
+          {
+            if (this->post_arrival_hold_ms_ == 0)
+            {
+              ESP_LOGD(TAG, "Target reached, disabling motor (sleep_when_done)");
+              this->disable_motor();
+              this->motor_auto_disabled_ = true;
+            }
+            else if (!this->post_hold_scheduled_)
+            {
+              ESP_LOGD(TAG, "Target reached, holding for %u ms before disable", this->post_arrival_hold_ms_);
+              this->post_hold_scheduled_ = true;
+              this->set_timeout("post_hold_disable", this->post_arrival_hold_ms_, [this]()
+                                {
+                // Double-check still within tolerance and not moving
+                if (!this->is_motor_moving() && abs(this->target_position - this->current_position) <= 2)
+                {
+                  ESP_LOGD(TAG, "Post-hold disable now");
+                  this->disable_motor();
+                  this->motor_auto_disabled_ = true;
+                }
+                this->post_hold_scheduled_ = false; });
+            }
+          }
+        }
       }
+    }
+
+    void Servo42dRs485::set_target(int32_t steps)
+    {
+      ESP_LOGI(TAG, "set_target: target=%d (current: %d)", steps, this->current_position);
+
+      // Re-enable motor if it was auto-disabled and we're moving to a new target
+      if (this->motor_auto_disabled_)
+      {
+        ESP_LOGD(TAG, "Re-enabling motor for new target");
+        this->enable_motor();
+        this->motor_auto_disabled_ = false;
+      }
+
+      // Send move and update target
+      this->send_absolute_move_(steps, /*update_target=*/true);
+      this->target_synced_ = true;
+    }
+
+    void Servo42dRs485::handle_protection_change_(uint8_t prev, uint8_t curr)
+    {
+      if (prev == curr)
+        return;
+
+      this->protection_status_ = curr;
+
+      if (curr != 0)
+      {
+        ESP_LOGW(TAG, "Protection event detected (status=0x%02X)", curr);
+        // Mark target as not synced until user recovers/reissues command
+        this->target_synced_ = false;
+        // Optional external callback
+        if (this->on_protection_)
+        {
+          this->on_protection_();
+        }
+      }
+      else
+      {
+        ESP_LOGI(TAG, "Protection cleared");
+      }
+    }
+
+    void Servo42dRs485::compute_speed_and_accel_(uint16_t &speed_rpm, uint16_t &accel_internal) const
+    {
+      // Compute speed and acceleration with clamps and fallbacks
+      if (this->steps_per_revolution_ > 0.0f)
+      {
+        speed_rpm = Servo42dHelpers::steps_per_second_to_rpm(this->max_speed_, this->steps_per_revolution_);
+        accel_internal = Servo42dHelpers::acceleration_to_internal(this->acceleration_, this->steps_per_revolution_);
+      }
+      else
+      {
+        // Fallback conservative defaults
+        speed_rpm = 60;      // 60 RPM
+        accel_internal = 10; // conservative acceleration
+        ESP_LOGW(TAG, "steps_per_revolution not set; using fallback speed/accel");
+      }
+
+      // Clamp to safe values
+      if (speed_rpm < 10)
+        speed_rpm = 10;
+      if (speed_rpm > 3000)
+        speed_rpm = 3000;
+      if (accel_internal < 1)
+        accel_internal = 1;
+      if (accel_internal > 255)
+        accel_internal = 255;
+    }
+
+    void Servo42dRs485::send_absolute_move_(int32_t steps, bool update_target)
+    {
+      uint16_t speed_rpm = 0;
+      uint16_t acceleration = 0;
+      this->compute_speed_and_accel_(speed_rpm, acceleration);
+
+      // Convert ESPHome steps to motor position (steps + offset)
+      int32_t motor_target = steps + this->position_offset_;
+
+      ESP_LOGD(TAG, "send_absolute_move_: motor_target=%d (steps=%d, offset=%d), speed=%u RPM, accel=%u",
+               motor_target, steps, this->position_offset_, speed_rpm, acceleration);
+
+      // ALWAYS send move command for reliability
+      this->position_->move_to_position_mode2(acceleration, speed_rpm, motor_target);
+
+      if (update_target)
+      {
+        // Update target position for ESPHome base class
+        this->target_position = steps;
+      }
+    }
+
+    void Servo42dRs485::report_position(int32_t position)
+    {
+      // Adjust offset so current encoder position maps to desired position
+      // Formula: current_position = encoder_position - offset
+      // Therefore: offset = encoder_position - desired_position
+      this->position_offset_ = this->encoder_position_ - position;
+      this->current_position = position;
+      this->target_position = position;
+
+      ESP_LOGI(TAG, "Position reset to %d (encoder=%d, offset=%d)",
+               position, this->encoder_position_, this->position_offset_);
     }
 
     void Servo42dRs485::on_modbus_data(const std::vector<uint8_t> &data)
@@ -119,362 +340,175 @@ namespace esphome
     }
 
     // ============================================================================
-    // Motor Control Methods
+    // Motor Control Actions - Delegated to Servo42dMotorControl
     // ============================================================================
 
-    void Servo42dRs485::enable_motor(bool enable)
+    void Servo42dRs485::enable_motor()
     {
-      auto cmd = std::make_unique<WriteCommand>(
-          ModbusRegisters::Write::MOTOR_ENABLE, enable ? 0x0001 : 0x0000);
-      cmd->set_completion_callback([enable](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGI(TAG, "Motor %s", enable ? "enabled" : "disabled");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->motor_control_->enable_motor();
+    }
+
+    void Servo42dRs485::disable_motor()
+    {
+      this->motor_control_->disable_motor();
     }
 
     void Servo42dRs485::emergency_stop()
     {
-      auto cmd = std::make_unique<WriteCommand>(
-          ModbusRegisters::Write::EMERGENCY_STOP, 0x0001);
-      cmd->set_completion_callback([](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGW(TAG, "Emergency stop activated!");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->motor_control_->emergency_stop();
     }
 
-    void Servo42dRs485::release_protection()
+    void Servo42dRs485::run_continuous(float speed_steps_per_sec, uint8_t direction)
     {
-      auto cmd = std::make_unique<WriteCommand>(
-          ModbusRegisters::Write::RELEASE_PROTECTION, 0x0001);
-      cmd->set_completion_callback([](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGI(TAG, "Protection released");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->motor_control_->run_continuous(speed_steps_per_sec, direction);
+    }
+
+    void Servo42dRs485::stop_motor()
+    {
+      this->motor_control_->stop_motor();
+    }
+
+    void Servo42dRs485::home()
+    {
+      this->motor_control_->home();
+    }
+
+    void Servo42dRs485::reset_position()
+    {
+      this->motor_control_->reset_position();
     }
 
     void Servo42dRs485::calibrate_motor()
     {
-      auto cmd = std::make_unique<WriteCommand>(
-          ModbusRegisters::Write::CALIBRATE_MOTOR, 0x0001);
-      cmd->set_completion_callback([](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGI(TAG, "Motor calibration started");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->motor_control_->calibrate_motor();
     }
 
-    void Servo42dRs485::go_to_zero(bool enable, uint16_t speed, uint16_t direction)
+    void Servo42dRs485::release_protection()
     {
-      // Prepare zero mode parameters
-      std::vector<uint16_t> params(4);
-      params[0] = 0x0000; // Single turn mode
-      params[1] = enable ? 0x0001 : 0x0000;
-      params[2] = speed;
-      params[3] = direction;
+      this->motor_control_->release_protection();
+    }
 
-      auto cmd = std::make_unique<MultiWriteCommand>(
-          ModbusRegisters::MultiWrite::ZERO_MODE_PARAMS, params);
-      cmd->set_completion_callback([enable](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGI(TAG, "Homing %s", enable ? "started" : "stopped");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+    void Servo42dRs485::restart_motor()
+    {
+      this->motor_control_->restart_motor();
+    }
+
+    void Servo42dRs485::set_work_mode(uint16_t mode)
+    {
+      this->motor_control_->set_work_mode(mode);
+    }
+
+    void Servo42dRs485::set_working_current_runtime(uint16_t current_ma)
+    {
+      this->motor_control_->set_working_current_runtime(current_ma);
+    }
+
+    void Servo42dRs485::set_holding_current_percent_runtime(uint8_t percent)
+    {
+      this->motor_control_->set_holding_current_percent_runtime(percent);
+    }
+
+    void Servo42dRs485::set_microstepping(uint16_t subdivision)
+    {
+      this->motor_control_->set_microstepping(subdivision);
+    }
+
+    void Servo42dRs485::key_lock()
+    {
+      this->motor_control_->key_lock();
+    }
+
+    void Servo42dRs485::key_unlock()
+    {
+      this->motor_control_->key_unlock();
     }
 
     // ============================================================================
-    // Position Control Methods
+    // Position Control Methods - Delegated to Servo42dPosition
     // ============================================================================
 
     void Servo42dRs485::move_to_position_mode1(uint16_t direction, uint16_t acceleration,
                                                uint16_t speed, uint16_t pulses)
     {
-      std::vector<uint16_t> params = {direction, acceleration, speed, pulses};
-
-      auto cmd = std::make_unique<MultiWriteCommand>(
-          ModbusRegisters::MultiWrite::POSITION_MODE_1, params);
-      cmd->set_completion_callback([](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGD(TAG, "Position mode 1 move started");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->position_->move_to_position_mode1(direction, acceleration, speed, pulses);
     }
 
     void Servo42dRs485::move_to_position_mode2(uint16_t acceleration, uint16_t speed,
-                                               uint32_t abs_pulses)
+                                               int32_t abs_steps)
     {
-      std::vector<uint16_t> params(4);
-      params[0] = acceleration;
-      params[1] = speed;
-      params[2] = static_cast<uint16_t>(abs_pulses >> 16);    // High word
-      params[3] = static_cast<uint16_t>(abs_pulses & 0xFFFF); // Low word
-
-      auto cmd = std::make_unique<MultiWriteCommand>(
-          ModbusRegisters::MultiWrite::POSITION_MODE_2, params);
-      cmd->set_completion_callback([](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGD(TAG, "Position mode 2 move started");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->position_->move_to_position_mode2(acceleration, speed, abs_steps);
     }
 
     void Servo42dRs485::move_to_position_mode3(uint16_t acceleration, uint16_t speed,
-                                               int32_t rel_axis)
+                                               int32_t rel_steps)
     {
-      std::vector<uint16_t> params(4);
-      params[0] = acceleration;
-      params[1] = speed;
-      params[2] = static_cast<uint16_t>(rel_axis >> 16);    // High word
-      params[3] = static_cast<uint16_t>(rel_axis & 0xFFFF); // Low word
-
-      auto cmd = std::make_unique<MultiWriteCommand>(
-          ModbusRegisters::MultiWrite::POSITION_MODE_3, params);
-      cmd->set_completion_callback([](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGD(TAG, "Position mode 3 move started");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->position_->move_to_position_mode3(acceleration, speed, rel_steps);
     }
 
     void Servo42dRs485::move_to_position_mode4(uint16_t acceleration, uint16_t speed,
-                                               int32_t abs_axis)
+                                               int32_t abs_steps)
     {
-      std::vector<uint16_t> params(4);
-      params[0] = acceleration;
-      params[1] = speed;
-      params[2] = static_cast<uint16_t>(abs_axis >> 16);    // High word
-      params[3] = static_cast<uint16_t>(abs_axis & 0xFFFF); // Low word
-
-      auto cmd = std::make_unique<MultiWriteCommand>(
-          ModbusRegisters::MultiWrite::POSITION_MODE_4, params);
-      cmd->set_completion_callback([](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGD(TAG, "Position mode 4 move started");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->position_->move_to_position_mode4(acceleration, speed, abs_steps);
     }
 
     // ============================================================================
-    // Status Query Methods
+    // Status Query Methods - Delegated to Servo42dPosition
     // ============================================================================
 
     void Servo42dRs485::query_motor_status()
     {
-      auto cmd = std::make_unique<ReadCommand>(ModbusRegisters::Read::MOTOR_STATUS, 1);
-      auto cmd_ptr = cmd.get(); // Store pointer before moving
-      cmd->set_completion_callback([this, cmd_ptr](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      const auto& values = cmd_ptr->get_values();
-      if (!values.empty()) {
-        this->motor_status_ = static_cast<uint8_t>(values[0]);
-        ESP_LOGV(TAG, "Motor status: %d", this->motor_status_);
-      }
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->position_->query_motor_status();
     }
 
     void Servo42dRs485::query_encoder_value()
     {
-      auto cmd = std::make_unique<ReadCommand>(ModbusRegisters::Read::ENCODER_VALUE_CARRY, 3);
-      auto cmd_ptr = cmd.get();
-      cmd->set_completion_callback([this, cmd_ptr](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      const auto& values = cmd_ptr->get_values();
-      if (values.size() >= 3) {
-        Int48 encoder = Int48::from_registers(values.data());
-        this->encoder_value_ = encoder.to_int64();
-        ESP_LOGV(TAG, "Encoder value: %" PRId64, this->encoder_value_);
-      }
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->position_->query_encoder_value();
     }
 
     void Servo42dRs485::query_motor_speed()
     {
-      auto cmd = std::make_unique<ReadCommand>(ModbusRegisters::Read::MOTOR_SPEED, 1);
-      auto cmd_ptr = cmd.get();
-      cmd->set_completion_callback([this, cmd_ptr](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      const auto& values = cmd_ptr->get_values();
-      if (!values.empty()) {
-        this->motor_speed_ = static_cast<int16_t>(values[0]);
-        ESP_LOGV(TAG, "Motor speed: %d RPM", this->motor_speed_);
-      }
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->position_->query_motor_speed();
     }
 
     void Servo42dRs485::query_pulse_count()
     {
-      auto cmd = std::make_unique<ReadCommand>(ModbusRegisters::Read::PULSE_COUNT, 2);
-      auto cmd_ptr = cmd.get();
-      cmd->set_completion_callback([this, cmd_ptr](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      const auto& values = cmd_ptr->get_values();
-      if (values.size() >= 2) {
-        this->pulse_count_ = (static_cast<int32_t>(values[0]) << 16) | values[1];
-        ESP_LOGV(TAG, "Pulse count: %d", this->pulse_count_);
-      }
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->position_->query_pulse_count();
     }
 
     void Servo42dRs485::query_angle_error()
     {
-      auto cmd = std::make_unique<ReadCommand>(ModbusRegisters::Read::ANGLE_ERROR, 2);
-      auto cmd_ptr = cmd.get();
-      cmd->set_completion_callback([this, cmd_ptr](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      const auto& values = cmd_ptr->get_values();
-      if (values.size() >= 2) {
-        this->angle_error_ = (static_cast<int32_t>(values[0]) << 16) | values[1];
-        ESP_LOGV(TAG, "Angle error: %d", this->angle_error_);
-      }
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
+      this->position_->query_angle_error();
     }
 
     // ============================================================================
-    // Configuration Methods
-    // ============================================================================
-
-    void Servo42dRs485::set_work_mode(uint16_t mode)
-    {
-      auto cmd = std::make_unique<WriteCommand>(ModbusRegisters::Write::WORK_MODE, mode);
-      cmd->set_completion_callback([mode](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGI(TAG, "Work mode set to %d", mode);
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
-    }
-
-    void Servo42dRs485::set_working_current(uint16_t current_ma)
-    {
-      if (current_ma > 5200)
-      {
-        ESP_LOGW(TAG, "Working current limited to 5200mA (requested: %d)", current_ma);
-        current_ma = 5200;
-      }
-
-      auto cmd = std::make_unique<WriteCommand>(
-          ModbusRegisters::Write::WORKING_CURRENT, current_ma);
-      cmd->set_completion_callback([current_ma](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGI(TAG, "Working current set to %dmA", current_ma);
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
-    }
-
-    void Servo42dRs485::set_subdivision(uint16_t subdivision)
-    {
-      if (subdivision < 1 || subdivision > 256)
-      {
-        ESP_LOGW(TAG, "Invalid subdivision: %d (must be 1-256)", subdivision);
-        return;
-      }
-
-      auto cmd = std::make_unique<WriteCommand>(
-          ModbusRegisters::Write::SUBDIVISION, subdivision);
-      cmd->set_completion_callback([subdivision](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGI(TAG, "Subdivision set to %d", subdivision);
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
-    }
-
-    void Servo42dRs485::set_en_pin_mode(uint16_t mode)
-    {
-      auto cmd = std::make_unique<WriteCommand>(ModbusRegisters::Write::EN_PIN_MODE, mode);
-      cmd->set_completion_callback([](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGD(TAG, "EN pin mode updated");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
-    }
-
-    void Servo42dRs485::set_direction(uint16_t direction)
-    {
-      auto cmd = std::make_unique<WriteCommand>(ModbusRegisters::Write::DIRECTION, direction);
-      cmd->set_completion_callback([](BaseCommand *, bool success)
-                                   {
-    if (success) {
-      ESP_LOGD(TAG, "Direction updated");
-    } });
-      this->command_queue_->enqueue(std::move(cmd));
-    }
-
-    // ============================================================================
-    // Status Access
+    // Status Access - Delegated to Servo42dPosition
     // ============================================================================
 
     bool Servo42dRs485::is_motor_moving() const
     {
-      using namespace ModbusRegisters::MotorStatus;
-      return motor_status_ == MOTOR_SPEED_UP ||
-             motor_status_ == MOTOR_SPEED_DOWN ||
-             motor_status_ == MOTOR_FULL_SPEED ||
-             motor_status_ == MOTOR_IS_HOMING;
+      return this->position_->is_motor_moving();
     }
 
     // ============================================================================
-    // Conversion Helpers
+    // Position Getters with Unit Conversion
     // ============================================================================
 
-    uint16_t Servo42dRs485::steps_per_second_to_rpm_(float steps_per_second) const
+    float Servo42dRs485::get_encoder_degrees() const
     {
-      // Convert steps/s to RPM based on steps_per_revolution
-      float rpm = (steps_per_second / this->steps_per_revolution_) * 60.0f;
-
-      // Clamp to motor limits (typically 0-3000 RPM)
-      if (rpm < 0)
-        rpm = 0;
-      if (rpm > 3000)
-        rpm = 3000;
-
-      return static_cast<uint16_t>(rpm);
+      // Convert encoder position (steps) to degrees using configured steps_per_revolution
+      return Servo42dHelpers::steps_to_degrees(encoder_position_, steps_per_revolution_);
     }
 
-    float Servo42dRs485::rpm_to_steps_per_second_(uint16_t rpm) const
+    float Servo42dRs485::get_encoder_radians() const
     {
-      return (rpm / 60.0f) * this->steps_per_revolution_;
+      // Convert encoder position (steps) to radians using configured steps_per_revolution
+      return Servo42dHelpers::steps_to_radians(encoder_position_, steps_per_revolution_);
     }
 
-    uint16_t Servo42dRs485::acceleration_to_internal_(float steps_per_second_sq) const
+    void Servo42dRs485::process_protection_status(uint8_t status)
     {
-      // Motor acceleration is 0-255, where higher value = faster acceleration
-      // This is a simplified conversion - may need tuning
-
-      float revolutions_per_second_sq = steps_per_second_sq / this->steps_per_revolution_;
-
-      // Scale to 0-255 range (this is approximate)
-      uint16_t accel = static_cast<uint16_t>(revolutions_per_second_sq * 10.0f);
-
-      if (accel > 255)
-        accel = 255;
-      if (accel < 1)
-        accel = 1;
-
-      return accel;
+      uint8_t prev = this->protection_status_;
+      this->handle_protection_change_(prev, status);
     }
 
   } // namespace servo42d_rs485

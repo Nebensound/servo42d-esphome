@@ -2,6 +2,25 @@
 
 This directory contains example configurations for the `servo42d_rs485` ESPHome component.
 
+## Setup
+
+### WiFi Credentials
+
+1. Copy the secrets template:
+   ```bash
+   cp examples/secrets.yaml.template examples/secrets.yaml
+   ```
+
+2. Edit `examples/secrets.yaml` with your WiFi credentials:
+   ```yaml
+   wifi_ssid: "YourActualWiFiSSID"
+   wifi_password: "YourActualPassword"
+   ota_password: "YourOTAPassword"
+   fallback_ap_password: "fallback123"
+   ```
+
+3. The `secrets.yaml` file is in `.gitignore` and will not be committed.
+
 ## Prerequisites
 
 Before using these examples, ensure your MKS Servo42D/57D motor is properly configured:

@@ -17,6 +17,8 @@ namespace esphome
 
       // Queue management
       void enqueue(std::unique_ptr<BaseCommand> command);
+      // Enqueue with priority (placed at the front of the queue)
+      void enqueue_front(std::unique_ptr<BaseCommand> command);
       void process_next();
       void clear();
       bool is_empty() const;
@@ -36,7 +38,7 @@ namespace esphome
 
     private:
       std::deque<std::unique_ptr<BaseCommand>> queue_;
-      BaseCommand *current_command_{nullptr};
+      std::unique_ptr<BaseCommand> current_command_{nullptr};
     };
 
   } // namespace servo42d_rs485

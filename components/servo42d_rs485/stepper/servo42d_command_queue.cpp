@@ -23,14 +23,90 @@ namespace esphome
         return;
       }
 
+      uint16_t reg_addr = command->get_register_address();
+
+      // Check for duplicate READ commands already in queue (prevent flooding)
+  bool is_read_command = (reg_addr == 0x0030 || reg_addr == 0x0031 || // Encoder
+          reg_addr == 0x0032 ||                       // Speed
+          reg_addr == 0x0033 ||                       // Pulse count
+          reg_addr == 0x0039 ||                       // Angle error
+          reg_addr == 0x003E ||                       // Protection status
+          reg_addr == 0x00F1);                        // Motor status
+
+      if (is_read_command)
+      {
+        // Check if same register read is already queued
+        for (const auto &cmd : queue_)
+        {
+          if (cmd->get_register_address() == reg_addr)
+          {
+            ESP_LOGV(TAG, "Skipping duplicate read command for register 0x%04X", reg_addr);
+            return;
+          }
+        }
+        // Also check if currently executing
+        if (current_command_ && current_command_->get_register_address() == reg_addr)
+        {
+          ESP_LOGV(TAG, "Skipping duplicate read command for register 0x%04X (currently executing)", reg_addr);
+          return;
+        }
+      }
+
+      // Check for duplicate MOVE commands (Mode 2) - keep newest, remove old
+      bool is_move_command = (reg_addr == 0x00FE); // POSITION_MODE_2
+
+      if (is_move_command)
+      {
+        // Remove any older move commands from queue - newest wins
+        auto it = queue_.begin();
+        while (it != queue_.end())
+        {
+          if ((*it)->get_register_address() == 0x00FE)
+          {
+            ESP_LOGV(TAG, "Removing old move command, keeping newest");
+            it = queue_.erase(it);
+          }
+          else
+          {
+            ++it;
+          }
+        }
+      }
+
       ESP_LOGV(TAG, "Enqueuing command: %s (register=0x%04X)",
                command->get_command_name(), command->get_register_address());
 
       queue_.push_back(std::move(command));
     }
 
+    void CommandQueue::enqueue_front(std::unique_ptr<BaseCommand> command)
+    {
+      if (!command)
+      {
+        ESP_LOGW(TAG, "Attempted to enqueue (front) null command");
+        return;
+      }
+
+      ESP_LOGV(TAG, "Enqueuing command (PRIORITY): %s (register=0x%04X)",
+               command->get_command_name(), command->get_register_address());
+
+      queue_.push_front(std::move(command));
+    }
+
     void CommandQueue::process_next()
     {
+      // Check for timeout on current command
+      if (current_command_ && !current_command_->is_finished())
+      {
+        if (current_command_->is_timeout())
+        {
+          ESP_LOGW(TAG, "Command %s timed out",
+                   current_command_->get_command_name());
+          current_command_->set_state(CommandState::FAILED);
+          current_command_->trigger_completion(false);
+        }
+      }
+
       // Complete current command if finished
       if (current_command_ && current_command_->is_finished())
       {
@@ -43,7 +119,7 @@ namespace esphome
       // Start next command if available and no current command
       if (!current_command_ && !queue_.empty())
       {
-        current_command_ = queue_.front().get();
+        current_command_ = std::move(queue_.front());
         queue_.pop_front();
       }
     }
@@ -90,7 +166,7 @@ namespace esphome
 
     BaseCommand *CommandQueue::get_current_command()
     {
-      return current_command_;
+      return current_command_.get();
     }
 
     bool CommandQueue::has_executing_command() const

@@ -13,7 +13,7 @@ esp32:
   framework:
     type: arduino
 
-# Load component from local directory
+# Load component from local directory (for testing)
 external_components:
   - source:
       type: local
@@ -43,6 +43,7 @@ modbus:
 stepper:
   - platform: servo42d_rs485
     id: test_stepper
+    steps_per_revolution: 3200 # 200 steps × 16 microsteps
     max_speed: 1000 steps/s
     acceleration: 500 steps/s^2
     deceleration: 500 steps/s^2
@@ -50,64 +51,150 @@ stepper:
     # MODBUS configuration
     modbus_id: modbus_bus
     address: 0x01
-    update_interval: 1s
 
 # Test Buttons for Actions
 button:
+  # Basic motor control
   - platform: template
     name: "Enable Motor"
     on_press:
-      - servo42d_rs485.enable_motor:
-          id: test_stepper
-          enable: true
+      - stepper.enable: test_stepper
 
   - platform: template
     name: "Disable Motor"
     on_press:
-      - servo42d_rs485.enable_motor:
-          id: test_stepper
-          enable: false
+      - stepper.disable: test_stepper
 
+  # Emergency functions
   - platform: template
     name: "Emergency Stop"
     on_press:
-      - servo42d_rs485.emergency_stop:
-          id: test_stepper
+      - stepper.emergency_stop: test_stepper
 
   - platform: template
     name: "Release Protection"
     on_press:
-      - servo42d_rs485.release_protection:
+      - stepper.release_protection: test_stepper
+
+  # Continuous movement with different speeds (testing units)
+  - platform: template
+    name: "Run Continuous - Steps/s"
+    on_press:
+      - stepper.run_continuous:
           id: test_stepper
+          speed: 500 steps/s
+          direction: CW
+
+  - platform: template
+    name: "Run Continuous - RPM"
+    on_press:
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 10 RPM
+          direction: CCW
+
+  - platform: template
+    name: "Run Continuous - Degrees/s"
+    on_press:
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 180 degrees/s
+          direction: CW
+
+  - platform: template
+    name: "Stop Motion"
+    on_press:
+      - stepper.stop: test_stepper
+
+  # Homing tests
+  - platform: template
+    name: "Home Motor"
+    on_press:
+      - stepper.home: test_stepper
 
   - platform: template
     name: "Calibrate Motor"
     on_press:
-      - servo42d_rs485.calibrate:
+      - stepper.calibrate: test_stepper
+
+  # Position control
+  - platform: template
+    name: "Reset Position"
+    on_press:
+      - stepper.reset_position: test_stepper
+
+  # Configuration actions
+  - platform: template
+    name: "Set SR_VFOC Mode"
+    on_press:
+      - stepper.set_work_mode:
           id: test_stepper
+          mode: SR_VFOC
 
   - platform: template
-    name: "Go to Zero"
+    name: "Set SR_CLOSE Mode"
     on_press:
-      - servo42d_rs485.go_to_zero:
+      - stepper.set_work_mode:
           id: test_stepper
-          enable: true
-          speed: 500
-          direction: 0
-
-  - platform: template
-    name: "Set CR_VREF Mode"
-    on_press:
-      - servo42d_rs485.set_work_mode:
-          id: test_stepper
-          mode: 0 # CR_VREF
+          mode: SR_CLOSE
 
   - platform: template
     name: "Set Working Current 1000mA"
     on_press:
-      - servo42d_rs485.set_working_current:
+      - stepper.set_working_current:
           id: test_stepper
           current: 1000
+
+  - platform: template
+    name: "Set Working Current 2500mA"
+    on_press:
+      - stepper.set_working_current:
+          id: test_stepper
+          current: 2500
+
+  - platform: template
+    name: "Set Holding Current 50%"
+    on_press:
+      - stepper.set_holding_current_percent:
+          id: test_stepper
+          percent: 50
+
+  - platform: template
+    name: "Set Holding Current 100%"
+    on_press:
+      - stepper.set_holding_current_percent:
+          id: test_stepper
+          percent: 90
+
+  - platform: template
+    name: "Set Microstepping 16"
+    on_press:
+      - stepper.set_microstepping:
+          id: test_stepper
+          subdivision: 16
+
+  - platform: template
+    name: "Set Microstepping 32"
+    on_press:
+      - stepper.set_microstepping:
+          id: test_stepper
+          subdivision: 32
+
+  # System actions
+  - platform: template
+    name: "Restart Motor"
+    on_press:
+      - stepper.restart: test_stepper
+
+  - platform: template
+    name: "Key Lock"
+    on_press:
+      - stepper.key_lock: test_stepper
+
+  - platform: template
+    name: "Key Unlock"
+    on_press:
+      - stepper.key_unlock: test_stepper
 
 # Test sensors to verify compilation
 sensor:
@@ -117,20 +204,100 @@ sensor:
       return 0;
     update_interval: 60s
 
-# Test script with multiple actions
+# Test script with multiple actions and different units
 script:
   - id: test_motor_sequence
     then:
-      - servo42d_rs485.enable_motor:
-          id: test_stepper
-          enable: true
-      - delay: 1s
+      # Enable and configure motor
+      - stepper.enable: test_stepper
+      - delay: 500ms
+
+      # Test position control with steps
       - stepper.set_target:
           id: test_stepper
           target: 1000
       - delay: 2s
-      - servo42d_rs485.emergency_stop:
+
+      # Test continuous motion with RPM
+      - stepper.run_continuous:
           id: test_stepper
+          speed: 5 RPM
+          direction: CW
+      - delay: 3s
+
+      # Stop and reset
+      - stepper.stop: test_stepper
+      - delay: 500ms
+      - stepper.reset_position: test_stepper
+
+      # Emergency stop test
+      - stepper.emergency_stop: test_stepper
       - delay: 1s
-      - servo42d_rs485.release_protection:
+      - stepper.release_protection: test_stepper
+
+      # Disable motor
+      - delay: 500ms
+      - stepper.disable: test_stepper
+
+  # Test script for unit conversions
+  - id: test_unit_conversions
+    then:
+      - stepper.enable: test_stepper
+      - delay: 500ms
+
+      # Test with steps/s
+      - stepper.run_continuous:
           id: test_stepper
+          speed: 500 steps/s
+          direction: CW
+      - delay: 2s
+      - stepper.stop: test_stepper
+
+      # Test with RPM
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 10 RPM
+          direction: CCW
+      - delay: 2s
+      - stepper.stop: test_stepper
+
+      # Test with degrees/s
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 180 degrees/s
+          direction: CW
+      - delay: 2s
+      - stepper.stop: test_stepper
+
+      - stepper.disable: test_stepper
+
+  # Test configuration changes
+  - id: test_configuration
+    then:
+      # Test work mode changes
+      - stepper.set_work_mode:
+          id: test_stepper
+          mode: SR_CLOSE
+      - delay: 500ms
+
+      # Test current settings
+      - stepper.set_working_current:
+          id: test_stepper
+          current: 2000
+      - delay: 500ms
+
+      - stepper.set_holding_current_percent:
+          id: test_stepper
+          percent: 75
+      - delay: 500ms
+
+      # Test microstepping
+      - stepper.set_microstepping:
+          id: test_stepper
+          subdivision: 32
+      - delay: 500ms
+
+      # Return to default mode
+      - stepper.set_work_mode:
+          id: test_stepper
+          mode: SR_VFOC

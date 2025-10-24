@@ -33,7 +33,7 @@ public:
   using CompletionCallback = std::function<void(BaseCommand*, bool success)>;
   using DataCallback = std::function<void(const std::vector<uint8_t>&)>;
 
-  BaseCommand(uint16_t register_address, uint32_t timeout_ms = 1000);
+  BaseCommand(uint16_t register_address, uint32_t timeout_ms = 2000);
   virtual ~BaseCommand() = default;
 
   // Command execution

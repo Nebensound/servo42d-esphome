@@ -22,22 +22,206 @@ external_components:
 logger:
   level: DEBUG
 
-# UART for RS485 communication (dummy for host - no pins needed)
+# UART for RS485 communication (dummy for host - uses port instead of pins)
 uart:
   id: uart_bus
+  port: /dev/ttyUSB0 # Dummy port for host platform
   baud_rate: 38400
   parity: EVEN
   stop_bits: 1
+
+# MODBUS-RTU Controller (required for Servo42D)
+modbus:
+  id: modbus_bus
+  uart_id: uart_bus
+  send_wait_time: 50ms
 
 # Servo42D RS485 Stepper Motor
 stepper:
   - platform: servo42d_rs485
     id: test_stepper
+    steps_per_revolution: 3200 # 200 steps × 16 microsteps
     max_speed: 1000 steps/s
     acceleration: 500 steps/s^2
     deceleration: 500 steps/s^2
 
     # MODBUS configuration
+    modbus_id: modbus_bus
     address: 0x01
-    uart_id: uart_bus
     update_interval: 1s
+
+# Test buttons to verify all actions compile
+button:
+  # Basic control
+  - platform: template
+    name: "Enable"
+    on_press:
+      - stepper.enable: test_stepper
+
+  - platform: template
+    name: "Disable"
+    on_press:
+      - stepper.disable: test_stepper
+
+  # Continuous motion with different units
+  - platform: template
+    name: "Run - Steps/s"
+    on_press:
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 500 steps/s
+          direction: CW
+
+  - platform: template
+    name: "Run - RPM"
+    on_press:
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 10 RPM
+          direction: CCW
+
+  - platform: template
+    name: "Run - RPS"
+    on_press:
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 0.5 RPS
+          direction: CW
+
+  - platform: template
+    name: "Run - Degrees/s"
+    on_press:
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 90 degrees/s
+          direction: CW
+
+  - platform: template
+    name: "Stop"
+    on_press:
+      - stepper.stop: test_stepper
+
+  # Emergency functions
+  - platform: template
+    name: "Emergency Stop"
+    on_press:
+      - stepper.emergency_stop: test_stepper
+
+  - platform: template
+    name: "Release Protection"
+    on_press:
+      - stepper.release_protection: test_stepper
+
+  # Homing and calibration
+  - platform: template
+    name: "Home"
+    on_press:
+      - stepper.home: test_stepper
+
+  - platform: template
+    name: "Calibrate"
+    on_press:
+      - stepper.calibrate: test_stepper
+
+  - platform: template
+    name: "Reset Position"
+    on_press:
+      - stepper.reset_position: test_stepper
+
+  # Configuration
+  - platform: template
+    name: "Set Work Mode SR_VFOC"
+    on_press:
+      - stepper.set_work_mode:
+          id: test_stepper
+          mode: SR_VFOC
+
+  - platform: template
+    name: "Set Work Mode SR_CLOSE"
+    on_press:
+      - stepper.set_work_mode:
+          id: test_stepper
+          mode: SR_CLOSE
+
+  - platform: template
+    name: "Set Work Mode SR_OPEN"
+    on_press:
+      - stepper.set_work_mode:
+          id: test_stepper
+          mode: SR_OPEN
+
+  - platform: template
+    name: "Set Working Current"
+    on_press:
+      - stepper.set_working_current:
+          id: test_stepper
+          current: 2000
+
+  - platform: template
+    name: "Set Holding Current %"
+    on_press:
+      - stepper.set_holding_current_percent:
+          id: test_stepper
+          percent: 50
+
+  - platform: template
+    name: "Set Microstepping"
+    on_press:
+      - stepper.set_microstepping:
+          id: test_stepper
+          subdivision: 16
+
+  # System
+  - platform: template
+    name: "Restart"
+    on_press:
+      - stepper.restart: test_stepper
+
+  - platform: template
+    name: "Key Lock"
+    on_press:
+      - stepper.key_lock: test_stepper
+
+  - platform: template
+    name: "Key Unlock"
+    on_press:
+      - stepper.key_unlock: test_stepper
+
+# Test scripts
+script:
+  - id: test_all_units
+    then:
+      - stepper.enable: test_stepper
+      # Test steps-based units
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 1000 steps/s
+          direction: CW
+      - delay: 1s
+      - stepper.stop: test_stepper
+
+      # Test RPM
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 20 RPM
+          direction: CCW
+      - delay: 1s
+      - stepper.stop: test_stepper
+
+      # Test RPS
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 2 RPS
+          direction: CW
+      - delay: 1s
+      - stepper.stop: test_stepper
+
+      # Test degrees/s
+      - stepper.run_continuous:
+          id: test_stepper
+          speed: 360 degrees/s
+          direction: CCW
+      - delay: 1s
+      - stepper.stop: test_stepper
+
+      - stepper.disable: test_stepper

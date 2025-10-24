@@ -1,0 +1,204 @@
+# Comprehensive example showing all Servo42D features
+# This demonstrates the complete YAML API with all available settings and actions
+
+esphome:
+  name: servo42d-comprehensive
+  friendly_name: "Servo42D Comprehensive Example"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+  level: DEBUG
+
+# Load component from GitHub
+external_components:
+  - source: github://Nebensound/servo42d-esphome
+    components: [servo42d_rs485]
+
+# RS485 Communication
+uart:
+  id: uart_bus
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 9600
+  parity: EVEN
+  stop_bits: 1
+
+# Modbus controller
+modbus:
+  id: modbus1
+  uart_id: uart_bus
+
+# Servo42D Stepper Motor with all configuration options
+stepper:
+  - platform: servo42d_rs485
+    id: my_stepper
+    modbus_id: modbus1
+    address: 0x01
+
+    # Basic stepper configuration
+    steps_per_revolution: 3200 # 200 steps/rev × 16 microsteps
+    microsteps: 16 # 1-256 subdivisions
+    max_speed: 1000 steps/s # Can use: steps/s, RPM, revolutions/s
+    acceleration: inf # Can use: steps/s^2, revolutions/s^2
+    deceleration: inf
+
+    # Motor control mode
+    control_mode: SR_VFOC # SR_OPEN (400 RPM) | SR_CLOSE (1500 RPM) | SR_VFOC (3000 RPM, best)
+
+    # Current settings
+    working_current: 1500mA # or 1.5A - Range: 0-3A (SERVO42D) or 0-5.2A (SERVO57D)
+    holding_current_percent: 30% # or 0.3 (ratio) - Range: 10%-90% of working_current (only SR_OPEN/SR_CLOSE, not vFOC)
+
+    # Homing configuration - choose one method:
+
+    # Option A: Real homing with endstop switch
+    home_at_startup: true
+    use_virtual_home: false
+    homing_speed: 500 # RPM
+    homing_direction: CW # CW or CCW (for real homing)
+
+    # Option B: Virtual homing (no endstop needed)
+    # home_at_startup: true
+    # use_virtual_home: true
+    # virtual_home_angle: 180     # 0-359 degrees - motor returns to this angle on power-up
+    # homing_speed: 1000          # RPM
+    # homing_direction: NEAREST   # CW, CCW, or NEAREST (shortest path for virtual homing)
+
+    # Display settings
+    auto_screen_off: true # Turn off screen after 15 seconds
+    lock_keys_at_startup: false # Prevent button presses on motor display
+
+# Position sensor to monitor motor position
+sensor:
+  - platform: template
+    name: "Stepper Position"
+    id: stepper_position
+    lambda: |-
+      return id(my_stepper).current_position;
+    update_interval: 100ms
+    unit_of_measurement: "steps"
+
+# Buttons to demonstrate all available actions
+button:
+  # Basic motor control
+  - platform: template
+    name: "Enable Motor"
+    on_press:
+      - stepper.enable: my_stepper
+
+  - platform: template
+    name: "Disable Motor"
+    on_press:
+      - stepper.disable: my_stepper
+
+  # Movement actions
+  - platform: template
+    name: "Move +1000 steps"
+    on_press:
+      - stepper.set_target:
+          id: my_stepper
+          target: !lambda "return id(my_stepper).current_position + 1000;"
+
+  - platform: template
+    name: "Move -1000 steps"
+    on_press:
+      - stepper.set_target:
+          id: my_stepper
+          target: !lambda "return id(my_stepper).current_position - 1000;"
+
+  - platform: template
+    name: "Run Continuous CW"
+    on_press:
+      - stepper.run_continuous:
+          id: my_stepper
+          speed: 10 RPM
+          direction: CW
+
+  - platform: template
+    name: "Run Continuous CCW"
+    on_press:
+      - stepper.run_continuous:
+          id: my_stepper
+          speed: 10 RPM
+          direction: CCW
+
+  - platform: template
+    name: "Stop Motor"
+    on_press:
+      - stepper.stop: my_stepper
+
+  - platform: template
+    name: "Emergency Stop"
+    on_press:
+      - stepper.emergency_stop: my_stepper
+
+  # Homing and calibration
+  - platform: template
+    name: "Home Motor"
+    on_press:
+      - stepper.home: my_stepper
+
+  - platform: template
+    name: "Reset Position (Zero)"
+    on_press:
+      - stepper.reset_position: my_stepper
+
+  - platform: template
+    name: "Calibrate Motor"
+    on_press:
+      - stepper.calibrate: my_stepper
+
+  # Recovery actions
+  - platform: template
+    name: "Release Protection"
+    on_press:
+      - stepper.release_protection: my_stepper
+
+  - platform: template
+    name: "Restart Motor"
+    on_press:
+      - stepper.restart: my_stepper
+
+  # Runtime configuration changes
+  - platform: template
+    name: "Set Work Mode: SR_VFOC"
+    on_press:
+      - stepper.set_work_mode:
+          id: my_stepper
+          mode: SR_VFOC
+
+  - platform: template
+    name: "Set Working Current: 2000mA"
+    on_press:
+      - stepper.set_working_current:
+          id: my_stepper
+          current: 2000
+
+  - platform: template
+    name: "Set Holding Current: 40%"
+    on_press:
+      - stepper.set_holding_current_percent:
+          id: my_stepper
+          percent: 40
+
+  - platform: template
+    name: "Set Microstepping: 32"
+    on_press:
+      - stepper.set_microstepping:
+          id: my_stepper
+          subdivision: 32
+
+  # Display control
+  - platform: template
+    name: "Lock Keys"
+    on_press:
+      - stepper.key_lock: my_stepper
+
+  - platform: template
+    name: "Unlock Keys"
+    on_press:
+      - stepper.key_unlock: my_stepper

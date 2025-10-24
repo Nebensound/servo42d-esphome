@@ -2,7 +2,42 @@
 
 This directory contains test configurations for validating the component compilation.
 
+## Setup
+
+### WiFi Credentials (Required for hw_setup_test.yaml)
+
+1. Copy the secrets template:
+   ```bash
+   cp tests/secrets.yaml.template tests/secrets.yaml
+   ```
+
+2. Edit `tests/secrets.yaml` with your WiFi credentials:
+   ```yaml
+   wifi_ssid: "YourActualWiFiSSID"
+   wifi_password: "YourActualPassword"
+   fallback_ap_password: "test1234"
+   ```
+
+3. The `secrets.yaml` file is in `.gitignore` and will not be committed.
+
 ## Test Files
+
+### `hw_setup_test.yaml`
+**Purpose:** Hardware setup validation test (on real hardware)
+
+- Tests actual motor setup sequence (7 steps)
+- Validates UART/RS485 communication
+- Auto-runs on boot and restarts after 15 seconds
+- Requires actual MKS SERVO42D motor connected
+- **Requires secrets.yaml** for WiFi credentials
+
+**Run:** `esphome run tests/hw_setup_test.yaml`
+
+**When to use:**
+- ✅ Testing new hardware setup
+- ✅ Validating RS485 communication
+- ✅ Debugging motor initialization
+- ✅ Verifying encoder and work mode settings
 
 ### `test_compile.yaml`
 **Purpose:** Full ESP32 hardware compilation test

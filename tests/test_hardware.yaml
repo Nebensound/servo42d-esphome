@@ -1,0 +1,269 @@
+# Hardware Test Configuration
+# This config performs automated tests on real Servo42D hardware
+# Connect motor before uploading!
+
+esphome:
+  name: servo42d-hw-test
+  friendly_name: "Servo42D Hardware Test"
+  on_boot:
+    priority: -100 # Run after everything is initialized
+    then:
+      - script.execute: comprehensive_hardware_test
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Load component from local directory (for testing)
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [servo42d_rs485]
+
+# Enable detailed logging
+logger:
+  level: VERY_VERBOSE
+
+# UART for RS485 communication with debug output
+uart:
+  id: uart_bus
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 9600 # Adjust to your motor's configuration
+  parity: EVEN
+  stop_bits: 1
+  debug:
+    direction: BOTH
+    dummy_receiver: false
+    after:
+      timeout: 50ms
+
+# MODBUS-RTU Controller
+modbus:
+  id: modbus_bus
+  uart_id: uart_bus
+  send_wait_time: 50ms
+
+# Servo42D Stepper Motor - minimal config for testing
+stepper:
+  - platform: servo42d_rs485
+    id: test_motor
+    modbus_id: modbus_bus
+    address: 0x01 # Adjust to your motor's address
+    max_speed: 1000 steps/s
+    acceleration: 500 steps/s^2
+    deceleration: 500 steps/s^2
+    update_interval: 500ms
+
+# Position sensor for monitoring
+sensor:
+  - platform: template
+    name: "Motor Position"
+    id: motor_position
+    update_interval: 1s
+    lambda: |-
+      return id(test_motor).current_position;
+    state_class: measurement
+
+# Comprehensive hardware test script
+script:
+  - id: comprehensive_hardware_test
+    then:
+      - logger.log:
+          format: "=========================================="
+          level: INFO
+      - logger.log:
+          format: "  SERVO42D COMPREHENSIVE HARDWARE TEST"
+          level: INFO
+      - logger.log:
+          format: "=========================================="
+          level: INFO
+
+      # === PHASE 1: Communication Test ===
+      - logger.log:
+          format: "PHASE 1: Testing Modbus Communication..."
+          level: INFO
+      - delay: 3s
+      - logger.log:
+          format: "  ✓ Waiting for status updates..."
+          level: INFO
+      - delay: 2s
+
+      # === PHASE 2: Motor Enable/Disable ===
+      - logger.log:
+          format: "PHASE 2: Testing Motor Enable/Disable..."
+          level: INFO
+      - logger.log: "  → Enabling motor..."
+      - stepper.enable: test_motor
+      - delay: 2s
+      - logger.log: "  ✓ Motor enabled"
+
+      - logger.log: "  → Disabling motor..."
+      - stepper.disable: test_motor
+      - delay: 2s
+      - logger.log: "  ✓ Motor disabled"
+
+      - logger.log: "  → Re-enabling for movement tests..."
+      - stepper.enable: test_motor
+      - delay: 2s
+
+      # === PHASE 3: Configuration Commands ===
+      - logger.log:
+          format: "PHASE 3: Testing Configuration Commands..."
+          level: INFO
+      - logger.log: "  → Setting work mode to SR_VFOC..."
+      - stepper.set_work_mode:
+          id: test_motor
+          mode: SR_VFOC
+      - delay: 2s
+      - logger.log: "  ✓ Work mode set"
+
+      # === PHASE 4: Small Movement Test ===
+      - logger.log:
+          format: "PHASE 4: Small Movement Test (±200 steps)..."
+          level: INFO
+      - logger.log: "  → Moving +200 steps..."
+      - lambda: |-
+          id(test_motor).set_target(id(test_motor).current_position + 200);
+      - delay: 5s
+      - logger.log: "  ✓ Forward movement complete"
+
+      - logger.log: "  → Moving -200 steps (returning)..."
+      - lambda: |-
+          id(test_motor).set_target(id(test_motor).current_position - 200);
+      - delay: 5s
+      - logger.log: "  ✓ Backward movement complete"
+
+      # === PHASE 5: Position Reset ===
+      - logger.log:
+          format: "PHASE 5: Testing Position Reset..."
+          level: INFO
+      - logger.log: "  → Resetting position counter to 0..."
+      - stepper.reset_position: test_motor
+      - delay: 2s
+      - logger.log: "  ✓ Position reset complete"
+
+      # === PHASE 6: Larger Movement Test ===
+      - logger.log:
+          format: "PHASE 6: Larger Movement Test (±1000 steps)..."
+          level: INFO
+      - logger.log: "  → Moving +1000 steps..."
+      - lambda: |-
+          id(test_motor).set_target(id(test_motor).current_position + 1000);
+      - delay: 10s
+      - logger.log: "  ✓ Large forward movement complete"
+
+      - logger.log: "  → Moving -1000 steps (returning)..."
+      - lambda: |-
+          id(test_motor).set_target(id(test_motor).current_position - 1000);
+      - delay: 10s
+      - logger.log: "  ✓ Large backward movement complete"
+
+      # === PHASE 7: Emergency Functions ===
+      - logger.log:
+          format: "PHASE 7: Testing Emergency Functions..."
+          level: INFO
+      - logger.log: "  → Starting movement for emergency stop test..."
+      - lambda: |-
+          id(test_motor).set_target(id(test_motor).current_position + 500);
+      - delay: 1s
+      - logger.log: "  → Triggering emergency stop..."
+      - stepper.emergency_stop: test_motor
+      - delay: 2s
+      - logger.log: "  ✓ Emergency stop triggered"
+
+      - logger.log: "  → Releasing protection..."
+      - stepper.release_protection: test_motor
+      - delay: 2s
+      - logger.log: "  ✓ Protection released"
+
+      # === PHASE 8: Calibration Test ===
+      - logger.log:
+          format: "PHASE 8: Testing Calibration..."
+          level: INFO
+      - logger.log: "  → Starting calibration..."
+      - stepper.calibrate: test_motor
+      - delay: 5s
+      - logger.log: "  ✓ Calibration complete"
+
+      # === PHASE 9: Cleanup ===
+      - logger.log:
+          format: "PHASE 9: Cleanup..."
+          level: INFO
+      - logger.log: "  → Disabling motor..."
+      - stepper.disable: test_motor
+      - delay: 1s
+
+      # === TEST COMPLETE ===
+      - logger.log:
+          format: "=========================================="
+          level: INFO
+      - logger.log:
+          format: "  ALL HARDWARE TESTS COMPLETED!"
+          level: INFO
+      - logger.log:
+          format: "  Check logs above for any errors"
+          level: INFO
+      - logger.log:
+          format: "=========================================="
+          level: INFO
+
+  # Quick test for manual triggering
+  - id: quick_movement_test
+    then:
+      - logger.log: "Quick test: +500 steps"
+      - stepper.enable: test_motor
+      - delay: 1s
+      - lambda: |-
+          id(test_motor).set_target(id(test_motor).current_position + 500);
+      - delay: 5s
+      - lambda: |-
+          id(test_motor).set_target(id(test_motor).current_position - 500);
+      - delay: 5s
+      - stepper.disable: test_motor
+
+# Manual control buttons
+button:
+  - platform: template
+    name: "Run Full Hardware Test"
+    on_press:
+      - script.execute: comprehensive_hardware_test
+
+  - platform: template
+    name: "Run Quick Movement Test"
+    on_press:
+      - script.execute: quick_movement_test
+
+  - platform: template
+    name: "Enable Motor"
+    on_press:
+      - stepper.enable: test_motor
+
+  - platform: template
+    name: "Disable Motor"
+    on_press:
+      - stepper.disable: test_motor
+
+  - platform: template
+    name: "Move +100"
+    on_press:
+      - lambda: |-
+          id(test_motor).set_target(id(test_motor).current_position + 100);
+
+  - platform: template
+    name: "Move -100"
+    on_press:
+      - lambda: |-
+          id(test_motor).set_target(id(test_motor).current_position - 100);
+
+  - platform: template
+    name: "Emergency Stop"
+    on_press:
+      - stepper.emergency_stop: test_motor
+
+  - platform: template
+    name: "Release Protection"
+    on_press:
+      - stepper.release_protection: test_motor

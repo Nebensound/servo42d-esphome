@@ -34,31 +34,22 @@ namespace esphome
     {
       ESP_LOGV(TAG, "ReadCommand response: %zu bytes", data.size());
 
-      // Expected response: byte_count + data
+      // Expected response: data only (byte_count already removed by Modbus library)
       uint16_t expected_bytes = quantity_ * 2; // Each register is 2 bytes
-      if (data.size() != expected_bytes + 1)
-      { // +1 for byte count
-        ESP_LOGW(TAG, "ReadCommand: Invalid response size. Expected %u, got %zu",
-                 expected_bytes + 1, data.size());
-        set_state(CommandState::FAILED);
-        trigger_completion(false);
-        return;
-      }
-
-      if (data[0] != expected_bytes)
+      if (data.size() != expected_bytes)
       {
-        ESP_LOGW(TAG, "ReadCommand: Invalid byte count. Expected %u, got %u",
-                 expected_bytes, data[0]);
+        ESP_LOGW(TAG, "ReadCommand: Invalid response size. Expected %u, got %zu",
+                 expected_bytes, data.size());
         set_state(CommandState::FAILED);
         trigger_completion(false);
         return;
       }
 
-      // Parse and store register values
+      // Parse and store register values (byte_count already removed by Modbus library)
       values_.clear();
       for (size_t i = 0; i < quantity_; i++)
       {
-        uint16_t value = (static_cast<uint16_t>(data[1 + i * 2]) << 8) | data[2 + i * 2];
+        uint16_t value = (static_cast<uint16_t>(data[i * 2]) << 8) | data[i * 2 + 1];
         values_.push_back(value);
       }
 
@@ -167,13 +158,31 @@ namespace esphome
       uint16_t returned_address = (data[0] << 8) | data[1];
       uint16_t returned_quantity = (data[2] << 8) | data[3];
 
-      if (returned_address != get_register_address() || returned_quantity != values_.size())
+      // Some devices (like MKS Servo42D) echo start address correctly but report quantity=0
+      // even when the write succeeds. Accept qty==0 as success if address matches.
+      if (returned_address != get_register_address())
       {
-        ESP_LOGW(TAG, "MultiWriteCommand: Response mismatch. Expected addr=0x%04X qty=%zu, got addr=0x%04X qty=%u",
-                 get_register_address(), values_.size(), returned_address, returned_quantity);
+        ESP_LOGW(TAG, "MultiWriteCommand: Response mismatch. Expected addr=0x%04X, got addr=0x%04X",
+                 get_register_address(), returned_address);
         set_state(CommandState::FAILED);
         trigger_completion(false);
         return;
+      }
+
+      if (returned_quantity != values_.size())
+      {
+        if (returned_quantity == 0)
+        {
+          ESP_LOGV(TAG, "MultiWriteCommand: Device returned qty=0, accepting as success (addr OK)");
+        }
+        else
+        {
+          ESP_LOGW(TAG, "MultiWriteCommand: Response qty mismatch. Expected %zu, got %u",
+                   values_.size(), returned_quantity);
+          set_state(CommandState::FAILED);
+          trigger_completion(false);
+          return;
+        }
       }
 
       set_state(CommandState::COMPLETED);
