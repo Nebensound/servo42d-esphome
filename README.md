@@ -80,7 +80,7 @@ Add this repository to your ESPHome external components:
 
 ```yaml
 external_components:
-  - source: github://Arvernus/servo42d-esphome
+  - source: github://Nebensound/servo42d-esphome
     components: [servo42d_rs485]
 ```
 
@@ -299,3 +299,8 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 ## Author
 
 - [@jowgn](https://github.com/jowgn)
+
+## Sponsors
+
+This project is supported by:
+- [@Nebensound](https://github.com/Nebensound)
