@@ -17,13 +17,13 @@ namespace esphome
         constexpr uint16_t ENCODER_VALUE_CARRY = 0x0030;    // 3 registers: carry(int32) + value(uint16)
         constexpr uint16_t ENCODER_VALUE_ADDITION = 0x0031; // 3 registers: int48_t (addition mode)
         constexpr uint16_t MOTOR_SPEED = 0x0032;            // 1 register: speed in RPM (int16)
-        constexpr uint16_t PULSE_COUNT = 0x0033;         // 2 registers: pulse count (int32)
-        constexpr uint16_t IO_STATUS = 0x0034;           // 1 register: I/O port status (uint8)
-        constexpr uint16_t ANGLE_ERROR = 0x0039;         // 2 registers: angle error (int32)
-        constexpr uint16_t EN_PIN_STATUS = 0x003A;       // 1 register: EN pin status (uint8)
-        constexpr uint16_t ZERO_STATUS = 0x003B;         // 1 register: go-to-zero status (uint8)
-        constexpr uint16_t PROTECTION_STATUS = 0x003E;   // 1 register: protection status (uint8)
-        constexpr uint16_t MOTOR_STATUS = 0x00F1;        // 1 register: motor status (uint8)
+        constexpr uint16_t PULSE_COUNT = 0x0033;            // 2 registers: pulse count (int32)
+        constexpr uint16_t IO_STATUS = 0x0034;              // 1 register: I/O port status (uint8)
+        constexpr uint16_t ANGLE_ERROR = 0x0039;            // 2 registers: angle error (int32)
+        constexpr uint16_t EN_PIN_STATUS = 0x003A;          // 1 register: EN pin status (uint8)
+        constexpr uint16_t ZERO_STATUS = 0x003B;            // 1 register: go-to-zero status (uint8)
+        constexpr uint16_t PROTECTION_STATUS = 0x003E;      // 1 register: protection status (uint8)
+        constexpr uint16_t MOTOR_STATUS = 0x00F1;           // 1 register: motor status (uint8)
       }
 
       // Write Single Register (Function 0x06)
@@ -53,14 +53,80 @@ namespace esphome
       namespace MultiWrite
       {
         // Per manual Part 8 (Set the parameter of home): start address 0x0090, quantity 0x0003 (4 bytes)
-        constexpr uint16_t HOMING_PARAMS = 0x0090;         // 4 registers: HmTrig, HmDir, HmSpeed, EndLimit
+        constexpr uint16_t HOMING_PARAMS = 0x0090; // 4 registers: HmTrig, HmDir, HmSpeed, EndLimit
         // Note: 0x009A is used for 0_Mode parameters (power-on go-to-zero), not instant homing
-        constexpr uint16_t ZERO_MODE_PARAMS = 0x009A;      // 4 registers: mode, enable, speed, dir
-        constexpr uint16_t POSITION_MODE_1 = 0x00FD;       // 4 registers: dir, acc, speed, pulses
-        constexpr uint16_t POSITION_MODE_2 = 0x00FE;       // 4 registers: acc, speed, abs_pulses
-        constexpr uint16_t POSITION_MODE_3 = 0x00F4;       // 4 registers: acc, speed, rel_axis
-        constexpr uint16_t POSITION_MODE_4 = 0x00F5;       // 4 registers: acc, speed, abs_axis
-        constexpr uint16_t SPEED_MODE = 0x00F6;            // 2 registers: dir, acc, speed (per manual 8.3.3)
+        constexpr uint16_t ZERO_MODE_PARAMS = 0x009A; // 4 registers: mode, enable, speed, dir
+        constexpr uint16_t POSITION_MODE_1 = 0x00FD;  // 4 registers: dir, acc, speed, pulses
+        constexpr uint16_t POSITION_MODE_2 = 0x00FE;  // 4 registers: acc, speed, abs_pulses
+        constexpr uint16_t POSITION_MODE_3 = 0x00F4;  // 4 registers: acc, speed, rel_axis
+        constexpr uint16_t POSITION_MODE_4 = 0x00F5;  // 4 registers: acc, speed, abs_axis
+        constexpr uint16_t SPEED_MODE = 0x00F6;       // 3 registers: dir, acc, speed (per manual 8.3.3)
+      }
+
+      // Payload Structures for MultiWrite commands
+      namespace Payload
+      {
+        // Homing parameters (0x0090) - Manual 8.3.2
+        struct HomingParams
+        {
+          uint16_t hm_trig;   // 0=Low active, 1=High active
+          uint16_t hm_dir;    // 0=CW, 1=CCW
+          uint16_t hm_speed;  // Speed in RPM (0-3000)
+          uint16_t end_limit; // 0=Disabled, 1=Enabled
+        };
+
+        // Zero Mode parameters (0x009A) - Power-on go-to-zero
+        struct ZeroModeParams
+        {
+          uint16_t mode;   // Angle in degrees (0-360)
+          uint16_t enable; // 0=Disabled, 1=Enabled
+          uint16_t speed;  // Speed in RPM (0-3000)
+          uint16_t dir;    // 0=CW, 1=CCW
+        };
+
+        // Speed Mode (0x00F6) - Manual 8.3.3
+        struct SpeedMode
+        {
+          uint16_t dir;   // 0=CW, 1=CCW
+          uint16_t acc;   // Acceleration 0-255 (internal units)
+          uint16_t speed; // Speed in RPM (0-3000)
+        };
+
+        // Position Mode 1 (0x00FD) - Relative pulses
+        struct PositionMode1
+        {
+          uint16_t dir;    // 0=CW, 1=CCW
+          uint16_t acc;    // Acceleration 0-255
+          uint16_t speed;  // Speed in RPM (0-3000)
+          uint16_t pulses; // Pulse count (relative)
+        };
+
+        // Position Mode 2 (0x00FE) - Absolute pulses
+        struct PositionMode2
+        {
+          uint16_t acc;             // Acceleration 0-255
+          uint16_t speed;           // Speed in RPM (0-3000)
+          uint16_t abs_pulses_high; // High 16 bits of absolute pulse position
+          uint16_t abs_pulses_low;  // Low 16 bits of absolute pulse position
+        };
+
+        // Position Mode 3 (0x00F4) - Relative axis
+        struct PositionMode3
+        {
+          uint16_t acc;           // Acceleration 0-255
+          uint16_t speed;         // Speed in RPM (0-3000)
+          uint16_t rel_axis_high; // High 16 bits of relative axis movement
+          uint16_t rel_axis_low;  // Low 16 bits of relative axis movement
+        };
+
+        // Position Mode 4 (0x00F5) - Absolute axis
+        struct PositionMode4
+        {
+          uint16_t acc;           // Acceleration 0-255
+          uint16_t speed;         // Speed in RPM (0-3000)
+          uint16_t abs_axis_high; // High 16 bits of absolute axis position
+          uint16_t abs_axis_low;  // Low 16 bits of absolute axis position
+        };
       }
 
       // Work Mode Values

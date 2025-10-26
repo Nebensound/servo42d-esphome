@@ -52,93 +52,103 @@ namespace esphome
 
     void Servo42dMotorControl::run_continuous(float speed_steps_per_sec, uint8_t direction)
     {
+      // Use MODBUS multi-write speed mode command (per manual 8.3.3)
       float steps_per_revolution = this->parent_->get_steps_per_revolution();
-
       if (steps_per_revolution <= 0)
       {
         ESP_LOGE(TAG, "Cannot run_continuous - steps_per_revolution not configured");
         return;
       }
 
-      // Convert steps/s to RPM: RPM = (steps/s / steps_per_revolution) * 60
-      float rpm = (speed_steps_per_sec / steps_per_revolution) * 60.0f;
+      // Convert steps/s to RPM and clamp to [0, 3000]
+      uint16_t speed_rpm = Servo42dHelpers::steps_per_second_to_rpm(speed_steps_per_sec, steps_per_revolution);
 
-      // Apply direction: 0=CW (positive), 1=CCW (negative)
-      int16_t rpm_signed = static_cast<int16_t>(direction == 0 ? rpm : -rpm);
+      // Acceleration internal unit 0-255. We use a conservative default if not configured.
+      // Note: Exposed configuration for acceleration is not directly accessible here; using default 10.
+      uint16_t acc_internal = 10;
 
-      auto cmd = std::make_unique<WriteCommand>(ModbusRegisters::Write::SPEED_MODE,
-                                                static_cast<uint16_t>(rpm_signed));
-      cmd->set_completion_callback([rpm_signed](BaseCommand *, bool success)
+      // Build speed mode payload using typed struct
+      ModbusRegisters::Payload::SpeedMode payload = {
+          .dir = static_cast<uint16_t>(direction ? 1 : 0), // 0=CW, 1=CCW
+          .acc = acc_internal,                             // 0-255
+          .speed = speed_rpm                               // 0-3000 RPM
+      };
+
+      auto cmd = std::make_unique<MultiWriteCommand>(
+          ModbusRegisters::MultiWrite::SPEED_MODE,
+          Servo42dHelpers::to_vector(payload));
+      cmd->set_completion_callback([speed_rpm, direction](BaseCommand *, bool success)
                                    {
         if (success) {
-          ESP_LOGI(TAG, "Continuous rotation started at %d RPM", rpm_signed);
+          ESP_LOGI(TAG, "Continuous rotation started: dir=%s, speed=%u RPM", direction ? "CCW" : "CW", speed_rpm);
         } });
       this->parent_->get_command_queue()->enqueue(std::move(cmd));
     }
 
     void Servo42dMotorControl::stop_motor()
     {
-      // Stop motor by setting speed to 0 RPM
-      auto cmd = std::make_unique<WriteCommand>(ModbusRegisters::Write::SPEED_MODE, 0x0000);
+      // Use speed mode stop with deceleration (acc > 0) to stop smoothly
+      ModbusRegisters::Payload::SpeedMode payload = {
+          .dir = 0,  // dir ignored when speed=0
+          .acc = 4,  // acc small decel
+          .speed = 0 // speed=0
+      };
+      auto cmd = std::make_unique<MultiWriteCommand>(
+          ModbusRegisters::MultiWrite::SPEED_MODE,
+          Servo42dHelpers::to_vector(payload));
       cmd->set_completion_callback([](BaseCommand *, bool success)
                                    {
         if (success) {
-          ESP_LOGI(TAG, "Motor stopped");
+          ESP_LOGI(TAG, "Motor stop initiated (decelerating)");
         } });
       this->parent_->get_command_queue()->enqueue(std::move(cmd));
     }
 
     void Servo42dMotorControl::home()
     {
-      bool use_virtual_home = this->parent_->get_use_virtual_home();
+      // Per manual: First set homing parameters (0x0090) then trigger GoHome (0x0091)
+      // We currently expose only direction and speed in the parent config; use defaults for others.
+      ModbusRegisters::Payload::HomingParams payload = {
+          .hm_trig = 0,                                                         // Low active (default)
+          .hm_dir = this->parent_->get_homing_direction(),                      // 0=CW, 1=CCW
+          .hm_speed = static_cast<uint16_t>(this->parent_->get_homing_speed()), // RPM
+          .end_limit = 0                                                        // EndLimit disabled by default
+      };
 
-      if (use_virtual_home)
-      {
-        // Virtual homing to specified angle
-        std::vector<uint16_t> params = {
-            static_cast<uint16_t>(this->parent_->get_virtual_home_angle()), // Target angle
-            0x0001,                                                         // Enable
-            static_cast<uint16_t>(this->parent_->get_homing_speed()),       // Speed in RPM
-            this->parent_->get_homing_direction()                           // Direction (0=CW, 1=CCW)
-        };
-
-        auto cmd = std::make_unique<MultiWriteCommand>(
-            ModbusRegisters::MultiWrite::VIRTUAL_HOMING_PARAMS, params);
-        cmd->set_completion_callback([](BaseCommand *, bool success)
-                                     {
-          if (success) {
-            ESP_LOGI(TAG, "Virtual homing started");
-          } });
-        this->parent_->get_command_queue()->enqueue(std::move(cmd));
-      }
-      else
-      {
-        // Real homing with endstop
-        std::vector<uint16_t> params = {
-            this->parent_->get_homing_direction(),                    // Direction (0=CW, 1=CCW)
-            static_cast<uint16_t>(this->parent_->get_homing_speed()), // Speed in RPM
-            0x0000,                                                   // Timeout (0=no timeout)
-            0x0000                                                    // Padding
-        };
-
-        auto cmd = std::make_unique<MultiWriteCommand>(
-            ModbusRegisters::MultiWrite::HOMING_PARAMS, params);
-        cmd->set_completion_callback([](BaseCommand *, bool success)
-                                     {
-          if (success) {
-            ESP_LOGI(TAG, "Homing started (endstop mode)");
-          } });
-        this->parent_->get_command_queue()->enqueue(std::move(cmd));
-      }
+      auto set_params = std::make_unique<MultiWriteCommand>(
+          ModbusRegisters::MultiWrite::HOMING_PARAMS,
+          Servo42dHelpers::to_vector(payload));
+      set_params->set_completion_callback([this](BaseCommand *, bool success)
+                                          {
+        if (success) {
+          ESP_LOGI(TAG, "Homing params set; triggering GoHome");
+          auto go_home = std::make_unique<WriteCommand>(ModbusRegisters::Write::GO_HOME, 0x0001);
+          go_home->set_completion_callback([](BaseCommand*, bool ok){
+            if (ok) ESP_LOGI(TAG, "GoHome command sent");
+          });
+          this->parent_->get_command_queue()->enqueue(std::move(go_home));
+        } else {
+          ESP_LOGW(TAG, "Failed to set homing parameters");
+        } });
+      this->parent_->get_command_queue()->enqueue(std::move(set_params));
     }
 
     void Servo42dMotorControl::reset_position()
     {
-      // Software baseline reset - make current position the new zero point
-      int32_t encoder_value = this->parent_->get_encoder_ticks();
-      this->parent_->set_encoder_base_value(encoder_value);
-      this->parent_->set_current_position(0);
-      ESP_LOGI(TAG, "Position reset - baseline set to %d encoder ticks", encoder_value);
+      // Per manual: Set current axis to zero via 0x0092
+      auto cmd = std::make_unique<WriteCommand>(ModbusRegisters::Write::SET_CURRENT_POSITION_ZERO, 0x0001);
+      cmd->set_completion_callback([this](BaseCommand *, bool success)
+                                   {
+        if (success) {
+          // Also update local baseline/current position
+          int32_t encoder_value = this->parent_->get_encoder_ticks();
+          this->parent_->set_encoder_base_value(encoder_value);
+          this->parent_->set_current_position(0);
+          ESP_LOGI(TAG, "Position reset to zero (0x0092). Baseline=%d ticks", encoder_value);
+        } else {
+          ESP_LOGW(TAG, "Failed to set current axis to zero (0x0092)");
+        } });
+      this->parent_->get_command_queue()->enqueue(std::move(cmd));
     }
 
     void Servo42dMotorControl::calibrate_motor()
@@ -179,7 +189,7 @@ namespace esphome
       // 1. Set work mode
       auto mode_cmd = std::make_unique<WriteCommand>(ModbusRegisters::Write::WORK_MODE, mode);
       mode_cmd->set_completion_callback([mode](BaseCommand *, bool success)
-                                       {
+                                        {
         if (success) {
           const char* mode_names[] = {"CR_OPEN", "CR_CLOSE", "CR_vFOC", "SR_OPEN", "SR_CLOSE", "SR_vFOC"};
           const char* mode_name = (mode < 6) ? mode_names[mode] : "UNKNOWN";
@@ -189,15 +199,16 @@ namespace esphome
 
       // 2. Set holding current % for OPEN/CLOSE modes only
       // vFOC modes (2,5) use self-adaption and don't support this register
-      if (mode == 0 || mode == 1 || mode == 3 || mode == 4) {
+      if (mode == 0 || mode == 1 || mode == 3 || mode == 4)
+      {
         auto holding_current = this->parent_->get_holding_current_percent();
         auto hold_cmd = std::make_unique<WriteCommand>(
             ModbusRegisters::Write::HOLDING_CURRENT_PERCENT, holding_current);
-        hold_cmd->set_completion_callback([holding_current](BaseCommand*, bool success) {
+        hold_cmd->set_completion_callback([holding_current](BaseCommand *, bool success)
+                                          {
           if (success) {
             ESP_LOGI(TAG, "Holding current set to %d%%", holding_current);
-          }
-        });
+          } });
         this->parent_->get_command_queue()->enqueue(std::move(hold_cmd));
       }
     }

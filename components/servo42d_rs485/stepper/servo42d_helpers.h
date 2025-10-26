@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
+#include "servo42d_modbus_registers.h"
 
 namespace esphome
 {
@@ -32,8 +34,17 @@ namespace esphome
       static int32_t radians_to_steps(float radians, float steps_per_revolution);
 
       // Angle normalization utilities
-      static float normalize_degrees(float degrees);  // 0-359.99...
-      static float normalize_radians(float radians);  // 0-2π
+      static float normalize_degrees(float degrees); // 0-359.99...
+      static float normalize_radians(float radians); // 0-2π
+
+      // Payload conversion helpers - convert structs to register arrays
+      static std::vector<uint16_t> to_vector(const ModbusRegisters::Payload::HomingParams &params);
+      static std::vector<uint16_t> to_vector(const ModbusRegisters::Payload::ZeroModeParams &params);
+      static std::vector<uint16_t> to_vector(const ModbusRegisters::Payload::SpeedMode &params);
+      static std::vector<uint16_t> to_vector(const ModbusRegisters::Payload::PositionMode1 &params);
+      static std::vector<uint16_t> to_vector(const ModbusRegisters::Payload::PositionMode2 &params);
+      static std::vector<uint16_t> to_vector(const ModbusRegisters::Payload::PositionMode3 &params);
+      static std::vector<uint16_t> to_vector(const ModbusRegisters::Payload::PositionMode4 &params);
     };
 
   } // namespace servo42d_rs485

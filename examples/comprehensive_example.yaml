@@ -41,6 +41,8 @@ stepper:
 
     # Basic stepper configuration
     steps_per_revolution: 3200 # 200 steps/rev × 16 microsteps
+    # Motor model (affects working current default and max limit)
+    servo_type: SERVO42D  # SERVO28D | SERVO35D | SERVO42D | SERVO57D
     microsteps: 16 # 1-256 subdivisions
     max_speed: 1000 steps/s # Can use: steps/s, RPM, revolutions/s
     acceleration: inf # Can use: steps/s^2, revolutions/s^2
@@ -50,7 +52,10 @@ stepper:
     control_mode: SR_VFOC # SR_OPEN (400 RPM) | SR_CLOSE (1500 RPM) | SR_VFOC (3000 RPM, best)
 
     # Current settings
-    working_current: 1500mA # or 1.5A - Range: 0-3A (SERVO42D) or 0-5.2A (SERVO57D)
+    # If omitted, default is based on servo_type:
+    # 28D: 600mA | 35D: 800mA | 42D: 1600mA | 57D: 3200mA
+    # Max depends on servo_type: 28D/35D/42D = 3000mA, 57D = 5200mA
+    working_current: 1500mA # or 1.5A
     holding_current_percent: 30% # or 0.3 (ratio) - Range: 10%-90% of working_current (only SR_OPEN/SR_CLOSE, not vFOC)
 
     # Homing configuration - choose one method:

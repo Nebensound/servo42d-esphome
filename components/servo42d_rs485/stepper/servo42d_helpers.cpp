@@ -85,7 +85,7 @@ namespace esphome
     {
       if (steps_per_revolution <= 0.0f)
         return 0.0f;
-      
+
       float degrees = (steps * 360.0f) / steps_per_revolution;
       return normalize_degrees(degrees);
     }
@@ -94,7 +94,7 @@ namespace esphome
     {
       if (steps_per_revolution <= 0.0f)
         return 0.0f;
-      
+
       float radians = (steps * 2.0f * M_PI) / steps_per_revolution;
       return normalize_radians(radians);
     }
@@ -103,7 +103,7 @@ namespace esphome
     {
       if (steps_per_revolution <= 0.0f)
         return 0;
-      
+
       return static_cast<int32_t>(std::round((degrees * steps_per_revolution) / 360.0f));
     }
 
@@ -111,7 +111,7 @@ namespace esphome
     {
       if (steps_per_revolution <= 0.0f)
         return 0;
-      
+
       return static_cast<int32_t>(std::round((radians * steps_per_revolution) / (2.0f * M_PI)));
     }
 
@@ -135,6 +135,45 @@ namespace esphome
       if (radians < 0.0f)
         radians += 2.0f * M_PI;
       return radians;
+    }
+
+    // ========================================================================
+    // Payload Conversion Helpers
+    // ========================================================================
+
+    std::vector<uint16_t> Servo42dHelpers::to_vector(const ModbusRegisters::Payload::HomingParams &params)
+    {
+      return {params.hm_trig, params.hm_dir, params.hm_speed, params.end_limit};
+    }
+
+    std::vector<uint16_t> Servo42dHelpers::to_vector(const ModbusRegisters::Payload::ZeroModeParams &params)
+    {
+      return {params.mode, params.enable, params.speed, params.dir};
+    }
+
+    std::vector<uint16_t> Servo42dHelpers::to_vector(const ModbusRegisters::Payload::SpeedMode &params)
+    {
+      return {params.dir, params.acc, params.speed};
+    }
+
+    std::vector<uint16_t> Servo42dHelpers::to_vector(const ModbusRegisters::Payload::PositionMode1 &params)
+    {
+      return {params.dir, params.acc, params.speed, params.pulses};
+    }
+
+    std::vector<uint16_t> Servo42dHelpers::to_vector(const ModbusRegisters::Payload::PositionMode2 &params)
+    {
+      return {params.acc, params.speed, params.abs_pulses_high, params.abs_pulses_low};
+    }
+
+    std::vector<uint16_t> Servo42dHelpers::to_vector(const ModbusRegisters::Payload::PositionMode3 &params)
+    {
+      return {params.acc, params.speed, params.rel_axis_high, params.rel_axis_low};
+    }
+
+    std::vector<uint16_t> Servo42dHelpers::to_vector(const ModbusRegisters::Payload::PositionMode4 &params)
+    {
+      return {params.acc, params.speed, params.abs_axis_high, params.abs_axis_low};
     }
 
   } // namespace servo42d_rs485

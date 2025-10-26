@@ -233,6 +233,16 @@ CONF_LOCK_KEYS_AT_STARTUP = "lock_keys_at_startup"
 CONF_EN_PIN_ACTIVE = "en_pin_active"
 CONF_POST_ARRIVAL_HOLD_MS = "post_arrival_hold_ms"
 
+# Motor type enum (affects default/max working current)
+CONF_SERVO_TYPE = "servo_type"
+MotorType = servo42d_rs485_ns.enum("MotorType")
+SERVO_TYPES = {
+    "SERVO28D": 28,
+    "SERVO35D": 35,
+    "SERVO42D": 42,
+    "SERVO57D": 57,
+}
+
 # Work mode enum
 WorkMode = servo42d_rs485_ns.enum("WorkMode")
 WORK_MODES = {
@@ -260,6 +270,29 @@ EN_PIN_ACTIVE_MODES = {
     "ALWAYS": 2,     # Active always (Hold)
 }
 
+def _apply_type_current_defaults(cfg):
+    """Apply type-specific default and max validation for working_current.
+    - working_current: amperes (float) after cv.current
+    - servo_type: enum numeric (28/35/42/57)
+    """
+    motor_type = cfg.get(CONF_SERVO_TYPE, SERVO_TYPES["SERVO42D"])  # 28/35/42/57
+    if motor_type == SERVO_TYPES["SERVO57D"]:
+        default_a, max_a = 3.2, 5.2
+    elif motor_type == SERVO_TYPES["SERVO42D"]:
+        default_a, max_a = 1.6, 3.0
+    elif motor_type == SERVO_TYPES["SERVO28D"]:
+        default_a, max_a = 0.6, 3.0
+    else:  # SERVO35D
+        default_a, max_a = 0.8, 3.0
+
+    if CONF_WORKING_CURRENT in cfg and cfg[CONF_WORKING_CURRENT] is not None and cfg[CONF_WORKING_CURRENT] != "auto":
+        wc = float(cfg[CONF_WORKING_CURRENT])
+        if wc < 0 or wc > max_a:
+            raise cv.Invalid(f"working_current {wc}A exceeds max {max_a}A for servo_type")
+    else:
+        cfg[CONF_WORKING_CURRENT] = default_a
+    return cfg
+
 CONFIG_SCHEMA = cv.All(
     stepper.STEPPER_SCHEMA.extend(
         {
@@ -271,8 +304,13 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_DECELERATION, default="inf"): validate_acceleration,
             cv.Optional(CONF_SLEEP_WHEN_DONE, default=False): cv.boolean,
             # Motor configuration
+            cv.Optional(CONF_SERVO_TYPE, default="SERVO42D"): cv.enum(SERVO_TYPES, upper=True),
             cv.Optional(CONF_CONTROL_MODE, default="SR_VFOC"): cv.enum(WORK_MODES, upper=True),
-            cv.Optional(CONF_WORKING_CURRENT, default="1500mA"): cv.All(cv.current, cv.float_range(min=0, max=5.2)),  # e.g. 1.5A or 1500mA
+            # Working current in amperes; type-specific default/max applied via mapping-level validator below
+            cv.Optional(CONF_WORKING_CURRENT): cv.All(
+                cv.current,
+                cv.float_range(min=0, max=5.2),  # global physical max bound
+            ),  # e.g. 1.5A or 1500mA
             cv.Optional(CONF_HOLDING_CURRENT_PERCENT, default="50%"): cv.All(cv.percentage, cv.float_range(min=0.1, max=0.9)),  # e.g. 50% or 0.5
             cv.Optional(CONF_EN_PIN_ACTIVE, default="ALWAYS"): cv.enum(EN_PIN_ACTIVE_MODES, upper=True),  # Default: always active
             # Homing configuration
@@ -288,6 +326,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_POST_ARRIVAL_HOLD_MS, default="0ms"): cv.positive_time_period_milliseconds,
         }
     ).extend(cv.COMPONENT_SCHEMA).extend(modbus.modbus_device_schema(0x01)),
+    _apply_type_current_defaults,
 )
 
 def convert_to_steps(value_config, steps_per_revolution, param_name):
@@ -340,8 +379,8 @@ async def to_code(config):
     # Motor configuration (use original config for non-speed values)
     if CONF_CONTROL_MODE in config:
         cg.add(var.set_control_mode(config[CONF_CONTROL_MODE]))
+    # working_current: already defaulted and validated by CONFIG_SCHEMA; convert A -> mA
     if CONF_WORKING_CURRENT in config:
-        # Convert from amperes to milliamperes (cv.current returns float in amperes)
         cg.add(var.set_working_current(int(config[CONF_WORKING_CURRENT] * 1000)))
     if CONF_HOLDING_CURRENT_PERCENT in config:
         # Convert from ratio to percentage (cv.percentage returns float in [-1..1])
