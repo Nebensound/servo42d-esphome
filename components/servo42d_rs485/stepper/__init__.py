@@ -228,6 +228,7 @@ CONF_USE_VIRTUAL_HOME = "use_virtual_home"
 CONF_VIRTUAL_HOME_ANGLE = "virtual_home_angle"
 CONF_HOMING_SPEED = "homing_speed"
 CONF_HOMING_DIRECTION = "homing_direction"
+CONF_HOMING_CURRENT = "homing_current"
 CONF_AUTO_SCREEN_OFF = "auto_screen_off"
 CONF_LOCK_KEYS_AT_STARTUP = "lock_keys_at_startup"
 CONF_EN_PIN_ACTIVE = "en_pin_active"
@@ -278,12 +279,16 @@ def _apply_type_current_defaults(cfg):
     motor_type = cfg.get(CONF_SERVO_TYPE, SERVO_TYPES["SERVO42D"])  # 28/35/42/57
     if motor_type == SERVO_TYPES["SERVO57D"]:
         default_a, max_a = 3.2, 5.2
+        hm_default_a = 0.4
     elif motor_type == SERVO_TYPES["SERVO42D"]:
         default_a, max_a = 1.6, 3.0
+        hm_default_a = 0.8
     elif motor_type == SERVO_TYPES["SERVO28D"]:
         default_a, max_a = 0.6, 3.0
+        hm_default_a = 0.2
     else:  # SERVO35D
         default_a, max_a = 0.8, 3.0
+        hm_default_a = 0.2
 
     if CONF_WORKING_CURRENT in cfg and cfg[CONF_WORKING_CURRENT] is not None and cfg[CONF_WORKING_CURRENT] != "auto":
         wc = float(cfg[CONF_WORKING_CURRENT])
@@ -291,6 +296,14 @@ def _apply_type_current_defaults(cfg):
             raise cv.Invalid(f"working_current {wc}A exceeds max {max_a}A for servo_type")
     else:
         cfg[CONF_WORKING_CURRENT] = default_a
+
+    # homing_current: default and max identical policy; applies when use_virtual_home=true
+    if CONF_HOMING_CURRENT in cfg and cfg[CONF_HOMING_CURRENT] is not None and cfg[CONF_HOMING_CURRENT] != "auto":
+        hc = float(cfg[CONF_HOMING_CURRENT])
+        if hc < 0 or hc > max_a:
+            raise cv.Invalid(f"homing_current {hc}A exceeds max {max_a}A for servo_type")
+    else:
+        cfg[CONF_HOMING_CURRENT] = hm_default_a
     return cfg
 
 CONFIG_SCHEMA = cv.All(
@@ -311,6 +324,11 @@ CONFIG_SCHEMA = cv.All(
                 cv.current,
                 cv.float_range(min=0, max=5.2),  # global physical max bound
             ),  # e.g. 1.5A or 1500mA
+            # Homing current (used only for noLimit/virtual homing). Same validation as working_current.
+            cv.Optional(CONF_HOMING_CURRENT): cv.All(
+                cv.current,
+                cv.float_range(min=0, max=5.2),
+            ),
             cv.Optional(CONF_HOLDING_CURRENT_PERCENT, default="50%"): cv.All(cv.percentage, cv.float_range(min=0.1, max=0.9)),  # e.g. 50% or 0.5
             cv.Optional(CONF_EN_PIN_ACTIVE, default="ALWAYS"): cv.enum(EN_PIN_ACTIVE_MODES, upper=True),  # Default: always active
             # Homing configuration
@@ -328,6 +346,23 @@ CONFIG_SCHEMA = cv.All(
     ).extend(cv.COMPONENT_SCHEMA).extend(modbus.modbus_device_schema(0x01)),
     _apply_type_current_defaults,
 )
+
+def _validate_virtual_homing_direction(cfg):
+    """Only allow direction=NEAREST when using virtual homing (software/0_Mode).
+    Current config uses use_virtual_home as the switch for virtual behavior.
+    """
+    try:
+        dir_val = cfg.get(CONF_HOMING_DIRECTION)
+        use_virtual = cfg.get(CONF_USE_VIRTUAL_HOME, False)
+        if dir_val == HOMING_DIRECTIONS.get("NEAREST") and not use_virtual:
+            raise cv.Invalid("homing.direction 'NEAREST' ist nur mit virtuellem Homing (use_virtual_home: true) erlaubt.")
+    except Exception:
+        # Be conservative: don't block other validations
+        pass
+    return cfg
+
+# Chain additional mapping-level validations
+CONFIG_SCHEMA = cv.All(CONFIG_SCHEMA, _validate_virtual_homing_direction)
 
 def convert_to_steps(value_config, steps_per_revolution, param_name):
     """Convert speed/acceleration value to microsteps-based units.
@@ -382,6 +417,9 @@ async def to_code(config):
     # working_current: already defaulted and validated by CONFIG_SCHEMA; convert A -> mA
     if CONF_WORKING_CURRENT in config:
         cg.add(var.set_working_current(int(config[CONF_WORKING_CURRENT] * 1000)))
+    # homing_current: convert A -> mA
+    if CONF_HOMING_CURRENT in config:
+        cg.add(var.set_homing_current(int(config[CONF_HOMING_CURRENT] * 1000)))
     if CONF_HOLDING_CURRENT_PERCENT in config:
         # Convert from ratio to percentage (cv.percentage returns float in [-1..1])
         cg.add(var.set_holding_current_percent(int(config[CONF_HOLDING_CURRENT_PERCENT] * 100)))

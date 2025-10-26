@@ -106,14 +106,50 @@ namespace esphome
 
     void Servo42dMotorControl::home()
     {
+      // Virtual homing (0_Mode): restart controller so it returns to stored zero on boot
+      if (this->parent_->get_use_virtual_home()) {
+        ESP_LOGI(TAG, "Virtual homing enabled: restarting motor to return to stored zero (0_Mode)");
+        this->parent_->restart_motor();
+        return;
+      }
+
       // Per manual: First set homing parameters (0x0090) then trigger GoHome (0x0091)
-      // We currently expose only direction and speed in the parent config; use defaults for others.
+      // Convert configured homing_speed (steps/s) to RPM; clamp to safe range
+      uint16_t hm_speed_rpm = 60; // fallback
+      float steps_per_rev = this->parent_->get_steps_per_revolution();
+      float homing_speed_steps = this->parent_->get_homing_speed();
+      if (homing_speed_steps > 0.0f && steps_per_rev > 0.0f)
+      {
+        hm_speed_rpm = Servo42dHelpers::steps_per_second_to_rpm(homing_speed_steps, steps_per_rev);
+      }
+      if (hm_speed_rpm < 10)
+        hm_speed_rpm = 10;
+      if (hm_speed_rpm > 3000)
+        hm_speed_rpm = 3000;
+
       ModbusRegisters::Payload::HomingParams payload = {
-          .hm_trig = 0,                                                         // Low active (default)
-          .hm_dir = this->parent_->get_homing_direction(),                      // 0=CW, 1=CCW
-          .hm_speed = static_cast<uint16_t>(this->parent_->get_homing_speed()), // RPM
-          .end_limit = 0                                                        // EndLimit disabled by default
+          .hm_trig = 0,                                    // Low active (default)
+          .hm_dir = this->parent_->get_homing_direction(), // 0=CW, 1=CCW
+          .hm_speed = hm_speed_rpm,                        // RPM (0-3000)
+          .end_limit = 0                                   // EndLimit disabled by default (noLimit)
       };
+
+      // If using virtual/noLimit homing and a homing_current is set, temporarily override working current
+      bool use_virtual = this->parent_->get_use_virtual_home();
+      uint16_t hm_current = this->parent_->get_homing_current();
+      uint16_t curr_work = this->parent_->get_working_current();
+      if (use_virtual && hm_current > 0 && hm_current != curr_work)
+      {
+        ESP_LOGI(TAG, "Applying homing current override: %u mA (prev %u mA)", hm_current, curr_work);
+        this->parent_->set_previous_working_current(curr_work);
+        this->parent_->set_homing_override_active(true);
+        // Queue: set current -> set homing params -> trigger go home
+        auto set_curr = std::make_unique<WriteCommand>(ModbusRegisters::Write::WORKING_CURRENT, hm_current);
+        set_curr->set_completion_callback([hm_current](BaseCommand *, bool ok)
+                                          {
+          if (ok) ESP_LOGI(TAG, "Homing current override set to %u mA", hm_current); });
+        this->parent_->get_command_queue()->enqueue(std::move(set_curr));
+      }
 
       auto set_params = std::make_unique<MultiWriteCommand>(
           ModbusRegisters::MultiWrite::HOMING_PARAMS,

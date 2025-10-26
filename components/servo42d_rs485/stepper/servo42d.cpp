@@ -99,6 +99,33 @@ namespace esphome
     });
     this->command_queue_->enqueue(std::move(set_screen));
     
+    // 6b. Configure 0_Mode (virtual homing) if requested
+    if (this->use_virtual_home_) {
+      // Map homing_direction_: 2=NEAREST -> NearMode(2), else DirMode(1)
+      uint16_t zero_mode = (this->homing_direction_ == 2) ? 2 : 1;
+      // 0_Speed is 0..4; we don't have a dedicated level in schema yet; use medium=2
+      uint16_t zero_speed = 2;
+      // 0_Dir: 0=CW, 1=CCW (ignored for NearMode)
+      uint16_t zero_dir = (this->homing_direction_ == 1) ? 1 : 0;
+
+      ModbusRegisters::Payload::ZeroModeParams zm = {
+        .mode = zero_mode,
+        .enable = 0,      // Do not change the stored zero automatically here
+        .speed = zero_speed,
+        .dir = zero_dir
+      };
+
+      ESP_LOGI(TAG, "Configuring 0_Mode: mode=%u, speed=%u, dir=%u", zero_mode, zero_speed, zero_dir);
+      auto set_zero_mode = std::make_unique<MultiWriteCommand>(
+        ModbusRegisters::MultiWrite::ZERO_MODE_PARAMS,
+        Servo42dHelpers::to_vector(zm)
+      );
+      set_zero_mode->set_completion_callback([](BaseCommand*, bool ok){
+        if (ok) ESP_LOGI(TAG, "0_Mode parameters configured");
+      });
+      this->command_queue_->enqueue(std::move(set_zero_mode));
+    }
+    
     // 7. Enable motor (drive enable)
     ESP_LOGI(TAG, "Step 7/7: Enabling motor...");
     auto enable_motor_cmd = std::make_unique<WriteCommand>(
@@ -171,6 +198,9 @@ namespace esphome
 
     void Servo42dRs485::update()
     {
+      // Track previous motor status for transition detection
+      uint8_t prev_status_snapshot = this->motor_status_;
+
       // Continuously poll encoder, speed, and status (like in original code)
       // These are queued but won't duplicate if already in queue
       this->position_->query_encoder_value();
@@ -211,6 +241,26 @@ namespace esphome
           }
         }
       }
+
+      // Restore working current after homing finishes (virtual homing current override)
+      using namespace ModbusRegisters::MotorStatus;
+      uint8_t curr_status = this->motor_status_;
+      if (this->homing_override_active_ && prev_status_snapshot == MOTOR_IS_HOMING && curr_status != MOTOR_IS_HOMING)
+      {
+        uint16_t restore_ma = this->previous_working_current_ > 0 ? this->previous_working_current_ : this->working_current_;
+        ESP_LOGI(TAG, "Homing finished. Restoring working current to %u mA", restore_ma);
+        auto cmd = std::make_unique<WriteCommand>(ModbusRegisters::Write::WORKING_CURRENT, restore_ma);
+        cmd->set_completion_callback([this, restore_ma](BaseCommand *, bool ok)
+                                     {
+          if (ok) {
+            ESP_LOGI(TAG, "Working current restored to %u mA", restore_ma);
+          }
+          this->homing_override_active_ = false; });
+        this->command_queue_->enqueue(std::move(cmd));
+      }
+
+      // Keep a copy for next cycle
+      this->prev_motor_status_ = curr_status;
     }
 
     void Servo42dRs485::set_target(int32_t steps)

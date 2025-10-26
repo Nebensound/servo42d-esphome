@@ -10,6 +10,8 @@ This document tracks all TODOs for the Servo42D ESPHome component implementation
 - [x] Create stub implementations in `servo42d.cpp`
 - [x] Register all actions with ESPHome automation system
 - [x] Create comprehensive example YAML
+- [ ] Include Mplyer command
+- [ ] Speed calculations
 
 ## 🔴 Phase 1: Critical Fix - Positioning & Baseline
 **Priority: URGENT - Verifikation der Positionsführung**
@@ -43,6 +45,10 @@ This document tracks all TODOs for the Servo42D ESPHome component implementation
 #### 2.3 Homing
 - [x] Homing korrekt gemäß Handbuch: MultiWrite(0x0090 {HmTrig, HmDir, HmSpeed, EndLimit}) + Write(0x0091, 0x0001)
 - [ ] Optional: Zero-Mode (0x009A) als Power-On-GoZero separat exponieren/konfigurierbar machen
+ - [x] Virtuelles Homing (noLimit): hm_ma (Homing-Strom) laut Manual modellabhängig berücksichtigen
+   - [x] YAML Schema: neues Feld `homing_current` (A/mA) mit Typ-Default (28/35: 0.2A; 42: 0.8A; 57: 0.4A) und Max je Modell
+   - [x] C++: Während Homing temporär Working Current auf `homing_current` setzen und nach Ende wiederherstellen
+   - [x] Homing-Speed: steps/s → RPM korrekt umrechnen und clampen
 
 #### 2.4 Position Management
 - [x] `reset_position()` → Write(0x0092, 0x0001) + lokale Baseline synchronisieren
@@ -88,6 +94,7 @@ This document tracks all TODOs for the Servo42D ESPHome component implementation
 
 #### 4.2 Homing at Startup
 - [ ] `home_at_startup_` Flag prüfen und `home()` aufrufen (real/zero-mode gemäß Konfig)
+ - [ ] Bei virtuellem Homing Current-Override auch beim Autohoming nutzen
 
 **Test**: Config wird beim Boot angewendet; optionales Homing läuft
 
@@ -147,6 +154,8 @@ This document tracks all TODOs for the Servo42D ESPHome component implementation
 - [ ] `home_at_startup_` und `lock_keys_at_startup_` in `setup()` berücksichtigen
 - [ ] YAML Codegen (`__init__.py`): Offenen TODO zur Speed-Konvertierung (steps/s) schließen, wenn `steps_per_revolution` bekannt
 - [ ] Optional: Zero-Mode (0x009A) als Konfiguration exponieren (Power-On-GoZero)
+ - [ ] README dokumentiert `homing_current` (nur noLimit, Default je Modell, Verhalten: temporärer Override)
+ - [x] Validierung: homing.direction=NEAREST nur bei virtuellem Homing (use_virtual_home=true)
 ---
 
 ## Implementation Notes
