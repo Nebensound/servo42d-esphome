@@ -19,7 +19,7 @@ stepper:
     auto_screen_off: false
     lock_keys_at_startup: false
     update_interval: 500ms
-    mode: ... # position | speed
+    mode: ... # POSITION | SPEED
 ```
 > [!NOTE]
 > This component requires the Modbus component to be set up as well.
@@ -35,16 +35,14 @@ stepper:
   > Set this precisely; wrong values will cause incorrect position and speed calculations.
 - **microsteps** (*Optional*, int): Microstepping (aka step mode). Typical values: `1`=full, `2`=half, `4`=quarter, then `8`, `16`, `32`, … Range `1-256`. Defaults to `16`.
 
-- **servo_type** (*Optional*, enum): Motor model used. One of `SERVO28D`, `SERVO35D`, `SERVO42D`, `SERVO57D`. Defaults to `SERVO42D`.
+- **servo_type** (**Required**, enum): Motor model used. One of `SERVO28D`, `SERVO35D`, `SERVO42D`, `SERVO57D`. Must match your physical motor.
 - **control_mode** (*Optional*, enum): Motor control mode. One of `SR_OPEN`, `SR_CLOSE`, `SR_VFOC`. Defaults to `SR_VFOC`.
   - `SR_OPEN`: Open-loop mode, stepper behaves like a regular stepper motor. Working current is `working_current`, holding current is `holding_current_percent` of working current.
   - `SR_CLOSE`: Closed-loop mode, same as `SR_OPEN` but with position feedback from encoder to prevent missed steps.
   - `SR_VFOC`: FOC mode (recommended), same as `SR_CLOSE` but current may be adaptet to the steppers needs up to the max `working_current`. `holding_current_percent` is ignored in this mode.
 - **initial_speed** (*Optional*, float): Initial/target speed for motor operations. Supports units: `steps/s`, `RPM`, `revolutions/s`, `degrees/s`. Defaults to `1 RPM`. Must be ≤ `max_speed`
 - **max_speed** (*Optional*, float): Maximum speed the contoller will ask for. Defaults to `control_mode` based Hardware limits: `SR_OPEN`: 400 RPM, `SR_CLOSE`: 1500 RPM, `SR_VFOC`: 3000 RPM.
-- **acceleration** (*Optional*, float): The acceleration in steps/s^2 (steps per seconds squared) to use when changing the speed (for example when starting) of the stepper. The default is `inf` which means infinite acceleration, so the stepper will try to drive with the full speed immediately. This value is helpful if that first motion of the motor is too jerky for what it’s moving. If you make this a small number, it will take the motor a moment to get up to speed. `revolutions/s^2` may also be used.
-  > [!NOTE]
-  > Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate `deceleration` parameter. Acceleration and deceleration use the same value (`acceleration = deceleration`).
+- **initial_acceleration** (*Optional*, float): The acceleration in steps/s^2 (steps per seconds squared) to use when changing the speed (for example when starting) of the stepper. The default is `inf` which means infinite acceleration, so the stepper will try to drive with the full speed immediately. This value is helpful if that first motion of the motor is too jerky for what it's moving. If you make this a small number, it will take the motor a moment to get up to speed. `revolutions/s^2` may also be used.
 - **working_current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Working current. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). Defaults and maximums depend on `servo_type`:
   - Defaults: `0.6A` (28D), `0.8A` (35D), `1.6A` (42D), `3.2A` (57D)
   - Max: up to `3.0A` (28D/35D/42D), up to `5.2A` (57D)
@@ -52,7 +50,7 @@ stepper:
 - **en_pin_active** (*Optional*, enum): EN pin behavior. One of `LOW`, `HIGH`, `ALWAYS`. Defaults to `ALWAYS`.
 - **auto_screen_off** (*Optional*, boolean): Automatically turn off motor display after 15 seconds. Defaults to `true`.
 - **lock_keys_at_startup** (*Optional*, boolean): Lock motor display buttons at startup. Defaults to `false`.
-- **mode** (*Optional*, enum): Operating mode of the stepper. One of `position` or `speed`. Determines which actions and configurations are available. Defaults to `position`.
+- **mode** (*Optional*, enum): Operating mode of the stepper. One of `POSITION` or `SPEED`. Determines which actions and configurations are available. Defaults to `POSITION`.
 
 ## Speed Mode
 
@@ -93,14 +91,14 @@ stepper:
     steps_per_revolution: 3200
     initial_speed: 1000 steps/s      # Initial/target speed
     # max_speed: auto-set to 3000 RPM based on control_mode
-    acceleration: 500 steps/s^2
+    initial_acceleration: 500 steps/s^2
 
     # Homing / 0_Mode (nested configuration)
     homing:
-      mode: virtual              # limit | no_limit | virtual
+      mode: VIRTUAL              # ENDSTOP | SENSORLESS | VIRTUAL
       at_startup: false          # run homing on boot
       speed: 600 rpm             # or steps/s
-      direction: NEAREST         # CW | CCW | NEAREST (NEAREST only for virtual)
+      direction: NEAREST         # CW | CCW | NEAREST (NEAREST only for VIRTUAL)
 ```
 
 ### Configuration
@@ -108,17 +106,17 @@ stepper:
 - **sleep_when_done** (*Optional*, [Time](https://esphome.io/guides/configuration-types.html#config-time) or boolean): Put the motor to sleep after reaching the target and waiting for the set amount of time. Defaults to `false` or `inf` which may deactivate this function. `true` or any other [Time](https://esphome.io/guides/configuration-types.html#config-time) value may deactivate the motor after that amount of [Time](https://esphome.io/guides/configuration-types.html#config-time). `true` may equal a delay of `0ms`.
 - **homing** (*Optional*, object): Homing configuration
   - **mode** (**Required**, enum):
-    - `endstop`: Real homing using an endstop (limit switch).
-    - `sensorless`: Sensorless homing using stall detection.
-    - `virtual`: Return-to-zero using stored angle (0_Mode, no endstop).
+    - `ENDSTOP`: Real homing using an endstop (limit switch).
+    - `SENSORLESS`: Sensorless homing using stall detection.
+    - `VIRTUAL`: Return-to-zero using stored angle (0_Mode, no endstop).
       > [!NOTE]
       > Position to move to may be set at least once with `stepper.set_zero` before using virtual homing. After that it may be stored permanently within the controller of the stepper.
-  - **direction** (*Optional*, enum): `CW` clockwise, `CCW` counter-clockwise and `NEAREST`. Default: `CW`. `NEAREST` may only be used with `mode: virtual`.
+  - **direction** (*Optional*, enum): `CW` clockwise, `CCW` counter-clockwise and `NEAREST`. Default: `CW`. `NEAREST` may only be used with `mode: VIRTUAL`.
   - **speed**: (*Optional*, string): Homing speed. Supports units: `RPM` or `steps/s`. Default: `1 RPM`.
     > [!NOTE]
-    > In `mode: virtual`, the speed may only be provided in five discrete levels. Use `VERY_SLOW`, `SLOW`, `MEDIUM`, `FAST` or `VERY_FAST` in this mode to set the speed.
-  - **endstop_trigger** (*Optional*, enum): Endstop may be `LOW` or `HIGH` to be recognized as triggered. May only be used for `mode: endstop`. Default: `HIGH`.
-  - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Constant ccurrent used while Homing. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). May only be used for `mode: sensorless`. Default depends on `servo_type`: `0.2A` (28D), `0.2A` (35D), `0.8A` (42D), `0.4A` (57D).
+    > In `mode: VIRTUAL`, the speed may only be provided in five discrete levels. Use `VERY_SLOW`, `SLOW`, `MEDIUM`, `FAST` or `VERY_FAST` in this mode to set the speed.
+  - **endstop_trigger** (*Optional*, enum): Endstop may be `LOW` or `HIGH` to be recognized as triggered. May only be used for `mode: ENDSTOP`. Default: `HIGH`.
+  - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Constant ccurrent used while Homing. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). May only be used for `mode: SENSORLESS`. Default depends on `servo_type`: `0.2A` (28D), `0.2A` (35D), `0.8A` (42D), `0.4A` (57D).
   - **at_startup** (*Optional*, boolean): Run homing at startup. Default: `false`.
 
   - **zero_mode_speed_level** (*Optional*, int): 0–4. Maps to `zero_mode_speed_level`. Default: `2`.
@@ -170,9 +168,9 @@ on_...:
   - stepper.home: my_stepper
 ```
 Execute homing sequence. Behavior depends on `homing.mode` configuration:
-- `sensorless`: Uses stall detection (sensorless homing)
-- `endstop`: Uses endstop and GoHome command (real homing)
-- `virtual`: Restarts motor to return to stored zero position
+- `SENSORLESS`: Uses stall detection (sensorless homing)
+- `ENDSTOP`: Uses endstop and GoHome command (real homing)
+- `VIRTUAL`: Restarts motor to return to stored zero position
 
 ## `stepper.set_zero`
 
@@ -273,7 +271,7 @@ on_...:
 
 ### `stepper.restart` Action
 
-Restart the motor controller. Part of inital setup, and is also called when `stepper.homing.mode: virtual` is used, `stepper.homing.at_startup: true` is set and `stepper.set_zero` was at least once called before.
+Restart the motor controller. Part of inital setup, and is also called when `stepper.homing.mode: VIRTUAL` is used, `stepper.homing.at_startup: true` is set and `stepper.set_zero` was at least once called before.
 
 ```yaml
 on_...:
@@ -288,12 +286,12 @@ Change the motor control mode at runtime.
 on_...:
   - stepper.set_work_mode:
       id: my_stepper
-      mode: SR_vFOC
+      mode: SR_VFOC
 ```
 
 ### Configuration
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **mode** (**Required**, enum): Work mode, one of `SR_OPEN`, `SR_CLOSE`, `SR_vFOC`.
+- **mode** (**Required**, enum): Work mode, one of `SR_OPEN`, `SR_CLOSE`, `SR_VFOC`.
 
 ## `stepper.set_working_current`
 
@@ -342,6 +340,41 @@ on_...:
 
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **subdivision** (**Required**, int): Microstepping / step mode (`1-256`), e.g., `1`=full, `2`=half, `4`=quarter.
+
+## `stepper.set_speed`
+
+Set the maximum speed of the stepper at runtime.
+
+```yaml
+on_...:
+  - stepper.set_speed:
+      id: my_stepper
+      speed: 250 steps/s
+```
+
+### Configuration
+
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+- **speed** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): The speed in `steps/s` (steps per seconds) to drive the stepper at. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
+
+## `stepper.set_acceleration`
+
+Set the acceleration of the stepper at runtime.
+
+```yaml
+on_...:
+  - stepper.set_acceleration:
+      id: my_stepper
+      acceleration: 250 steps/s^2
+```
+
+### Configuration
+
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+- **acceleration** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): The acceleration in `steps/s^2` (steps per seconds squared) to use when starting to move. `revolutions/s^2` is also supported.
+
+> [!NOTE]
+> Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. Both use the same internal value, so calling either action will affect both acceleration and deceleration.
 
 ## `stepper.key_lock` / `stepper.key_unlock`
 
