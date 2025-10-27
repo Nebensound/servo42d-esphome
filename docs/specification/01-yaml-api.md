@@ -576,11 +576,14 @@ stepper:
 
   #### `initial_acceleration`
 
-Motor acceleration and deceleration rate (both use the same value).
+Motor acceleration and deceleration rate.
 
 - **Type:** [`acceleration`](#acceleration-type)
 - **Required:** ❌ Optional
 - **Default:** `inf` (infinite - instant acceleration)
+
+> [!NOTE]
+> Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. Both use the same internal value.
 
 **Examples:**
 ```yaml
@@ -1064,141 +1067,26 @@ stepper:
 
 ## Actions
 
-### `stepper.set_target`
+Actions are organized by their availability in different operating modes. Some actions work in all modes, while others are specific to Position Mode or Speed Mode.
 
-Set the target position of the motor. The stepper will move towards the target position and stop once reached.
+### Basic Actions
 
-**Configuration:**
-- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **target** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The target position in steps.
+Actions available in both operating modes.
 
-```yaml
-on_...:
-  - stepper.set_target:
-      id: my_stepper
-      target: 1000
-```
-
-
-### `stepper.report_position`
-
-Report the current position to a specific value (in steps). Sets an offset for future movements. To store a position for virtual homing, use [`stepper.set_zero`](#stepperset_zero) instead.
-
-**Configuration:**
-- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **position** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The position to report in steps.
-
-```yaml
-on_...:
-  - stepper.report_position:
-      id: my_stepper
-      position: 0
-```
-
-
-
-### `stepper.home`
-
-Execute homing sequence. Behavior depends on `homing.mode` configuration:
-- `SENSORLESS`: Uses stall detection (sensorless homing)
-- `ENDSTOP`: Uses endstop and GoHome command (real homing)
-- `VIRTUAL`: Restarts motor to return to stored zero position
-
-**Configuration:**
-- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-
-```yaml
-on_...:
-  - stepper.home: my_stepper
-```
-
-
-
-### `stepper.set_zero`
-
-Store the current position as persistent zero point for virtual homing. This must be called once before using virtual homing. The value is stored within the motor controller and remains after power-cycles.
-
-**Configuration:**
-- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-
-```yaml
-on_...:
-  - stepper.set_zero: my_stepper
-```
-
-
-
-### `stepper.run_continuous`
-
-Run the motor continuously at specified speed. Used in speed mode and for continuous movements.
-
-**Configuration:**
-- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **speed** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): Target speed in `steps/s`. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
-- **direction** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), enum): Direction, one of clockwise `CW`, counter-clockwise `CCW`.
-- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float/string): Acceleration for speed-mode change in `steps/s^2`. `revolutions/s^2` is also supported.
-
-> [!NOTE]
-> Exactly one of `speed`, `direction`, or `acceleration` must be provided per call. Omitted values keep their last-used value. If a value was never set before, the component default (from `initial_speed`, `initial_direction`, or `initial_acceleration`) is used.
-
-```yaml
-on_...:
-  - stepper.run_continuous:
-      id: my_stepper
-      direction: CW
-      acceleration: 1000 steps/s²
-      speed: 1000 steps/s
-```
-
-
-
-### `stepper.stop`
-
-Stop the current motor movement.
-
-**Configuration:**
-- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float/string): Deceleration to use when stopping the motor in `steps/s^2`. `revolutions/s^2` is also supported.
-
-> [!NOTE]
-> `acceleration` keeps its last-used value. If a value was never set before, the component default (from `initial_acceleration`) is used.
-
-> [!WARNING]
-> At speeds above about 1000 RPM, avoid stopping too abruptly. Use a non-zero `acceleration` (deceleration) for smoother, safer stops to protect mechanics and couplings.
-
-```yaml
-on_...:
-  - stepper.stop:
-      id: my_stepper
-      acceleration: 500 steps/s^2
-```
-
-
-
-### `stepper.emergency_stop`
-
-Emergency stop - immediately halt motor with maximum deceleration.
-
-**Configuration:**
-- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-
-> [!WARNING]
-> At speeds above about 1000 RPM, this can be mechanically harsh. Use regular `stepper.stop` with controlled deceleration when possible.
-
-```yaml
-on_...:
-  - stepper.emergency_stop: my_stepper
-```
-
-
-
-### `stepper.enable` / `stepper.disable`
+#### `stepper.enable` / `stepper.disable`
 
 Enable or disable the motor. Same action is used for the `sleep_when_done` configuration.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
+**C++ API:**
+```cpp
+void enable();
+void disable();
+```
+
+**Examples:**
 ```yaml
 on_...:
   - stepper.enable: my_stepper
@@ -1207,27 +1095,65 @@ on_...:
 
 
 
-### `stepper.calibrate`
+#### `stepper.emergency_stop`
 
-Start motor calibration sequence. Motor will move during calibration. Make sure that the stepper moves freely and is not obstructed.
+Emergency stop - immediately halt motor with maximum deceleration.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
+**C++ API:**
+```cpp
+void emergency_stop();
+```
+
+> [!WARNING]
+> At speeds above about 1000 RPM, this can be mechanically harsh. Use regular [`stepper.stop`](#stepperstop) with controlled deceleration when possible.
+
+> [!NOTE]
+> Same as [`stepper.stop`](#stepperstop), but with deceleration set to `inf` (instant stop). The stepper will also be disabled after stopping, and acceleration cannot be changed. [`stepper.release_protection`](#stepperrelease_protection) may be called to re-enable normal operation after an emergency stop.
+
+**Example:**
+```yaml
+on_...:
+  - stepper.emergency_stop: my_stepper
+```
+
+
+
+#### `stepper.calibrate`
+
+Start motor calibration sequence. Used to map measured magnetic field to encoder positions. Should be done at least once after motor installation.
+
+**Configuration:**
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+
+**C++ API:**
+```cpp
+void calibrate();
+```
+> [!NOTE]
+> Motor will move during calibration. Make sure that the stepper moves freely and is not obstructed. Stepper will restart after calibration.
+
+**Example:**
 ```yaml
 on_...:
   - stepper.calibrate: my_stepper
 ```
 
-
-
-### `stepper.release_protection`
+#### `stepper.release_protection`
 
 Release motor protection state after error condition. Is part of `stepper.home` action. Most of the cases that is the right action to recover from an error.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
+**C++ API:**
+```cpp
+void release_protection();
+```
+
+**Example:**
 ```yaml
 on_...:
   - stepper.release_protection: my_stepper
@@ -1235,13 +1161,19 @@ on_...:
 
 
 
-### `stepper.restart`
+#### `stepper.restart`
 
 Restart the motor controller. Part of initial setup, and is also called when `homing.mode: VIRTUAL` is used, `homing.at_startup: true` is set and `stepper.set_zero` was at least once called before.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
+**C++ API:**
+```cpp
+void restart();
+```
+
+**Example:**
 ```yaml
 on_...:
   - stepper.restart: my_stepper
@@ -1249,7 +1181,7 @@ on_...:
 
 
 
-### `stepper.set_work_mode`
+#### `stepper.set_work_mode`
 
 Change the motor control mode at runtime.
 
@@ -1257,6 +1189,12 @@ Change the motor control mode at runtime.
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **mode** (**Required**, enum): Work mode, one of `SR_OPEN`, `SR_CLOSE`, `SR_VFOC`.
 
+**C++ API:**
+```cpp
+void set_work_mode(WorkMode mode);
+```
+
+**Example:**
 ```yaml
 on_...:
   - stepper.set_work_mode:
@@ -1266,14 +1204,20 @@ on_...:
 
 
 
-### `stepper.set_working_current`
+#### `stepper.set_working_current`
 
 Change the working current at runtime.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **current** (**Required**, int): Current in mA (0-3000 for SERVO42D, 0-5200 for SERVO57D).
+- **current** (**Required**, [`current`](#current-type)): Current in mA. May be smaller than [`max` of `working_current`](#working_current).
 
+**C++ API:**
+```cpp
+void set_working_current(float current_milliamps);
+```
+
+**Example:**
 ```yaml
 on_...:
   - stepper.set_working_current:
@@ -1283,14 +1227,20 @@ on_...:
 
 
 
-### `stepper.set_holding_current_percent`
+#### `stepper.set_holding_current_percent`
 
 Change the holding current percentage at runtime. Only works in `SR_OPEN` and `SR_CLOSE` modes.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **percent** (**Required**, int): Percentage of working current (10-90).
+- **percent** (**Required**, [percent](https://esphome.io/guides/configuration-types.html#config-percentage)): Percentage of working current (10-90).
 
+**C++ API:**
+```cpp
+void set_holding_current_percent(uint8_t percent);
+```
+
+**Example:**
 ```yaml
 on_...:
   - stepper.set_holding_current_percent:
@@ -1300,14 +1250,20 @@ on_...:
 
 
 
-### `stepper.set_microstepping`
+#### `stepper.set_microstepping`
 
 Change microstepping (step mode) at runtime. `steps_per_revolution` is automatically adjusted accordingly.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **subdivision** (**Required**, int): Microstepping / step mode (`1-256`), e.g., `1`=full, `2`=half, `4`=quarter.
+- **subdivision** (**Required**, uint16): Microstepping / step mode (`1-256`), e.g., `1`=full, `2`=half, `4`=quarter.
 
+**C++ API:**
+```cpp
+void set_microstepping(uint16_t subdivision);
+```
+
+**Example:**
 ```yaml
 on_...:
   - stepper.set_microstepping:
@@ -1317,14 +1273,20 @@ on_...:
 
 
 
-### `stepper.set_speed`
+#### `stepper.set_speed`
 
 Set the maximum speed of the stepper at runtime.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **speed** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): The speed in `steps/s` (steps per seconds) to drive the stepper at. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
+- **speed** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`speed`](#speed-type)): The speed to drive the stepper at. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
 
+**C++ API:**
+```cpp
+void set_speed(float speed_steps_per_sec);
+```
+
+**Example:**
 ```yaml
 on_...:
   - stepper.set_speed:
@@ -1334,14 +1296,23 @@ on_...:
 
 
 
-### `stepper.set_acceleration`
+#### `stepper.set_acceleration`
 
 Set the acceleration of the stepper at runtime.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **acceleration** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): The acceleration in `steps/s^2` (steps per seconds squared) to use when starting to move. `revolutions/s^2` is also supported.
+- **acceleration** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`acceleration`](#acceleration-type)): The acceleration to use when starting to move. Supports units like `steps/s²`, `RPM/s`, etc.
 
+**C++ API:**
+```cpp
+void set_acceleration(float acceleration_steps_per_sec2);
+```
+
+> [!NOTE]
+> Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. Both use the same internal value, so calling either action will affect both acceleration and deceleration.
+
+**Example:**
 ```yaml
 on_...:
   - stepper.set_acceleration:
@@ -1351,35 +1322,177 @@ on_...:
 
 
 
-### `stepper.set_deceleration`
+#### `stepper.stop`
 
-Set the deceleration of the stepper at runtime. For this component, this is equivalent to `stepper.set_acceleration` as both acceleration and deceleration use the same value.
+Stop the current motor movement. Available in both Position and Speed modes.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **deceleration** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): The deceleration in `steps/s^2` (steps per seconds squared) to use when stopping. `revolutions/s^2` is also supported.
+- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`acceleration`](#acceleration-type)): Deceleration to use when stopping the motor. Supports units like `steps/s²`, `RPM/s`, etc.
+
+**C++ API:**
+```cpp
+void stop(optional<float> deceleration_steps_per_sec2);
+```
 
 > [!NOTE]
-> Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. Both use the same internal value, so calling either action will affect both acceleration and deceleration.
+> `acceleration` keeps its last-used value. If a value was never set before, the component default (from `initial_acceleration`) is used.
 
+> [!WARNING]
+> At speeds above about 1000 RPM, avoid stopping too abruptly. Use a non-zero `acceleration` (deceleration) for smoother, safer stops to protect mechanics and couplings.
+
+**Example:**
 ```yaml
 on_...:
-  - stepper.set_deceleration:
+  - stepper.stop:
       id: my_stepper
-      deceleration: 250 steps/s^2
+      acceleration: 500 steps/s^2
 ```
 
 
 
-### `stepper.key_lock` / `stepper.key_unlock`
+#### `stepper.key_lock` / `stepper.key_unlock`
 
 Lock or unlock the motor display buttons.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
+**C++ API:**
+```cpp
+void key_lock();
+void key_unlock();
+```
+
+**Examples:**
 ```yaml
 on_...:
   - stepper.key_lock: my_stepper
   - stepper.key_unlock: my_stepper
+```
+
+
+
+### Position Mode Actions
+
+Actions available only when [`mode`](#mode) is `POSITION`.
+
+#### `stepper.set_target`
+
+Set the target position of the motor. The stepper will move towards the target position and stop once reached.
+
+**Configuration:**
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+- **target** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The target position in steps.
+
+**C++ API:**
+```cpp
+void set_target(int32_t target);
+```
+
+**Example:**
+```yaml
+on_...:
+  - stepper.set_target:
+      id: my_stepper
+      target: 1000
+```
+
+
+#### `stepper.report_position`
+
+Report the current position to a specific value (in steps). Sets an offset for future movements. To store a position for virtual homing, use [`stepper.set_zero`](#stepperset_zero) instead.
+
+**Configuration:**
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+- **position** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The position to report in steps.
+
+**C++ API:**
+```cpp
+void report_position(int32_t position);
+```
+
+**Example:**
+```yaml
+on_...:
+  - stepper.report_position:
+      id: my_stepper
+      position: 0
+```
+
+
+
+#### `stepper.home`
+
+Execute homing sequence. Behavior depends on `homing.mode` configuration:
+- `SENSORLESS`: Uses stall detection (sensorless homing)
+- `ENDSTOP`: Uses endstop and GoHome command (real homing)
+- `VIRTUAL`: Restarts motor to return to stored zero position
+
+**Configuration:**
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+
+**C++ API:**
+```cpp
+void home(bool no_restart = false);
+```
+
+**Example:**
+```yaml
+on_...:
+  - stepper.home: my_stepper
+```
+
+
+
+#### `stepper.set_zero`
+
+Store the current position as persistent zero point for virtual homing. This must be called once before using virtual homing. The value is stored within the motor controller and remains after power-cycles. May only be used when `homing.mode` is `VIRTUAL`.
+
+**Configuration:**
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+
+**C++ API:**
+```cpp
+void set_zero();
+```
+
+**Example:**
+```yaml
+on_...:
+  - stepper.set_zero: my_stepper
+```
+
+
+
+### Speed Mode Actions
+
+Actions available only when [`mode`](#mode) is `SPEED`.
+
+#### `stepper.run_continuous`
+
+Run the motor continuously at specified speed. Used in speed mode and for continuous movements.
+
+**Configuration:**
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+- **speed** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`speed`](#speed-type)): Target speed. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
+- **direction** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`direction`](#direction-type)): Direction, one of clockwise `CW`, counter-clockwise `CCW`.
+- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`acceleration`](#acceleration-type)): Acceleration for speed-mode change. Supports units like `steps/s²`, `RPM/s`, etc.
+
+**C++ API:**
+```cpp
+void run_continuous(optional<float> speed_steps_per_sec, optional<Direction> direction, optional<float> acceleration_steps_per_sec2);
+```
+
+> [!NOTE]
+> Exactly one of `speed`, `direction`, or `acceleration` must be provided per call. Omitted values keep their last-used value. If a value was never set before, the component default (from `initial_speed`, `initial_direction`, or `initial_acceleration`) is used.
+
+**Example:**
+```yaml
+on_...:
+  - stepper.run_continuous:
+      id: my_stepper
+      direction: CW
+      acceleration: 1000 steps/s²
+      speed: 1000 steps/s
 ```
