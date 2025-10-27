@@ -102,8 +102,6 @@ stepper:
       at_startup: false          # run homing on boot
       speed: 600 rpm             # or steps/s
       direction: NEAREST         # CW | CCW | NEAREST (NEAREST only for virtual)
-      virtual_home_angle: 0°     # only for virtual
-      zero_mode_speed_level: 2   # 0..4
 ```
 
 ### Configuration
