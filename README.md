@@ -1,106 +1,192 @@
-# Servo42D RS485 Stepper
+# Servo42D RS485 Stepper Component
 
-The `servo42d_rs485` stepper platform allows you to control MKS Servo42D/57D closed-loop stepper motors with RS485 communication via Modbus RTU.
+The `servo42d_rs485` stepper platform allows you to control MKS ServoXXD closed-loop stepper motors with RS485 communication via Modbus RTU.
 
 ```yaml
-# Example configuration entry
-uart:
-  id: uart_bus
-  tx_pin: GPIO17
-  rx_pin: GPIO16
-  baud_rate: 9600
-  parity: EVEN
+# Base setup shared by both profiles
 
-modbus:
-  id: modbus1
-  uart_id: uart_bus
+stepper:
+  - platform: servo42d_rs485
+    id: my_stepper
+    address: 0x01
+    steps_per_revolution: 3200
+    microsteps: 16
+    control_mode: SR_VFOC
+    servo_type: SERVO42D
+    working_current: 1.6A
+    holding_current_percent: 40%
+    en_pin_active: ALWAYS
+    auto_screen_off: false
+    lock_keys_at_startup: false
+    update_interval: 500ms
+    mode: ... # position | speed
+```
+> [!NOTE]
+> This component requires the Modbus component to be set up as well.
+
+
+## Base Configuration
+
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): Specify the ID of the stepper so that you can control it.
+- **modbus_id** (*Optional*, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the Modbus controller. Only needed when you have multiple Modbus controllers.
+- **address** (*Optional*, int): The Modbus device address. Defaults to `0x01`. Range: 1-247.
+- **steps_per_revolution** (**Required**, float): The number of steps for one full rotation. Example: `3200` (200 steps × 16 microsteps).
+  > [!TIP]
+  > Set this precisely; wrong values will cause incorrect position and speed calculations.
+- **microsteps** (*Optional*, int): Microstepping (aka step mode). Typical values: `1`=full, `2`=half, `4`=quarter, then `8`, `16`, `32`, … Range `1-256`. Defaults to `16`.
+
+- **servo_type** (*Optional*, enum): Motor model used. One of `SERVO28D`, `SERVO35D`, `SERVO42D`, `SERVO57D`. Defaults to `SERVO42D`.
+- **control_mode** (*Optional*, enum): Motor control mode. One of `SR_OPEN`, `SR_CLOSE`, `SR_VFOC`. Defaults to `SR_VFOC`.
+  - `SR_OPEN`: Open-loop mode, stepper behaves like a regular stepper motor. Working current is `working_current`, holding current is `holding_current_percent` of working current.
+  - `SR_CLOSE`: Closed-loop mode, same as `SR_OPEN` but with position feedback from encoder to prevent missed steps.
+  - `SR_VFOC`: FOC mode (recommended), same as `SR_CLOSE` but current may be adaptet to the steppers needs up to the max `working_current`. `holding_current_percent` is ignored in this mode.
+- **initial_speed** (*Optional*, float): Initial/target speed for motor operations. Supports units: `steps/s`, `RPM`, `revolutions/s`, `degrees/s`. Defaults to `1 RPM`. Must be ≤ `max_speed`
+- **max_speed** (*Optional*, float): Maximum speed the contoller will ask for. Defaults to `control_mode` based Hardware limits: `SR_OPEN`: 400 RPM, `SR_CLOSE`: 1500 RPM, `SR_VFOC`: 3000 RPM.
+- **acceleration** (*Optional*, float): The acceleration in steps/s^2 (steps per seconds squared) to use when changing the speed (for example when starting) of the stepper. The default is `inf` which means infinite acceleration, so the stepper will try to drive with the full speed immediately. This value is helpful if that first motion of the motor is too jerky for what it’s moving. If you make this a small number, it will take the motor a moment to get up to speed. `revolutions/s^2` may also be used.
+  > [!NOTE]
+  > Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate `deceleration` parameter. Acceleration and deceleration use the same value (`acceleration = deceleration`).
+- **working_current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Working current. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). Defaults and maximums depend on `servo_type`:
+  - Defaults: `0.6A` (28D), `0.8A` (35D), `1.6A` (42D), `3.2A` (57D)
+  - Max: up to `3.0A` (28D/35D/42D), up to `5.2A` (57D)
+- **holding_current_percent** (*Optional*, [Percentage](https://esphome.io/guides/configuration-types.html#config-percentage)): Holding current as percentage of working current (10-90%). Accepts: `40`, `40%`, or `0.4`. Only effective in `SR_OPEN` and `SR_CLOSE` modes.
+- **en_pin_active** (*Optional*, enum): EN pin behavior. One of `LOW`, `HIGH`, `ALWAYS`. Defaults to `ALWAYS`.
+- **auto_screen_off** (*Optional*, boolean): Automatically turn off motor display after 15 seconds. Defaults to `true`.
+- **lock_keys_at_startup** (*Optional*, boolean): Lock motor display buttons at startup. Defaults to `false`.
+- **update_interval** (*Optional*, [Time](https://esphome.io/guides/configuration-types.html#config-time)): Status polling interval. Defaults to `500ms`.
+- **mode** (*Optional*, enum): Operating mode of the stepper. One of `position` or `speed`. Determines which actions and configurations are available. Defaults to `position`.
+
+## Speed Mode
+
+```yaml
 
 stepper:
   - platform: servo42d_rs485
     id: my_stepper
     modbus_id: modbus1
     address: 0x01
-    steps_per_revolution: 3200
-    max_speed: 1000 steps/s
-    acceleration: 500 steps/s^2
+    control_mode: SR_VFOC          # Hardware limit: 3000 RPM
+    steps_per_revolution: 3200     # Needed for unit conversion
+    initial_speed: 600 RPM                 # Initial/target speed for actions
+    # max_speed is auto-set based on control_mode (3000 RPM for SR_VFOC)
+    # You can override it to a lower value if needed:
+    # max_speed: 2000 RPM
 ```
 
-## Configuration Variables
 
-- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **modbus_id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the Modbus controller.
-- **address** (*Optional*, int): The Modbus device address. Defaults to `0x01`. Must match the motor's configured address (1-247).
-- **max_speed** (**Required**, string): The maximum speed in steps per second. Can use units: `steps/s`, `RPM`, `revolutions/s`.
-- **steps_per_revolution** (*Optional*, float): The number of steps for one full rotation. Defaults to `3200` (200 steps × 16 microsteps).
-- **microsteps** (*Optional*, int): The microstepping subdivision (1-256). Defaults to `16`.
-- **acceleration** (*Optional*, string): The acceleration rate. Can use units: `steps/s^2`, `revolutions/s^2`. Defaults to `inf`.
-- **deceleration** (*Optional*, string): The deceleration rate. Can use units: `steps/s^2`, `revolutions/s^2`. Defaults to `inf`.
-- **sleep_when_done** (*Optional*, boolean): Whether the motor should sleep after reaching target. Defaults to `false`.
+### Configuration
+- **initial_direction** (*Optional*, enum): Direction for initial continuous movement. One of `CW` or `CCW`. Defaults to `CW`.
+- All other from [Base Configuration](#base-configuration).
 
-### Motor Control Configuration
+In following actions are exclisively used in speed mode:
+- [`stepper.run_continuous`](#stepperrun_continuous) 
 
-- **control_mode** (*Optional*, enum): Motor control mode. One of `SR_OPEN`, `SR_CLOSE`, `SR_vFOC`. Defaults to `SR_vFOC`.
-  - `SR_OPEN`: Open-loop mode, max 400 RPM
-  - `SR_CLOSE`: Closed-loop mode, max 1500 RPM
-  - `SR_vFOC`: Vector FOC mode, max 3000 RPM (recommended)
-- **working_current** (*Optional*, current): Arbeitsstrom in mA – akzeptiert Einheiten `mA` oder `A` (z. B. `1500`, `1500mA`, `1.5A`). Bereich: 0–3000 (Servo42D), bis 5200 (Servo57D).
-- **holding_current_percent** (*Optional*, percent): Haltestrom in Prozent vom Arbeitsstrom (10–90%). Akzeptiert z. B. `40`, `40%` oder `0.4`. Nur wirksam in `SR_OPEN` und `SR_CLOSE`.
 
-### Homing Configuration
-
-- **home_at_startup** (*Optional*, boolean): Automatically home the motor on startup. Defaults to `false`.
-- **use_virtual_home** (*Optional*, boolean): Use virtual homing (without endstop). Defaults to `false`.
-  - If `false`: Uses real homing with endstop switch (command 0x91)
-  - If `true`: Uses virtual homing to specified angle (command 0x9A)
-- **virtual_home_angle** (*Optional*, degrees): Zielwinkel für virtuelles Homing (0–3°). Akzeptiert `90`, `90deg`, `90°`. Wird nur verwendet, wenn `use_virtual_home: true`.
-- **homing_speed** (*Optional*, int): Homing speed in RPM. Defaults to `500`.
-- **homing_direction** (*Optional*, enum): Homing direction. One of `CW`, `CCW`, `NEAREST`. Defaults to `CW`.
-  - `CW`: Clockwise (for real homing with endstop)
-  - `CCW`: Counter-clockwise (for real homing with endstop)
-  - `NEAREST`: Shortest path (for virtual homing only)
-
-### Display Configuration
-
-- **auto_screen_off** (*Optional*, boolean): Automatically turn off motor display after 15 seconds. Defaults to `false`.
-- **lock_keys_at_startup** (*Optional*, boolean): Lock motor display buttons at startup. Defaults to `false`.
-- **post_arrival_hold_ms** (*Optional*, [Time](https://esphome.io/guides/configuration-types.html#config-time)): Zusätzliche Haltezeit bevor der Motor bei `sleep_when_done: true` automatisch deaktiviert wird. Akzeptiert Einheiten wie `ms`, `s`, `min` (z. B. `500ms`, `1s`, `2min`). Standard: `0ms`.
-
-Beispiel:
+## Position Mode
 
 ```yaml
+
 stepper:
   - platform: servo42d_rs485
     id: my_stepper
-    sleep_when_done: true
-    post_arrival_hold_ms: 750ms  # halte 0,75s nach Ankunft, dann EN aus
+    modbus_id: modbus1
+    address: 0x01
+    control_mode: SR_VFOC           # Hardware limit: 3000 RPM
+    steps_per_revolution: 3200
+    initial_speed: 1000 steps/s      # Initial/target speed
+    # max_speed: auto-set to 3000 RPM based on control_mode
+    acceleration: 500 steps/s^2
+
+    # Homing / 0_Mode (nested configuration)
+    homing:
+      mode: virtual              # limit | no_limit | virtual
+      at_startup: false          # run homing on boot
+      speed: 600 rpm             # or steps/s
+      direction: NEAREST         # CW | CCW | NEAREST (NEAREST only for virtual)
+      virtual_home_angle: 0°     # only for virtual
+      zero_mode_speed_level: 2   # 0..4
 ```
 
-### Polling Configuration
+### Configuration
 
-- **update_interval** (*Optional*, [Time](https://esphome.io/guides/configuration-types.html#config-time)): Status polling interval. Defaults to `500ms`.
-- All other options from [Polling Component](https://esphome.io/components/sensor/index.html#config-polling-component).
+- **sleep_when_done** (*Optional*, [Time](https://esphome.io/guides/configuration-types.html#config-time) or boolean): Put the motor to sleep after reaching the target and waiting for the set amount of time. Defaults to `false` or `inf` which may deactivate this function. `true` or any other [Time](https://esphome.io/guides/configuration-types.html#config-time) value may deactivate the motor after that amount of [Time](https://esphome.io/guides/configuration-types.html#config-time). `true` may equal a delay of `0ms`.
+- **homing** (*Optional*, object): Homing configuration
+  - **mode** (**Required**, enum):
+    - `endstop`: Real homing using an endstop (limit switch).
+    - `sensorless`: Sensorless homing using stall detection.
+    - `virtual`: Return-to-zero using stored angle (0_Mode, no endstop).
+      > [!NOTE]
+      > Position to move to may be set at least once with `stepper.set_zero` before using virtual homing. After that is may be stored permanently within th controller of the stepper.
+  - **direction** (*Optional*, enum): `CW` clockwise, `CCW` counter-clockwise and `NEAREST`. Default: `CW`. `NEAREST` may only be used with `mode: virtual`.
+  - **speed**: (*Optional*, string): Homing speed. Supports units: `RPM` or `steps/s`. Default: `1 RPM`.
+    > [!NOTE]
+    > In `mode: virtual`, the speed may only be provided in five discrete levels. Use `VERY_SLOW`, `SLOW`, `MEDIUM`, `FAST` or `VERY_FAST` in this mode to set the speed.
+  - **endstop_trigger** (*Optional*, enum): Endstop may be `LOW` or `HIGH` to be recognized as triggered. May only be used for `mode: endstop`. Default: `HIGH`.
+  - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Constant ccurrent used while Homing. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). May only be used for `mode: sensorless`. Default depends on `servo_type`: `0.6A` (28D), `0.8A` (35D), `1.6A` (42D), `3.2A` (57D).
+  - **at_startup** (*Optional*, boolean): Run homing at startup. Default: `false`.
 
-## Actions
+  - **zero_mode_speed_level** (*Optional*, int): 0–4. Maps to `zero_mode_speed_level`. Default: `2`.
+  - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Only for `no_limit` mode; homing/0_Mode current. Maps to `homing_current`.
+- All other from [Base Configuration](#base-configuration).
 
-### `stepper.enable`
+In following actions are exclusively used in position mode:
+- [`stepper.set_target`](#stepperset_target)
+- [`stepper.report_position`](#stepperreport_position)
+- [`stepper.home`](#stepperhome)
+- [`stepper.set_zero`](#stepperset_zero)
 
-Enable the motor.
+
+## `stepper.set_target`
+
+Set the target position of the motor. The stepper will move towards the target position and stop once reached.
 
 ```yaml
 on_...:
-  - stepper.enable: my_stepper
+  - stepper.set_target:
+      id: my_stepper
+      target: 1000
 ```
 
-### `stepper.disable`
+### Configuration
 
-Disable the motor.
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+- **target** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The target position in steps.
+
+## `stepper.report_position`
+
+Report the current position to a specific value (in steps). Sets an offset for future movements. To store a position for virtual homing, use [`stepper.set_zero`](#stepperset_zero) instead.
 
 ```yaml
 on_...:
-  - stepper.disable: my_stepper
+  - stepper.report_position:
+      id: my_stepper
+      position: 0
 ```
 
-### `stepper.run_continuous`
+### Configuration
+
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+- **position** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The position to report in steps.
+
+## `stepper.home`
+```yaml
+on_...:
+  - stepper.home: my_stepper
+```
+Execute homing sequence. Behavior depends on `homing.mode` configuration:
+- `sensorless`: Uses stall detection (sensorless homing)
+- `endstop`: Uses endstop and GoHome command (real homing)
+- `virtual`: Restarts motor to return to stored zero position
+
+## `stepper.set_zero`
+
+Store the current position as persistent zero point for virtual homing. This must be called once before using virtual homing. The value is stored within the motor controller and remains after power-cycles.
+
+```yaml
+on_...:
+  - stepper.set_zero: my_stepper
+```
+
+## `stepper.run_continuous`
 
 Run the motor continuously at specified speed.
 
@@ -108,25 +194,43 @@ Run the motor continuously at specified speed.
 on_...:
   - stepper.run_continuous:
       id: my_stepper
-      rpm: 500
-      direction: CW  # or CCW
+      direction: CW
+      acceleration: 1000 steps/s²
+      speed: 1000 steps/s
 ```
 
-**Configuration variables:**
+### Configuration
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **rpm** (**Required**, int): Speed in RPM (1-3000, depending on control_mode).
-- **direction** (**Required**, enum): Direction, one of `CW`, `CCW`.
+- **speed** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): Target speed in `steps/s`. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
+- **direction** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), enum): Direction, one of clockwise `CW`, counter-clockwise `CCW`.
+- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float/string): Acceleration for speed-mode change in `steps/s^2`. `revolutions/s^2` is also supported.
 
-### `stepper.stop`
+> [!NOTE]
+> Exactly one of `speed`, `direction`, or `acceleration` must be provided per call. Omitted values keep their last-used value. If a value was never set before, the component default is used.
 
-Stop continuous motor movement.
+## `stepper.stop`
+
+Stop the current motor movement.
 
 ```yaml
 on_...:
-  - stepper.stop: my_stepper
+  - stepper.stop:
+      id: my_stepper
+      acceleration: 500 steps/s^2
 ```
 
-### `stepper.emergency_stop`
+### Configuration
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float/string): Deceleration to use when stopping the motor in `steps/s^2`. `revolutions/s^2` is also supported.
+
+> [!NOTE]
+> `acceleration` keeps its last-used value. If a value was never set before, the component default is used.
+
+> [!WARNING]
+> At speeds above about 1000 RPM, avoid stopping too abruptly. Use a non-zero `acceleration` (deceleration) for smoother, safer stops to protect mechanics and couplings.
+
+## `stepper.emergency_stop`
 
 Emergency stop - immediately halt motor with maximum deceleration.
 
@@ -134,53 +238,52 @@ Emergency stop - immediately halt motor with maximum deceleration.
 on_...:
   - stepper.emergency_stop: my_stepper
 ```
+### Configuration
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
-### `stepper.home`
+> [!WARNING]
+> At speeds above about 1000 RPM, avoid stopping too abruptly. Use a non-zero `acceleration` (deceleration) for smoother, safer stops to protect mechanics and couplings.
 
-Execute homing sequence. Uses virtual or real homing based on `use_virtual_home` configuration.
+## `stepper.enable` / `stepper.disable`
 
-```yaml
-on_...:
-  - stepper.home: my_stepper
-```
-
-### `stepper.reset_position`
-
-Reset the current position to zero (software baseline reset).
+Enable or disables the motor. Same action is used für the `sleep_when_done` configuration.
 
 ```yaml
 on_...:
-  - stepper.reset_position: my_stepper
+  - stepper.enable: my_stepper
+  - stepper.disable: my_stepper
 ```
+### Configuration
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
-### `stepper.calibrate`
+## `stepper.calibrate`
 
-Start motor calibration sequence. Motor will move during calibration.
+Start motor calibration sequence. Motor will move during calibration. Make sure that the stepper moves freely and is not obstructed.
 
 ```yaml
 on_...:
   - stepper.calibrate: my_stepper
 ```
 
-### `stepper.release_protection`
+## `stepper.release_protection`
 
-Release motor protection state after error condition.
+Release motor protection state after error condition. Is part of `stepper.home` action. Most of the cases that is th e right action to recover from an error.
 
 ```yaml
 on_...:
   - stepper.release_protection: my_stepper
 ```
 
-### `stepper.restart`
+### `stepper.restart` Action
 
-Restart the motor controller.
+Restart the motor controller. Part of inital setup, and is also called when `stepper.homing.mode: virtual` is used, `stepper.homing.at_startup: true` is set and `stepper.set_zero` was at least once called before.
 
 ```yaml
 on_...:
   - stepper.restart: my_stepper
 ```
 
-### `stepper.set_work_mode`
+## `stepper.set_work_mode`
 
 Change the motor control mode at runtime.
 
@@ -188,14 +291,14 @@ Change the motor control mode at runtime.
 on_...:
   - stepper.set_work_mode:
       id: my_stepper
-      mode: SR_vFOC  # or SR_OPEN, SR_CLOSE
+      mode: SR_vFOC
 ```
 
-**Configuration variables:**
+### Configuration
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **mode** (**Required**, enum): Work mode, one of `SR_OPEN`, `SR_CLOSE`, `SR_vFOC`.
 
-### `stepper.set_working_current`
+## `stepper.set_working_current`
 
 Change the working current at runtime.
 
@@ -206,11 +309,12 @@ on_...:
       current: 2000  # mA
 ```
 
-**Configuration variables:**
+### Configuration
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **current** (**Required**, int): Current in mA (0-3000 for SERVO42D, 0-5200 for SERVO57D).
 
-### `stepper.set_holding_current_percent`
+## `stepper.set_holding_current_percent`
 
 Change the holding current percentage at runtime. Only works in `SR_OPEN` and `SR_CLOSE` modes.
 
@@ -221,13 +325,14 @@ on_...:
       percent: 40  # 10-90%
 ```
 
-**Configuration variables:**
+### Configuration
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **percent** (**Required**, int): Percentage of working current (10-90).
 
-### `stepper.set_microstepping`
+## `stepper.set_microstepping`
 
-Change the microstepping subdivision at runtime.
+Change microstepping (step mode) at runtime. `stepper.steps_per_revolution` is automatically adjusted accordingly. Sof if `stepper.set_target` ist used with microstepping `16` to move to position `1600`, after changing microstepping to `32`, the command `stepper.set_target` to position `1600` will move tht Steper to half the angle compared to before.
 
 ```yaml
 on_...:
@@ -236,236 +341,54 @@ on_...:
       subdivision: 32  # 1-256
 ```
 
-**Configuration variables:**
+### Configuration
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **subdivision** (**Required**, int): Microstepping subdivision (1-256).
+- **subdivision** (**Required**, int): Microstepping / step mode (`1-256`), e.g., `1`=full, `2`=half, `4`=quarter.
 
-### `stepper.key_lock`
+## `stepper.key_lock` / `stepper.key_unlock`
 
-Lock the motor display buttons to prevent manual operation.
+Lock or unlock the motor display buttons.
 
 ```yaml
 on_...:
   - stepper.key_lock: my_stepper
-```
-
-### `stepper.key_unlock`
-
-Unlock the motor display buttons to allow manual operation.
-
-```yaml
-on_...:
   - stepper.key_unlock: my_stepper
 ```
+### Configuration
+- **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
-## Example Configurations
+## Hardware Setup
 
-### Basic Setup
+### Supported Models
 
-```yaml
-uart:
-  id: uart_bus
-  tx_pin: GPIO17
-  rx_pin: GPIO16
-  baud_rate: 9600
-  parity: EVEN
+- MKS Servo28D
+- MKS Servo35D
+- MKS Servo42D
+- MKS Servo57D
 
-modbus:
-  id: modbus1
-  uart_id: uart_bus
+All motors must be D-series with RS485 communication. C-series motors and CAN-bus variants are not supported.
 
-stepper:
-  - platform: servo42d_rs485
-    id: my_stepper
-    modbus_id: modbus1
-    address: 0x01
-    steps_per_revolution: 3200
-    max_speed: 1000 steps/s
-    acceleration: 500 steps/s^2
+### Wiring
 
-# Position sensor
-sensor:
-  - platform: template
-    name: "Motor Position"
-    lambda: return id(my_stepper).current_position;
-    update_interval: 100ms
+follow the [ESPHome Modbus Component](https://esphome.io/components/modbus.html) wiring instructions. Connect the motor's RS485 A/B lines to the corresponding Modbus transceiver A/B lines. Ensure proper power supply for the motor as per its specifications.
 
-# Control buttons
-button:
-  - platform: template
-    name: "Move Forward"
-    on_press:
-      - stepper.set_target:
-          id: my_stepper
-          target: !lambda "return id(my_stepper).current_position + 1000;"
-```
+### Motor Configuration
 
-### Advanced Configuration with Virtual Homing
+> [!IMPORTANT]
+> Before using this component, you must configure your motor for Modbus communication using the built-in display-menu and the three keys. Set the setting done 
 
-```yaml
-stepper:
-  - platform: servo42d_rs485
-    id: my_stepper
-    modbus_id: modbus1
-    address: 0x01
-    
-    # Motor configuration
-    control_mode: SR_vFOC
-    working_current: 1.5A
-    steps_per_revolution: 3200
-    microsteps: 16
-    max_speed: 2 revolutions/s
-    acceleration: 1.5 revolutions/s^2
-    
-    # Virtual homing (no endstop needed)
-    home_at_startup: true
-    use_virtual_home: true
-    virtual_home_angle: 180deg
-    homing_speed: 1000
-    homing_direction: NEAREST
-    
-    # Display settings
-    auto_screen_off: true
-    lock_keys_at_startup: false
-```
-
-### Multiple Motors
-
-```yaml
-modbus:
-  id: modbus1
-  uart_id: uart_bus
-
-stepper:
-  - platform: servo42d_rs485
-    id: motor_x
-    modbus_id: modbus1
-    address: 0x01
-    steps_per_revolution: 3200
-    max_speed: 1000 steps/s
-    
-  - platform: servo42d_rs485
-    id: motor_y
-    modbus_id: modbus1
-    address: 0x02
-    steps_per_revolution: 3200
-    max_speed: 1500 steps/s
-```
-
----
-
-## Additional Information
-
-### Hardware Requirements
-
-- ESP32 or ESP8266 with UART capability
-- RS485 transceiver (e.g., MAX485) or direct TTL connection  
-- **MKS Servo42D or Servo57D motor with RS485 communication** (D-series only)
-
-**Important**: This component is specifically designed for the **D-series** motors (Servo42D/57D) with **RS485 communication**. It does **not** work with:
-- Servo42C (older version without RS485)
-- D-series motors with CAN communication
-
-### Hardware Connection
-
-**RS485 Connection:**
-```
-ESP32    MAX485    Servo42D/57D
-GPIO17 → DI        A+
-GPIO16 ← RO        B-
-5V     → VCC       
-GND    → GND       GND
-```
-
-**Direct TTL Connection (if supported by motor firmware):**
-```
-ESP32     Servo42D/57D
-GPIO17 → TX
-GPIO16 ← RX  
-GND    → GND
-```
-
-### Motor Setup (Required Before First Use)
-
-⚠️ **Important**: Before using this component, you must configure your Servo42D/57D motor for Modbus communication using the motor's built-in display.
-
-**Navigation**: Use the three buttons (Next/Enter/Menu) to navigate the menu.
-
-**Required Settings via Motor Menu:**
-- **Mode**: Select `SR_OPEN`, `SR_CLOSE`, or `SR_vFOC` (recommended: `SR_vFOC`)
-- **Mb_RTU**: Set to `Enable` (Enable MODBUS-RTU communication)
+Required settings via motor menu:
+- **Mb_RTU**: `Enable` (Enable MODBUS-RTU communication)
 - **UartAddr**: Set device address 1-247 (must match ESPHome `address` config)
-- **UartBaud**: Set baud rate, recommended `9600`
-- **MStep**: Set subdivision/microsteps, recommended `16`
+- **UartBaud**: Set baud rate (recommended: `9600`)
 
-**Serial Mode Comparison:**
+**Navigation:** Press `Menu` → Use `Next` to select → Press `Enter` to edit → Use `Next` to change → Press `Enter` to confirm
 
-| Mode | Max RPM | Current Control | Encoder Feedback | Best For |
-|------|---------|-----------------|------------------|----------|
-| SR_OPEN | 400 | Fixed | No | Simple applications |
-| SR_CLOSE | 1500 | Fixed | Yes | Precise positioning, 3D printing |
-| SR_vFOC | 3000 | Adaptive | Yes | High performance ⭐ Recommended |
+<!-- Examples moved into Speed Mode and Position Mode sections above -->
+## See Also
 
-**Navigation:** Press `Menu` → Use `Next` to select option → Press `Enter` to view/edit → Use `Next` to change value → Press `Enter` to confirm
-
-**Without proper motor configuration, the ESPHome component will not be able to communicate with the motor!**
-
-### Troubleshooting
-
-**No Response from Motor:**
-- ❗ **Most common**: Motor not configured for Modbus communication (check display menu settings)
-- Check wiring and connections (A+/B- polarity for RS485)
-- Verify Modbus address matches ESPHome configuration
-- Ensure correct baud rate (motor and ESPHome must match)
-- Check if motor is in correct serial mode via display menu
-
-**Motor Not Moving:**
-- Check motor display for error messages
-- Verify power supply voltage and current capacity
-- Ensure `max_speed` is appropriate for motor specifications
-- Check mechanical load isn't too high
-
-**Communication Errors:**
-- Verify RS485 transceiver wiring (DI/RO connections)
-- Check motor display shows RS485 mode (not CAN mode)
-- Check for proper bus termination if using long cables
-- Ensure only one device per Modbus address
-
-**Position Drift or Inaccuracy:**
-- Verify proper mechanical coupling (no slipping)
-- Check for electromagnetic interference near motor
-- Ensure motor load is within specifications
-- Verify `steps_per_revolution` setting matches motor configuration
-
-**Debug Logging:**
-
-```yaml
-logger:
-  level: DEBUG
-  logs:
-    servo42d_rs485.stepper: DEBUG
-    modbus: DEBUG
-```
-
-### Documentation References
-
-- **[MKS SERVO42&57D RS485 User Manual V1.0.5](docs/MKS%20SERVO42%2657D_RS485%20User%20Manual%20V1.0.5.pdf)** - Official motor documentation
-- [ESPHome Modbus Component](https://esphome.io/components/modbus.html) - Modbus RTU documentation
-- [ESPHome Stepper Component](https://esphome.io/components/stepper/) - General stepper information
-
-### Repository
-
-**Source**: https://github.com/Nebensound/servo42d-esphome  
-**Sponsor**: [Nebensound](https://github.com/Nebensound)
-
-### License
-
-This project is licensed under the EUPL-1.2 - see the [LICENSE](LICENSE) file for details.
-
-
-- [@jowgn](https://github.com/jowgn)
-
-## Sponsors
-
-This project is supported by:
-- [@Nebensound](https://github.com/Nebensound)
+- [ESPHome Modbus Component](https://esphome.io/components/modbus.html)
+- [ESPHome Stepper Component](https://esphome.io/components/stepper/)
+- [MKS Servo42&57D RS485 User Manual V1.0.5](docs/MKS%20SERVO42%2657D_RS485%20User%20Manual%20V1.0.5.pdf)
+- Developer mapping (YAML → C++ → Modbus): `docs/CONFIG_TO_MODBUS.md`
