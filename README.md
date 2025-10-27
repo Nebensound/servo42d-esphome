@@ -52,7 +52,6 @@ stepper:
 - **en_pin_active** (*Optional*, enum): EN pin behavior. One of `LOW`, `HIGH`, `ALWAYS`. Defaults to `ALWAYS`.
 - **auto_screen_off** (*Optional*, boolean): Automatically turn off motor display after 15 seconds. Defaults to `true`.
 - **lock_keys_at_startup** (*Optional*, boolean): Lock motor display buttons at startup. Defaults to `false`.
-- **update_interval** (*Optional*, [Time](https://esphome.io/guides/configuration-types.html#config-time)): Status polling interval. Defaults to `500ms`.
 - **mode** (*Optional*, enum): Operating mode of the stepper. One of `position` or `speed`. Determines which actions and configurations are available. Defaults to `position`.
 
 ## Speed Mode
@@ -113,13 +112,13 @@ stepper:
     - `sensorless`: Sensorless homing using stall detection.
     - `virtual`: Return-to-zero using stored angle (0_Mode, no endstop).
       > [!NOTE]
-      > Position to move to may be set at least once with `stepper.set_zero` before using virtual homing. After that is may be stored permanently within th controller of the stepper.
+      > Position to move to may be set at least once with `stepper.set_zero` before using virtual homing. After that it may be stored permanently within the controller of the stepper.
   - **direction** (*Optional*, enum): `CW` clockwise, `CCW` counter-clockwise and `NEAREST`. Default: `CW`. `NEAREST` may only be used with `mode: virtual`.
   - **speed**: (*Optional*, string): Homing speed. Supports units: `RPM` or `steps/s`. Default: `1 RPM`.
     > [!NOTE]
     > In `mode: virtual`, the speed may only be provided in five discrete levels. Use `VERY_SLOW`, `SLOW`, `MEDIUM`, `FAST` or `VERY_FAST` in this mode to set the speed.
   - **endstop_trigger** (*Optional*, enum): Endstop may be `LOW` or `HIGH` to be recognized as triggered. May only be used for `mode: endstop`. Default: `HIGH`.
-  - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Constant ccurrent used while Homing. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). May only be used for `mode: sensorless`. Default depends on `servo_type`: `0.6A` (28D), `0.8A` (35D), `1.6A` (42D), `3.2A` (57D).
+  - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Constant ccurrent used while Homing. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). May only be used for `mode: sensorless`. Default depends on `servo_type`: `0.2A` (28D), `0.2A` (35D), `0.8A` (42D), `0.4A` (57D).
   - **at_startup** (*Optional*, boolean): Run homing at startup. Default: `false`.
 
   - **zero_mode_speed_level** (*Optional*, int): 0–4. Maps to `zero_mode_speed_level`. Default: `2`.
