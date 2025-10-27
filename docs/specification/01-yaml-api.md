@@ -1336,7 +1336,7 @@ void stop(optional<float> deceleration_steps_per_sec2);
 ```
 
 > [!NOTE]
-> `acceleration` keeps its last-used value. If a value was never set before, the component default (from `initial_acceleration`) is used.
+> `acceleration` will be changed by `stepper.stop` and keeps its last-used value. If a value was never set before, the component default (from `initial_acceleration`) is used.
 
 > [!WARNING]
 > At speeds above about 1000 RPM, avoid stopping too abruptly. Use a non-zero `acceleration` (deceleration) for smoother, safer stops to protect mechanics and couplings.
