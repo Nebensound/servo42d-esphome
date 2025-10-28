@@ -1109,7 +1109,7 @@ void emergency_stop();
 > At speeds above about 1000 RPM, this can be mechanically harsh. Use regular [`stepper.stop`](#stepperstop) with controlled deceleration when possible.
 
 > [!NOTE]
-> Same as [`stepper.stop`](#stepperstop), but with deceleration set to `inf` (instant stop). The stepper will also be disabled after stopping, and acceleration cannot be changed. [`stepper.release_protection`](#stepperrelease_protection) may be called to re-enable normal operation after an emergency stop.
+> Same as [`stepper.stop`](#stepperstop), but with acceleration set to `inf` (instant stop). The stepper will also be disabled after stopping, and acceleration cannot be changed. [`stepper.release_protection`](#stepperrelease_protection) may be called to re-enable normal operation after an emergency stop.
 
 **Example:**
 ```yaml
@@ -1365,7 +1365,7 @@ void stop(optional<Acceleration> acceleration);
 > The internal acceleration/deceleration value will be updated when calling this action with a `acceleration` parameter. If omitted, the current acceleration value is used. If a value was never set before, the component default (from `acceleration` config) is used.
 
 > [!WARNING]
-> At speeds above about 1000 RPM, avoid stopping too abruptly. Use a non-zero `acceleration` for smoother, safer stops to protect mechanics and couplings.
+> At speeds above about 1000 RPM, avoid stopping too abruptly. Use some `acceleration` for smoother, safer stops to protect mechanics and couplings.
 
 **Examples:**
 ```yaml
