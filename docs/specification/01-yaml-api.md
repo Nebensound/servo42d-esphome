@@ -6,7 +6,6 @@
 
 **Purpose:** This document specifies the complete YAML configuration API for the `servo42d_rs485` component. It defines what users can configure, valid values, defaults, and validation rules. This serves as the authoritative reference for implementing the Python validation layer (`__init__.py`).
 
-
 ## Type Definitions
 
 This section defines reusable types used throughout the configuration and actions.
@@ -16,10 +15,12 @@ This section defines reusable types used throughout the configuration and action
 **Description:** Modbus RTU slave address in hexadecimal format.
 
 **Accepted Values:**
+
 - Hexadecimal format: `0x01` to `0xF7` (1-247 decimal)
 - Examples: `0x01`, `0x10`, `0xF7`
 
 **Validation:**
+
 ```python
 cv.All(
     cv.hex_uint8_t,           # ESPHome: Validates hex format (0x00-0xFF)
@@ -30,8 +31,10 @@ cv.All(
 **C++ Type:** `uint8_t`
 
 **References:**
+
 - [`cv.hex_uint8_t`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py) from ESPHome core
 - Range 1-247 per Modbus RTU specification (0, 248-255 reserved)
+
 ### `speed` Type
 
 **Description:** Motor speed with multiple unit options. Converted to RPM for motor communication.
@@ -39,6 +42,7 @@ cv.All(
 **Default Unit:** `STEPS_PER_SEC` (for ESPHome stepper compatibility)
 
 **Accepted Values:**
+
 - **Steps per second:** `steps/s`, `steps/sec` → `STEPS_PER_SEC`
   - Example: `1000 steps/s`
 - **Revolutions per minute:** `RPM` → `RPM`
@@ -58,6 +62,7 @@ cv.All(
 > Metric prefixes may only be used when the value is a plain number or string, not if its a lambda.
 
 **Validation:**
+
 - Use `cv.float_with_unit()` for metric prefix support
 - Map unit string aliases to enum values
 - Return dict: `{"value": float, "unit": enum_string}`
@@ -65,6 +70,7 @@ cv.All(
 **Code Generation:**
 
 Static values → Convert to RPM at build-time:
+
 - `STEPS_PER_SEC`: `rpm = (value * 60.0) / steps_per_revolution`
 - `RPM`: `rpm = value`
 - `REV_PER_SEC`: `rpm = value * 60.0`
@@ -72,10 +78,12 @@ Static values → Convert to RPM at build-time:
 - `RADIANS_PER_SEC`: `rpm = (value * 60.0) / (2π)`
 
 Lambdas → Pass to C++ for runtime conversion:
+
 - `value`: Lambda code (templatable)
 - `unit`: Enum integer
 
 **Unit Enum (C++):**
+
 ```cpp
 enum class SpeedUnit : uint8_t {
     STEPS_PER_SEC,     // Default - ESPHome stepper compatibility
@@ -89,9 +97,8 @@ enum class SpeedUnit : uint8_t {
 **C++ Type:** `int16_t` (RPM, signed for bidirectional)
 
 **References:**
+
 - Uses [`cv.float_with_unit()`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py) internally per unit
-
-
 
 ### `acceleration` Type
 
@@ -100,6 +107,7 @@ enum class SpeedUnit : uint8_t {
 **Default Unit:** `STEPS_PER_SEC_SQ` (for ESPHome stepper compatibility)
 
 **Accepted Values:**
+
 - **Steps per second squared:** `steps/s²`, `steps/s/s` → `STEPS_PER_SEC_SQ`
   - Example: `1000 steps/s²`
 - **RPM per second:** `RPM/s`, `RPM/sec` → `RPM_PER_SEC`
@@ -116,6 +124,7 @@ enum class SpeedUnit : uint8_t {
 > Unit aliases (e.g., `steps/s²`, `steps/s/s`) are mapped to the same enum value during validation. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
 
 **Validation:**
+
 - Use `cv.float_with_unit()` for metric prefix support
 - Map unit string aliases to enum values
 - Return dict: `{"value": float, "unit": enum_string}`
@@ -123,6 +132,7 @@ enum class SpeedUnit : uint8_t {
 **Code Generation:**
 
 Static values → Convert to RPM/s at build-time (clamp to 0-65535):
+
 - `STEPS_PER_SEC_SQ`: `rpm_per_s = (value * 60.0) / steps_per_revolution`
 - `RPM_PER_SEC`: `rpm_per_s = value`
 - `REV_PER_SEC_SQ`: `rpm_per_s = value * 60.0`
@@ -130,10 +140,12 @@ Static values → Convert to RPM/s at build-time (clamp to 0-65535):
 - `RADIANS_PER_SEC_SQ`: `rpm_per_s = (value * 60.0) / (2π)`
 
 Lambdas → Pass to C++ for runtime conversion:
+
 - `value`: Lambda code (templatable)
 - `unit`: Enum integer
 
 **Unit Enum (C++):**
+
 ```cpp
 enum class AccelerationUnit : uint8_t {
     STEPS_PER_SEC_SQ = 0,  // Default - ESPHome stepper compatibility
@@ -147,9 +159,8 @@ enum class AccelerationUnit : uint8_t {
 **C++ Type:** `uint16_t` (RPM/s, unsigned since acceleration is always positive)
 
 **References:**
-- ESPHome `cv.float_with_unit`: https://esphome.io/components/sensor/index.html#config-validation
 
-
+- [ESPHome `cv.float_with_unit`](https://esphome.io/components/sensor/index.html#config-validation)
 
 ### `position` Type
 
@@ -158,6 +169,7 @@ enum class AccelerationUnit : uint8_t {
 **Default Unit:** `STEPS` (for ESPHome stepper compatibility)
 
 **Accepted Values:**
+
 - **Steps:** `steps`, `step` → `STEPS`
   - Example: `3200 steps`
 - **Revolutions:** `rev`, `revolutions` → `REVOLUTIONS`
@@ -175,6 +187,7 @@ enum class AccelerationUnit : uint8_t {
 > Metric prefixes may only be used when the value is a plain number or string, not if its a lambda.
 
 **Validation:**
+
 - Use `cv.float_with_unit()` for metric prefix support
 - Map unit string aliases to enum values
 - Return dict: `{"value": float, "unit": enum_string}`
@@ -182,16 +195,19 @@ enum class AccelerationUnit : uint8_t {
 **Code Generation:**
 
 Static values → Convert to steps at build-time:
+
 - `STEPS`: `steps = value`
 - `REVOLUTIONS`: `steps = value * steps_per_revolution`
 - `DEGREES`: `steps = (value / 360.0) * steps_per_revolution`
 - `RADIANS`: `steps = (value / (2π)) * steps_per_revolution`
 
 Lambdas → Pass to C++ for runtime conversion:
+
 - `value`: Lambda code (templatable)
 - `unit`: Enum integer
 
 **Unit Enum (C++):**
+
 ```cpp
 enum class PositionUnit : uint8_t {
     STEPS,         // Default - ESPHome stepper compatibility
@@ -204,21 +220,22 @@ enum class PositionUnit : uint8_t {
 **C++ Type:** `int32_t` (steps, signed for bidirectional positioning)
 
 **References:**
+
 - Uses [`cv.float_with_unit()`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py) internally per unit
-
-
 
 ### `auto_sleep` Type
 
 **Description:** Automatic motor power-down after idle time. Accepts boolean for enable/disable or time period for delayed shutdown.
 
 **Accepted Values:**
+
 - `false` or `inf` - Feature disabled, motor stays powered indefinitely
 - `true` or `0s` - Disable motor immediately when idle
 - Time period - Disable motor after specified idle time (e.g., `5s`, `30s`, `2min`)
   - Range: `1ms` to `4294967294ms` (~49.7 days)
 
 **Validation:**
+
 - Accept `false`/`inf` → return `UINT32_MAX` (disabled)
 - Accept `true`/`0s` → return `0` (immediate)
 - Accept time period → use `cv.positive_time_period_milliseconds`, clamp to `UINT32_MAX - 1`
@@ -226,11 +243,13 @@ enum class PositionUnit : uint8_t {
 **C++ Type:** `uint32_t` (milliseconds)
 
 **C++ Semantics:**
+
 - `UINT32_MAX` (4294967295) = Feature disabled (`false`/`inf`)
 - `0` = Immediately disable (`true`/`0s`)
 - `1` to `4294967294` = Delay in milliseconds
 
 **Example Usage in C++:**
+
 ```cpp
 static constexpr uint32_t AUTO_SLEEP_DISABLED = UINT32_MAX;
 
@@ -251,6 +270,7 @@ void on_idle() {  // Called when motor becomes idle (e.g., movement complete)
 ```
 
 **YAML Examples:**
+
 ```yaml
 auto_sleep: false      # Never disable (default)
 auto_sleep: inf        # Never disable (alternative syntax)
@@ -261,22 +281,23 @@ auto_sleep: 5min       # Disable after 5 minutes
 ```
 
 **References:**
+
 - [`cv.positive_time_period_milliseconds`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py#L854) from ESPHome core
 - [`cv.Any`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py) for multi-type validation
-
-
 
 ### `current` Type
 
 **Description:** Motor current with unit support. Converted to milliamperes (mA) for motor communication.
 
 **Accepted Values:**
+
 - **Amperes:** `A` - Current in amperes (e.g., `1.5A`, `2.5A`)
 - **Milliamperes:** `mA` - Current in milliamperes (e.g., `1500mA`, `2500mA`)
 - **Plain number:** Interpreted as milliamperes (e.g., `1500` = `1500mA`)
 - **Metric prefixes:** Supported via ESPHome's current validator
 
 **Validation:**
+
 - Use ESPHome's `cv.current` (handles A/mA/plain numbers automatically)
 - Convert to milliamperes: `current_ma = current_amps * 1000.0`
 - Enforce servo_type limits (see defaults/maximums above)
@@ -284,6 +305,7 @@ auto_sleep: 5min       # Disable after 5 minutes
 **C++ Type:** `uint16_t` (milliamperes, 0-65535 mA)
 
 **YAML Examples:**
+
 ```yaml
 working_current: 1.5A      # Amperes
 working_current: 1500mA    # Milliamperes
@@ -292,16 +314,16 @@ working_current: 2.5A      # With decimal
 ```
 
 **References:**
+
 - [`cv.current`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py) from ESPHome core
 - Handles amperes (A), milliamperes (mA), and plain numbers automatically
-
-
 
 ### `direction` Type
 
 **Description:** Rotational direction used where a concrete rotation sense is required.
 
 **Accepted Values:**
+
 - `CW` – Clockwise (positive direction)
 - `CCW` – Counter-clockwise (negative direction)
 
@@ -311,16 +333,14 @@ Use `cv.one_of("CW", "CCW", lower=True)`
 
 **C++ Type:** enum (component-internal)
 
-
-
 ### `homing_direction` Type
 
 **Description:** Direction for homing operations. Extends [`direction`](#direction-type) with `NEAREST` for virtual homing.
 
 **Accepted Values:**
+
 - `NEAREST` – Shortest path to zero
 - All values from [`direction`](#direction-type)
-
 
 > [!IMPORTANT]
 > `NEAREST` is only valid when `homing.mode` is `VIRTUAL`. Validation must check this context.
@@ -333,13 +353,12 @@ Additional context check: If `NEAREST`, require `homing.mode == "VIRTUAL"`
 
 **C++ Type:** enum (component-internal)
 
-
-
 ### `zeroing_speed` Type
 
 **Description:** Speed levels for virtual homing (0_Mode/No_Limit return-to-zero). Only used when `homing.mode` is `VIRTUAL`.
 
 **Accepted Values:**
+
 - `VERY_SLOW` – Slowest speed level (0)
 - `SLOW` – Slow speed level (1)
 - `MEDIUM` – Medium speed level (2)
@@ -356,6 +375,7 @@ Use `cv.one_of("VERY_SLOW", "SLOW", "MEDIUM", "FAST", "VERY_FAST", lower=True)`
 **C++ Type:** enum (component-internal, maps to firmware speed levels 0–4)
 
 **C++ Implementation Example:**
+
 ```cpp
 enum class ZeroingSpeed : uint8_t {
     VERY_SLOW = 0,
@@ -366,7 +386,6 @@ enum class ZeroingSpeed : uint8_t {
 };
 ```
 
-
 ### `templatable_with_unit` Type
 
 **Description:** Generic type for templatable values with optional unit specification. Used for actions where the value can be either a number or a lambda, but the unit is always a static enum (e.g., for position, speed, acceleration).
@@ -374,26 +393,36 @@ enum class ZeroingSpeed : uint8_t {
 **Motivation:** ESPHome's standard `stepper` component calculates positions in steps, which requires users to think in motor steps rather than the actual physical units they care about (revolutions, degrees). This component internally uses angles and revolutions for calculations. The `templatable_with_unit` type allows users to specify values in their preferred unit while maintaining compatibility with ESPHome's stepper interface. When no unit is specified, the value falls back to the standard stepper unit (steps) to ensure compatibility with existing stepper configurations and automations.
 
 **Accepted Formats:**
+
 1. **Plain number**: Default unit is used
+  
    ```yaml
    parameter: 1000
    ```
+  
 2. **String with unit**: Parsed at compile-time
+  
    ```yaml
    parameter: "60 RPM"
    parameter: "5.5 revolutions"
    ```
+  
 3. **Dict with explicit value and unit**:
+  
    ```yaml
    parameter:
      value: 60        # Number or lambda
      unit: RPM        # Unit parsed at compile-time
    ```
+  
 4. **Lambda without unit** (uses default unit):
+  
    ```yaml
    parameter: !lambda "return id(sensor).state;"
    ```
+  
 5. **Dict with lambda and unit**:
+  
    ```yaml
    parameter:
      value: !lambda "return id(sensor).state;"
@@ -403,6 +432,7 @@ enum class ZeroingSpeed : uint8_t {
 **Validation:**
 
 Handle 5 formats:
+
 1. Plain number → `{"value": float, "unit": default_unit}`
 2. String with unit → Parse and return `{"value": float, "unit": enum_string}`
 3. Dict with value/unit → Validate with `cv.templatable(cv.float_)` and `cv.enum()`
@@ -412,17 +442,19 @@ Handle 5 formats:
 Returns: `{"value": templatable, "unit": enum_string}`
 
 **Usage:**
+
 - Actions for position, speed, acceleration, etc. (e.g., `set_speed`, `set_acceleration`, `move_to`)
 
 **C++ API Pattern:**
+
 ```cpp
 void action(float value, UnitEnum unit = UnitEnum::DEFAULT);
 ```
 
 **References:**
+
 - [`cv.templatable()`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py) – Validates static values, passes lambdas unchanged
 - Conversion uses `steps_per_revolution` from component configuration
-
 
 ## Configuration
 
@@ -441,6 +473,7 @@ Component instance identifier for referencing in actions and automations.
 - **Validation:** [`cv.declare_id(Servo42dRs485)`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py)
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -457,6 +490,7 @@ Reference to the Modbus controller this motor is connected to.
 - **Validation:** [`cv.use_id(Modbus)`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py)
 
 **Example:**
+
 ```yaml
 modbus:
   - id: modbus1
@@ -478,13 +512,12 @@ Modbus RTU slave address of the motor.
 - **Range:** `0x01` to `0xF7` (1-247 decimal)
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
     address: 0x10  # Decimal 16
 ```
-
-
 
 #### `steps_per_revolution`
 
@@ -496,19 +529,22 @@ Number of steps required for one complete 360° rotation.
 
 > [!CRITICAL]
 > **This value is ESSENTIAL for all unit conversions!**
-> 
+>
 > Used to convert between `steps`, `RPM`, and `degrees` in speed/acceleration/position.
-> 
+>
 > **Calculation:**
-> ```
+>
+> ```text
 > steps_per_revolution = base_steps * microsteps
 > ```
-> 
+>
 > **Examples:**
+>
 > - 1.8° motor (200 steps/rev) with 16 microsteps: `3200`
 > - 0.9° motor (400 steps/rev) with 32 microsteps: `12800`
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -528,15 +564,17 @@ Microstepping subdivision value.
 
 > [!WARNING]
 > **Speed Calibration Limitation**
-> 
+>
 > Motor speed is factory-calibrated only for microstepping values **16, 32, and 64**.
-> 
+>
 > For other values, apply this correction in your code:
+>
 > ```python
 > actual_rpm = commanded_rpm * (microsteps / 16.0)
 > ```
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -558,14 +596,16 @@ Target speed to drive the stepper at (ESPHome stepper compatibility).
 
 > [!NOTE]
 > **Backward Compatibility**
-> 
+>
 > This field can be written as either `speed` or `max_speed` - they are exact aliases:
+>
 > - `speed`: Current ESPHome stepper field name (recommended)
 > - `max_speed`: Legacy name (for backward compatibility)
-> 
+>
 > Validation must ensure that only one of these fields is specified. If both are present, a validation error must be raised.
 
 **Examples:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -591,15 +631,17 @@ Acceleration rate when the stepper starts and ends movement (ESPHome stepper com
 
 > [!IMPORTANT]
 > **Hardware Limitation**
-> 
+>
 > Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. The MKS ServoXXD motor controllers only support a single acceleration/deceleration rate.
-> 
+>
 > **Validation Requirement:**
+>
 > - If a `deceleration` field is specified in the configuration, a validation error must be generated
 > - Error message: `"deceleration is not supported. Use acceleration instead. Hardware only supports a single acceleration/deceleration value."`
 > - The `acceleration` value applies to both acceleration and deceleration
 
 **Examples:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -621,6 +663,7 @@ Motor power-down behavior after movement completion.
 - **Default:** `false` or `inf` (motor stays powered)
 
 **Examples:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -634,8 +677,6 @@ stepper:
 ```
 
 **See:** [`auto_sleep` type definition](#auto_sleep-type) for detailed validation and C++ semantics.
-
-
 
 #### `servo_type`
 
@@ -651,15 +692,17 @@ Physical motor model type.
 
 > [!IMPORTANT]
 > **Must match your physical motor model!**
-> 
+>
 > This setting cannot be auto-detected and determines:
+>
 > - Default `working_current` if not explicitly set
 > - Maximum allowed `working_current` (validation enforced)
 > - Sensorless homing current defaults
-> 
+>
 > Setting the wrong type may damage the motor due to incorrect current limits.
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -681,13 +724,15 @@ Motor control algorithm selection.
 
 > [!NOTE]
 > Hardware speed limits depend on control mode:
+>
 > - `SR_OPEN`: 400 RPM
 > - `SR_CLOSE`: 1500 RPM  
 > - `SR_VFOC`: 3000 RPM
-> 
+>
 > These limits are automatically applied to `max_speed` if not explicitly set.
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -716,11 +761,12 @@ Motor current during movement.
 
 > [!NOTE]
 > **Control Mode Behavior**
-> 
+>
 > - `SR_OPEN` / `SR_CLOSE`: Fixed current at this exact value during movement
 > - `SR_VFOC`: Maximum allowed current - actual current may be lower, adapted automatically to motor needs
 
 **Examples:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -750,11 +796,12 @@ Current applied when motor is stationary (as percentage of `working_current`).
 
 > [!NOTE]
 > **Control Mode Behavior**
-> 
+>
 > - `SR_OPEN` / `SR_CLOSE`: Holding current = `working_current` × `holding_current_percent`
 > - `SR_VFOC`: This setting is **ignored** - FOC mode manages holding current automatically
 
 **Examples:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -781,6 +828,7 @@ Enable pin logic level polarity.
   - `ALWAYS` - Motor always enabled (ignore EN pin)
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -789,8 +837,6 @@ stepper:
   - platform: servo42d_rs485
     en_pin_active: LOW     # Enable when pin is LOW
 ```
-
-
 
 #### `auto_screen_off`
 
@@ -801,6 +847,7 @@ Automatically turn off motor's built-in display after timeout.
 - **Default:** `true`
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -819,13 +866,12 @@ Lock physical buttons on the motor at power-up.
 - **Default:** `false`
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
     lock_keys_at_startup: true  # Prevent manual control
 ```
-
-
 
 #### `mode`
 
@@ -840,18 +886,21 @@ Operating mode determines available actions and behavior.
 
 > [!IMPORTANT]
 > **This setting fundamentally changes how the motor operates!**
-> 
+>
 > **Component Behavior Changes:**
+>
 > - Motor control strategy (position tracking vs. continuous velocity)
 > - Internal state management (target position vs. current speed/direction)
 > - Communication protocol with motor controller
-> 
+>
 > **User-Facing Changes:**
+>
 > - **Available Configuration:** Mode-specific fields (e.g., `homing` only in position mode)
 > - **Available Actions:** Different action sets per mode (see below)
 > - **Motor Response:** Position tracking vs. continuous rotation
 
 **Examples:**
+
 ```yaml
 # Position Mode - for applications requiring precise positioning
 stepper:
@@ -874,6 +923,7 @@ stepper:
     initial_speed: 300 RPM
     initial_acceleration: 100 RPM/s
 ```
+
 ### Position Mode Configuration
 
 Additional fields available only when [mode](#mode) is `POSITION`.
@@ -912,6 +962,7 @@ Detailed behavior and guidance for each mode:
   - Behavior: Moves to the controller’s stored zero without reading an endstop or stall. Intended for quick reference moves or after a known alignment. Does not detect or learn mechanical limits.
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -929,6 +980,7 @@ Automatically perform homing sequence during component initialization.
 - **Default:** `false`
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -947,6 +999,7 @@ Direction to move during homing sequence.
 - **Default:** `CW`
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -960,6 +1013,7 @@ stepper:
 Speed used during homing movement. Accepted type depends on `homing.mode`:
 
 **When `homing.mode: VIRTUAL`:**
+
 - **Type:** [`zeroing_speed`](#zeroing_speed-type)
 - **Default:** `MEDIUM` (level 2)
 
@@ -971,6 +1025,7 @@ Speed used during homing movement. Accepted type depends on `homing.mode`:
 - **Default:** `1 RPM`
 
 **Examples:**
+
 ```yaml
 # VIRTUAL mode - use discrete levels
 stepper:
@@ -1000,6 +1055,7 @@ Endstop switch trigger logic level.
   - `LOW` - Endstop triggers when signal goes LOW
 
 **Example:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -1023,12 +1079,13 @@ Current threshold for sensorless homing (stallguard detection).
 
 > [!NOTE]
 > **Only effective when `homing.mode: SENSORLESS`**
-> 
+>
 > Motor moves in `homing.direction` until current exceeds this threshold, indicating a physical obstruction (endstop/hard stop). Higher values = more force before detection, lower values = more sensitive but may trigger prematurely.
-> 
+>
 > This setting is ignored in `ENDSTOP` and `VIRTUAL` modes.
 
 **Examples:**
+
 ```yaml
 stepper:
   - platform: servo42d_rs485
@@ -1037,7 +1094,7 @@ stepper:
     homing:
       mode: SENSORLESS
       current: 1.5A          # Trigger at 1.5A
-  direction: CCW
+      direction: CCW
       
   - platform: servo42d_rs485
     servo_type: SERVO57D
@@ -1046,7 +1103,7 @@ stepper:
       mode: SENSORLESS
       current: 2500mA        # Trigger at 2.5A
       # current omitted - would use default 3.2A
-  direction: CCW
+      direction: CCW
 ```
 
 ### Speed Mode Configuration
@@ -1057,11 +1114,10 @@ Additional fields available only when [mode](#mode) is `SPEED`.
 > **Default Behavior on Startup**
 >
 > With all defaults, the motor will immediately start rotating at `1 RPM` in clockwise direction when the component initializes. This is determined by:
+>
 > - `initial_speed`: `1 RPM` (from [Basic Configuration](#initial_speed))
 >
 > If you need the motor to remain stationary at startup, explicitly set `initial_speed: 0 RPM` or use an action to control when movement begins.
-
-
 
 ## Actions
 
@@ -1076,31 +1132,34 @@ Actions available in both operating modes.
 Enable or disable the motor. Same action is used for the `sleep_when_done` configuration.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
 **C++ API:**
+
 ```cpp
 void enable();
 void disable();
 ```
 
 **Examples:**
+
 ```yaml
 on_...:
   - stepper.enable: my_stepper
   - stepper.disable: my_stepper
 ```
 
-
-
 #### `stepper.emergency_stop`
 
 Emergency stop - immediately halt motor with maximum deceleration.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
 **C++ API:**
+
 ```cpp
 void emergency_stop();
 ```
@@ -1112,28 +1171,31 @@ void emergency_stop();
 > Same as [`stepper.stop`](#stepperstop), but with acceleration set to `inf` (instant stop). The stepper will also be disabled after stopping, and acceleration cannot be changed. [`stepper.release_protection`](#stepperrelease_protection) may be called to re-enable normal operation after an emergency stop.
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.emergency_stop: my_stepper
 ```
-
-
 
 #### `stepper.calibrate`
 
 Start motor calibration sequence. Used to map measured magnetic field to encoder positions. Should be done at least once after motor installation.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
 **C++ API:**
+
 ```cpp
 void calibrate();
 ```
+
 > [!NOTE]
 > Motor will move during calibration. Make sure that the stepper moves freely and is not obstructed. Stepper will restart after calibration.
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.calibrate: my_stepper
@@ -1144,55 +1206,60 @@ on_...:
 Release motor protection state after error condition. Is part of `stepper.home` action. Most of the cases that is the right action to recover from an error.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
 **C++ API:**
+
 ```cpp
 void release_protection();
 ```
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.release_protection: my_stepper
 ```
-
-
 
 #### `stepper.restart`
 
 Restart the motor controller. Part of initial setup, and is also called when `homing.mode: VIRTUAL` is used, `homing.at_startup: true` is set and `stepper.set_zero` was at least once called before.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
 **C++ API:**
+
 ```cpp
 void restart();
 ```
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.restart: my_stepper
 ```
-
-
 
 #### `stepper.set_work_mode`
 
 Change the motor control mode at runtime.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **mode** (**Required**, enum): Work mode, one of `SR_OPEN`, `SR_CLOSE`, `SR_VFOC`.
 
 **C++ API:**
+
 ```cpp
 void set_work_mode(WorkMode mode);
 ```
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.set_work_mode:
@@ -1200,22 +1267,23 @@ on_...:
       mode: SR_VFOC
 ```
 
-
-
 #### `stepper.set_working_current`
 
 Change the working current at runtime.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **current** (**Required**, [`current`](#current-type)): Current in mA. May be smaller than [`max` of `working_current`](#working_current).
 
 **C++ API:**
+
 ```cpp
 void set_working_current(float current_milliamps);
 ```
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.set_working_current:
@@ -1223,22 +1291,23 @@ on_...:
       current: 2000  # mA
 ```
 
-
-
 #### `stepper.set_holding_current_percent`
 
 Change the holding current percentage at runtime. Only works in `SR_OPEN` and `SR_CLOSE` modes.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **percent** (**Required**, [percent](https://esphome.io/guides/configuration-types.html#config-percentage)): Percentage of working current (10-90).
 
 **C++ API:**
+
 ```cpp
 void set_holding_current_percent(uint8_t percent);
 ```
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.set_holding_current_percent:
@@ -1246,22 +1315,23 @@ on_...:
       percent: 40  # 10-90%
 ```
 
-
-
 #### `stepper.set_microstepping`
 
 Change microstepping (step mode) at runtime. `steps_per_revolution` is automatically adjusted accordingly.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **subdivision** (**Required**, uint16): Microstepping / step mode (`1-256`), e.g., `1`=full, `2`=half, `4`=quarter.
 
 **C++ API:**
+
 ```cpp
 void set_microstepping(uint16_t subdivision);
 ```
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.set_microstepping:
@@ -1269,23 +1339,26 @@ on_...:
       subdivision: 32  # 1-256
 ```
 
-
-
 #### `stepper.set_speed`
 
 Set the maximum speed of the stepper at runtime.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **speed** (**Required**, [`templatable_with_unit`](#templatable_with_unit-type) as [`speed`](#speed-type)): The speed to drive the stepper at. Supports units like `steps/s`, `RPM`, `rev/s`, `deg/s`, `rad/s`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
+
 ```cpp
 void set_speed(Speed speed);
 ```
 
 > [!NOTE]
-> The `Speed` class has a constructor `Speed(float value, SpeedUnit unit, float steps_per_rev)` that ESPHome's code generator can use to construct instances directly from YAML parameters.**Examples:**
+> The `Speed` class has a constructor `Speed(float value, SpeedUnit unit, float steps_per_rev)` that ESPHome's code generator can use to construct instances directly from YAML parameters.
+
+**Examples:**
+
 ```yaml
 on_...:
   # Plain number with unit
@@ -1301,17 +1374,17 @@ on_...:
         unit: RPM
 ```
 
-
-
 #### `stepper.set_acceleration`
 
 Set the acceleration of the stepper at runtime (ESPHome stepper compatibility).
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **acceleration** (**Required**, [`templatable_with_unit`](#templatable_with_unit-type) as [`acceleration`](#acceleration-type)): The acceleration to use when starting to move. Supports units like `steps/s²`, `RPM/s`, `rev/s²`, `deg/s²`, `rad/s²`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
+
 ```cpp
 void set_acceleration(Acceleration acceleration);
 ```
@@ -1321,15 +1394,17 @@ void set_acceleration(Acceleration acceleration);
 
 > [!IMPORTANT]
 > **Hardware Limitation**
-> 
+>
 > Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. The MKS ServoXXD motor controllers only support a single acceleration/deceleration rate.
-> 
+>
 > **Validation Requirement:**
+>
 > - If a `stepper.set_deceleration` action is used, a validation error must be generated
 > - Error message: `"set_deceleration is not supported. Use set_acceleration instead. Hardware only supports a single acceleration/deceleration value."`
 > - Calling this action affects both acceleration and deceleration rates
 
 **Examples:**
+
 ```yaml
 on_...:
   # Plain number with unit
@@ -1350,10 +1425,12 @@ on_...:
 Stop the current motor movement. Available in both Position and Speed modes.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **acceleration** (*Optional*, [`templatable_with_unit`](#templatable_with_unit-type) as [`acceleration`](#acceleration-type)): Deceleration to use when stopping the motor. Supports units like `steps/s²`, `RPM/s`, `rev/s²`, `deg/s²`, `rad/s²`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
+
 ```cpp
 void stop(optional<Acceleration> acceleration);
 ```
@@ -1368,6 +1445,7 @@ void stop(optional<Acceleration> acceleration);
 > At speeds above about 1000 RPM, avoid stopping too abruptly. Use some `acceleration` for smoother, safer stops to protect mechanics and couplings.
 
 **Examples:**
+
 ```yaml
 on_...:
   # Plain number with unit
@@ -1383,29 +1461,28 @@ on_...:
         unit: RPM/s
 ```
 
-
-
 #### `stepper.key_lock` / `stepper.key_unlock`
 
 Lock or unlock the motor display buttons.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
 **C++ API:**
+
 ```cpp
 void key_lock();
 void key_unlock();
 ```
 
 **Examples:**
+
 ```yaml
 on_...:
   - stepper.key_lock: my_stepper
   - stepper.key_unlock: my_stepper
 ```
-
-
 
 ### Position Mode Actions
 
@@ -1416,10 +1493,12 @@ Actions available only when [`mode`](#mode) is `POSITION`.
 Set the target position of the motor. The stepper will move towards the target position and stop once reached.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **target** (**Required**, [`templatable_with_unit`](#templatable_with_unit-type) as [`position`](#position-type)): The target position. Supports units like `steps`, `revolutions`, `degrees`, `radians`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
+
 ```cpp
 void set_target(Position target);
 ```
@@ -1428,6 +1507,7 @@ void set_target(Position target);
 > The `Position` class has a constructor `Position(float value, PositionUnit unit, float steps_per_rev)` that ESPHome's code generator can use to construct instances directly from YAML parameters.
 
 **Examples:**
+
 ```yaml
 on_...:
   # Plain number (uses default unit: steps)
@@ -1460,16 +1540,17 @@ on_...:
         unit: rev
 ```
 
-
 #### `stepper.report_position`
 
 Report the current position to a specific value. Sets an offset for future movements. To store a position for virtual homing, use [`stepper.set_zero`](#stepperset_zero) instead.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **position** (**Required**, [`templatable_with_unit`](#templatable_with_unit-type) as [`position`](#position-type)): The position to report. Supports units like `steps`, `revolutions`, `degrees`, `radians`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
+
 ```cpp
 void report_position(Position position);
 ```
@@ -1478,6 +1559,7 @@ void report_position(Position position);
 > The `Position` class has a constructor `Position(float value, PositionUnit unit, float steps_per_rev)` that ESPHome's code generator can use to construct instances directly from YAML parameters.
 
 **Examples:**
+
 ```yaml
 on_...:
   # Plain number (uses default unit: steps)
@@ -1498,50 +1580,51 @@ on_...:
         unit: deg
 ```
 
-
-
 #### `stepper.home`
 
 Execute homing sequence. Behavior depends on `homing.mode` configuration:
+
 - `SENSORLESS`: Uses stall detection (sensorless homing)
 - `ENDSTOP`: Uses endstop and GoHome command (real homing)
 - `VIRTUAL`: Restarts motor to return to stored zero position
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
 **C++ API:**
+
 ```cpp
 void home(bool no_restart = false);
 ```
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.home: my_stepper
 ```
-
-
 
 #### `stepper.set_zero`
 
 Store the current position as persistent zero point for virtual homing. This must be called once before using virtual homing. The value is stored within the motor controller and remains after power-cycles. May only be used when `homing.mode` is `VIRTUAL`.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 
 **C++ API:**
+
 ```cpp
 void set_zero();
 ```
 
 **Example:**
+
 ```yaml
 on_...:
   - stepper.set_zero: my_stepper
 ```
-
-
 
 ### Speed Mode Actions
 
@@ -1552,11 +1635,13 @@ Actions available only when [`mode`](#mode) is `SPEED`.
 Run the motor continuously at specified speed. Used in speed mode and for continuous movements.
 
 **Configuration:**
+
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **speed** (*Optional*, [`templatable_with_unit`](#templatable_with_unit-type) as [`speed`](#speed-type)): Target speed (signed; sign determines direction). Supports units like `steps/s`, `RPM`, `rev/s`, `deg/s`, `rad/s`. Value can be a number, string with unit, or lambda.
 - **acceleration** (*Optional*, [`templatable_with_unit`](#templatable_with_unit-type) as [`acceleration`](#acceleration-type)): Acceleration for speed-mode change. Supports units like `steps/s²`, `RPM/s`, `rev/s²`, `deg/s²`, `rad/s²`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
+
 ```cpp
 void run_continuous(optional<Speed> speed,
                     optional<Acceleration> acceleration);
@@ -1569,6 +1654,7 @@ void run_continuous(optional<Speed> speed,
 > At least one of `speed` or `acceleration` must be provided per call. Omitted values keep their last-used value. If a value was never set before, the component default (e.g., from `initial_speed` or `initial_acceleration`) is used. The sign of `speed` determines direction (positive => clockwise, negative => counter-clockwise).
 
 **Examples:**
+
 ```yaml
 on_...:
   # Set all parameters (clockwise)
