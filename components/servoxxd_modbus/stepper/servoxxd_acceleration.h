@@ -77,14 +77,15 @@ namespace esphome
        *
        * @param value Acceleration magnitude in the specified unit
        * @param unit The unit of the acceleration value
-       * @param parent Pointer to parent ServoXxdModbus (for steps_per_revolution, required for STEPS_PER_SEC_SQ conversion)
+       * @param parent Pointer to parent ServoXxdModbus (required for unit conversion)
        */
       Acceleration(float value, AccelerationUnit unit, const ServoXxdModbus *parent);
 
       /**
-       * @brief Default constructor (acceleration = 0, no ramping)
+       * @brief Construct Acceleration with parent only - initializes to instant (acc=0)
+       * @param parent Pointer to parent ServoXxdModbus (required)
        */
-      Acceleration() = default;
+      explicit Acceleration(const ServoXxdModbus *parent) : acc_(0), parent_(parent) {}
 
       /**
        * @brief Get the hardware-native acceleration value
@@ -108,13 +109,13 @@ namespace esphome
        * Converts the hardware acceleration back to steps/s² for compatibility
        * with ESPHome's stepper base class.
        *
-       * @param parent Pointer to parent ServoXxdModbus (for steps_per_revolution)
        * @return Acceleration in steps/s², or -1.0f for instant (acc_=0)
        */
-      float steps_per_sec2(const ServoXxdModbus *parent) const;
+      float steps_per_sec2() const;
 
     private:
-      uint8_t acc_{0}; ///< Hardware value 0-255 (inverse time mapping)
+      uint8_t acc_{0};                        ///< Hardware value 0-255 (inverse time mapping)
+      const ServoXxdModbus *parent_{nullptr}; ///< Parent component (for steps_per_revolution)
     };
 
   } // namespace servoxxd_modbus

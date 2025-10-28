@@ -213,14 +213,14 @@ void test_acceleration_steps_per_sec2_conversion()
 
   // Test: 1000 RPM/s = (1000 / 60) * 3200 = 53333.33 steps/s²
   Acceleration acc(1000.0f, AccelerationUnit::RPM_PER_SEC, &mock);
-  float steps_per_s2 = acc.steps_per_sec2(&mock);
+  float steps_per_s2 = acc.steps_per_sec2();
   assert(float_eq(steps_per_s2, 53333.33f, 10.0f));
 
   std::cout << "  ✓ 1000 RPM/s = " << steps_per_s2 << " steps/s² (expected ~53333)" << std::endl;
 
   // Test instant (acc=0) returns -1.0f
   Acceleration acc_instant(0.0f, AccelerationUnit::RPM_PER_SEC, &mock);
-  float steps_instant = acc_instant.steps_per_sec2(&mock);
+  float steps_instant = acc_instant.steps_per_sec2();
   assert(steps_instant == -1.0f);
   std::cout << "  ✓ Instant (acc=0) → -1.0 steps/s² (sentinel)" << std::endl;
 }

@@ -448,15 +448,16 @@ The component uses strongly-typed classes for values with units to enable compil
 class Speed {
   friend class ServoXxdModbus;
  public:
-  Speed(float value, SpeedUnit unit);
-  Speed() = default;
-  
-  float rpm() const;
-  int16_t rpm_as_i16() const;
-  int16_t rpm_for_hardware(const ServoXxdModbus* parent) const;  // Apply microstepping scaling
-  float steps_per_sec(const ServoXxdModbus* parent) const;
+  Speed(float value, SpeedUnit unit, const ServoXxdModbus* parent);
+  explicit Speed(const ServoXxdModbus* parent) : rpm_(0), parent_(parent) {}
+
+  float rpm() const;                 // User-facing RPM (float)
+  int16_t rpm_as_i16() const;        // Rounded RPM (int16_t)
+  int16_t rpm_for_hardware() const;  // Microstepping-compensated RPM (uses stored parent_)
+  float steps_per_sec() const;       // Steps per second (uses stored parent_)
  private:
-  int16_t rpm_{0};
+  int16_t rpm_{0};                   // Hardware-native: RPM (signed, -3000 to +3000, calibrated for 16 microsteps)
+  const ServoXxdModbus* parent_{nullptr};  // Parent component (for microstepping and steps_per_revolution)
 };
 
 enum class SpeedUnit : uint8_t {
@@ -483,7 +484,7 @@ enum class SpeedUnit : uint8_t {
 > | 128        | ÷ 8              | 1200 → 150 RPM                           |
 > | 256        | ÷ 16             | 1200 → 75 RPM                            |
 >
-> **Implementation:** `rpm_for_hardware(parent)` should apply inverse scaling if microstepping is not 16, 32 or 64.
+> **Implementation:** `rpm_for_hardware()` uses stored `parent_` to apply inverse scaling if microstepping is not 16, 32 or 64.
 
 [YAML reference](./01-yaml-api.md#speed-type)
 
@@ -493,14 +494,15 @@ enum class SpeedUnit : uint8_t {
 class Acceleration {
   friend class ServoXxdModbus;
  public:
-  Acceleration(float value, AccelerationUnit unit);
-  Acceleration() = default;
-  
+  Acceleration(float value, AccelerationUnit unit, const ServoXxdModbus* parent);
+  explicit Acceleration(const ServoXxdModbus* parent) : acc_(0), parent_(parent) {}
+
   uint8_t acc_internal() const;  // Hardware value 0-255
   float rpm_per_sec() const;     // Approximate RPM/s (for display/logging)
-  float steps_per_sec2(const ServoXxdModbus* parent) const;
+  float steps_per_sec2() const;  // Steps/s² for ESPHome (uses stored parent_)
  private:
-  uint8_t acc_{0};  // Hardware-native: 0-255 (inverse time mapping)
+  uint8_t acc_{0};                        // Hardware-native: 0-255 (inverse time mapping)
+  const ServoXxdModbus* parent_{nullptr}; // Parent component (for steps_per_revolution)
 };
 
 enum class AccelerationUnit : uint8_t {
@@ -565,8 +567,8 @@ enum class AccelerationUnit : uint8_t {
 class Position {
   friend class ServoXxdModbus;
  public:
-  Position(float value, PositionUnit unit);
-  Position() = default;
+  Position(float value, PositionUnit unit, const ServoXxdModbus* parent);
+  explicit Position(const ServoXxdModbus* parent) : revs_(0), angle_ticks_(0), parent_(parent) {}
   
   static Position from_ticks_total(uint64_t total_ticks);
   static Position from_parts(int32_t revolutions, uint16_t angle_ticks);
@@ -574,18 +576,20 @@ class Position {
   int32_t revolutions() const;
   uint16_t angle_ticks() const;
   uint64_t ticks_total() const;
-  int32_t steps(const ServoXxdModbus* parent) const;
+  int32_t steps() const;          // Uses stored parent_
   float degrees() const;
   float radians() const;
-  uint32_t steps_as_u32(const ServoXxdModbus* parent) const;
+  uint32_t steps_as_u32() const;  // Uses stored parent_
   
   Position operator+(const Position& rhs) const;
   Position operator-(const Position& rhs) const;
   bool operator==(const Position& rhs) const;
  private:
   static constexpr uint32_t TICKS_PER_REV = 16384u;
-  int32_t revs_{0};
-  uint16_t angle_ticks_{0};
+  int32_t revs_{0};                           // Full revolutions (signed)
+  uint16_t angle_ticks_{0};                   // Angle within revolution (0-16383)
+  const ServoXxdModbus* parent_{nullptr};     // Parent component (for steps_per_revolution)
+  
 };
 
 enum class PositionUnit : uint8_t {
@@ -656,22 +660,22 @@ enum class PositionUnit : uint8_t {
 **Usage Example:**
 
 ```cpp
-// Construction
-Speed speed(100.0f, SpeedUnit::RPM);
-Acceleration accel(100.0f, AccelerationUnit::RPM_PER_SEC);
-Position pos(180.0f, PositionUnit::DEGREES);
+// Construction - parent pointer required
+Speed speed(100.0f, SpeedUnit::RPM, parent);
+Acceleration accel(100.0f, AccelerationUnit::RPM_PER_SEC, parent);
+Position pos(180.0f, PositionUnit::DEGREES, parent);
 
 // Internal storage: rpm_=100, acc_=56, revs_=0, angle_ticks_=8192 (9 bytes total)
 
-// Hardware access
-int16_t hw_rpm = speed.rpm_for_hardware(this);  // Needs parent for microstepping
-uint8_t hw_acc = accel.acc_internal();          // Direct hardware value
-uint32_t steps = pos.steps_as_u32(this);        // Needs parent for steps_per_rev
+// Hardware access - methods use stored parent_
+int16_t hw_rpm = speed.rpm_for_hardware();  // Uses stored parent_ for microstepping
+uint8_t hw_acc = accel.acc_internal();      // Direct hardware value
+uint32_t steps = pos.steps_as_u32();        // Uses stored parent_ for steps_per_rev
 
 // Display/logging conversions
-float display_rpm = speed.rpm();                // 100.0 RPM
-float display_acc = accel.rpm_per_sec();        // ~100 RPM/s (approximate)
-float display_deg = pos.degrees();              // 180.0° (exact)
+float display_rpm = speed.rpm();            // 100.0 RPM
+float display_acc = accel.rpm_per_sec();    // ~100 RPM/s (approximate)
+float display_deg = pos.degrees();          // 180.0° (exact)
 ```
 
 [YAML reference](./01-yaml-api.md#position-type)
@@ -846,7 +850,7 @@ Acceleration last_accel;              // Shared accel/decel (includes unit)
 - Each user-facing action validates inputs and clamps to hardware-safe ranges before enqueueing.
 - Unit conversion must centralize in Helpers to avoid duplication and drift.
 - Position synchronization:
-  - Whenever `current_pos_` or `target_pos_` are updated, the inherited public members `current_position` and `target_position` MUST be updated accordingly using `.steps(steps_per_revolution)` to maintain ESPHome stepper API compatibility
+  - Whenever `current_pos_` or `target_pos_` are updated, the inherited public members `current_position` and `target_position` MUST be updated accordingly using `.steps()` (which uses stored parent_) to maintain ESPHome stepper API compatibility
   - In `loop()`, check if `target_position` changed externally (ESPHome action called base class `set_target(int32_t)`) and sync to `target_pos_` if changed
   - Both `set_target(Position)` and `set_target(int32_t)` overloads must update the same internal state consistently
 
@@ -1071,12 +1075,12 @@ enum class CommandState {
 #### Position Contracts and conversions
 
 - set_target accepts Position object
-- Get steps from target.steps(steps_per_revolution)
+- Get steps from `target.steps()` (uses stored parent_)
 - Convert steps to device's expected units:
   - Modes that expect pulses (full steps): divide by microsteps if required
   - Modes that expect encoder ticks: use 16384 ticks/rev conversion
 - report_position(Position):
-  - Get steps from position.steps(steps_per_revolution)
+  - Get steps from `position.steps()` (uses stored parent_)
   - Set position_offset_ = encoder_position_steps − steps
   - Update current_pos_ and sync base class current_position
   - Update target_pos_ = current_pos_ and sync base class target_position
@@ -1131,18 +1135,18 @@ Implementation: `Acceleration::Acceleration(float value, AccelerationUnit unit)`
 **Internal representation:** Split `Position` with `int32_t revolutions` + `uint16_t angle_ticks (0..16383)`
 
 ```cpp
-// From YAML Position value - direct construction
-Position pos(90.0f, PositionUnit::DEGREES, steps_per_revolution);
+// From YAML Position value - direct construction with parent
+Position pos(90.0f, PositionUnit::DEGREES, parent);
 
-// Access in any unit
-int32_t steps = pos.steps(steps_per_revolution);    // Microsteps (signed)
-uint64_t ticks = pos.ticks_total();                 // Encoder ticks total (16384/rev)
-float revs = pos.revolutions_f();                   // Revolutions as float
-float degs = pos.degrees();                         // Degrees
-float rads = pos.radians();                         // Radians
+// Access in any unit - methods use stored parent_
+int32_t steps = pos.steps();         // Microsteps (signed)
+uint64_t ticks = pos.ticks_total();  // Encoder ticks total (16384/rev)
+float revs = pos.revolutions_f();    // Revolutions as float
+float degs = pos.degrees();          // Degrees
+float rads = pos.radians();          // Radians
 
 // Safe type conversions for hardware
-uint32_t motor_pulses = pos.steps_as_u32(steps_per_revolution, microsteps);
+uint32_t motor_pulses = pos.steps_as_u32();  // Uses stored parent_
 ```
 
 Conversion formulas (implemented in `Position` class constructor and methods):
@@ -1166,9 +1170,9 @@ Der Encoder liefert 16384 Ticks pro Umdrehung als Ground Truth. Die `Position`-K
 uint64_t encoder_ticks = read_encoder_register();
 Position pos = Position::from_ticks_total(encoder_ticks);
 
-// Representations stay consistent
+// Representations stay consistent (uses stored parent_)
 assert(pos.ticks_total() == encoder_ticks);
-assert(pos.steps(steps_per_revolution) == (encoder_ticks * steps_per_revolution) / 16384);
+assert(pos.steps() == (encoder_ticks * steps_per_revolution) / 16384);
 ```
 
 ### Hardware Limits and Clamping
@@ -1301,16 +1305,16 @@ Implementation: Clamps applied in action methods before enqueueing commands, usi
 
 - set_target(Position target) - our overload
   - If motor auto-disabled, enable first
-  - Convert Position to steps using target.steps(steps_per_revolution)
+  - Convert Position to steps using `target.steps()` (uses stored parent_)
   - Update target_pos_ = target
-  - Update base class target_position = target_pos_.steps(steps_per_revolution)
+  - Update base class `target_position = target_pos_.steps()`
   - Get speed_rpm from last_speed.rpm() or defaults
   - Get acceleration from last_accel.acc_internal() or defaults
   - Send Mode 2 absolute move with position_offset_ applied
   - Update target_synced flag
 
 - loop() - monitoring external changes
-  - If base class target_position != target_pos_.steps():
+  - If base class `target_position != target_pos_.steps()`:
     - External change detected (ESPHome action called base class set_target(int32_t))
   - Reconstruct target_pos_ from target_position via Position::from_steps()
   - Trigger motor move command with new target

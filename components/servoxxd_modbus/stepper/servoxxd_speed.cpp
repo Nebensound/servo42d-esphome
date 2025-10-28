@@ -1,5 +1,5 @@
 #include "servoxxd_speed.h"
-#include "servoxxd.h"
+#include "servoxxd_modbus.h"
 #include "esphome/core/log.h"
 #include <cmath>
 
@@ -10,206 +10,128 @@ namespace esphome
 
     static const char *const TAG = "servoxxd_modbus.speed";
 
-    // Mathematical constants (C++11 compatible)
-    constexpr float PI = 3.14159265358979323846f;
-    constexpr float TWO_PI = 2.0f * PI;
-
-    Speed::Speed(float value, SpeedUnit unit, const ServoXxdModbus *parent)
+    // Constructor: Convert value from any unit to RPM
+    Speed::Speed(float value, SpeedUnit unit, const ServoXxdModbus *parent) : parent_(parent)
     {
-      // Validate parent pointer for STEPS_PER_SEC unit
-      if (unit == SpeedUnit::STEPS_PER_SEC)
-      {
-        if (parent == nullptr)
-        {
-          ESP_LOGE(TAG, "Parent pointer is null (required for STEPS_PER_SEC unit conversion)");
-          return; // Leave speed at zero
-        }
-        
-        float steps_per_revolution = parent->get_steps_per_revolution();
-        if (steps_per_revolution <= 0.0f)
-        {
-          ESP_LOGE(TAG, "Invalid steps_per_revolution: %.1f (must be > 0)", steps_per_revolution);
-          return; // Leave speed at zero
-        }
-      }
-
-      float rpm_float = 0.0f;
+      float rpm_float = 0.0f; // Temporary float for conversion
 
       switch (unit)
       {
       case SpeedUnit::STEPS_PER_SEC:
-      {
-        // Convert steps/s to RPM
-        // rpm = (steps/s * 60) / steps_per_rev
-        float steps_per_revolution = parent->get_steps_per_revolution();
-        rpm_float = (value * 60.0f) / steps_per_revolution;
+        // Need parent for steps_per_revolution
+        if (parent_ == nullptr)
+        {
+          ESP_LOGE(TAG, "Speed: parent required for STEPS_PER_SEC conversion");
+          rpm_ = 0;
+          return;
+        }
+        else
+        {
+          float steps_per_rev = parent_->get_steps_per_revolution();
+          if (steps_per_rev <= 0)
+          {
+            ESP_LOGE(TAG, "Speed: Invalid steps_per_revolution: %.2f", steps_per_rev);
+            rpm_ = 0;
+            return;
+          }
+          rpm_float = (value / steps_per_rev) * 60.0f;
+        }
         break;
-      }
 
       case SpeedUnit::RPM:
-        // Direct assignment - motor native unit
         rpm_float = value;
         break;
 
       case SpeedUnit::REV_PER_SEC:
-        // Convert rev/s to RPM
-        // rpm = rev/s * 60
         rpm_float = value * 60.0f;
         break;
 
       case SpeedUnit::DEGREES_PER_SEC:
-        // Convert deg/s to RPM
-        // rpm = (deg/s * 60) / 360
-        rpm_float = (value * 60.0f) / 360.0f;
+        rpm_float = (value / 360.0f) * 60.0f;
         break;
 
       case SpeedUnit::RADIANS_PER_SEC:
-        // Convert radians/s to RPM: rpm = (rad/s * 60) / (2π)
-        rpm_float = (value * 60.0f) / TWO_PI;
+        rpm_float = (value / (2.0f * M_PI)) * 60.0f;
         break;
 
       case SpeedUnit::DEGREES_PER_MIN:
-        // Convert deg/min to RPM
-        // rpm = deg/min / 6
-        rpm_float = value / 6.0f;
+        rpm_float = value / 6.0f; // 360° / 60min = 6
         break;
 
       case SpeedUnit::DEGREES_PER_HOUR:
-        // Convert deg/h to RPM
-        // rpm = deg/h / 360
-        rpm_float = value / 360.0f;
+        rpm_float = value / 360.0f; // 360° = 1 rev, 60min = 1h → /360
         break;
 
       default:
-        ESP_LOGE(TAG, "Unknown SpeedUnit: %d", static_cast<int>(unit));
-        rpm_float = 0.0f;
-        break;
+        ESP_LOGE(TAG, "Unknown speed unit: %d", static_cast<int>(unit));
+        rpm_ = 0;
+        return;
       }
 
-      // Round and clamp to int16_t range (-32768 to +32767)
-      rpm_float = std::round(rpm_float);
-
-      if (rpm_float > 32767.0f)
+      // Clamp to hardware limits (-3000 to +3000 RPM) BEFORE casting to int16_t
+      // to avoid undefined behavior on overflow
+      if (rpm_float > 3000.0f)
       {
-        ESP_LOGW(TAG, "Speed %.1f RPM exceeds max (32767 RPM), clamping", rpm_float);
-        rpm_ = 32767;
+        ESP_LOGW(TAG, "Speed %.0f RPM exceeds max (3000 RPM), clamping", rpm_float);
+        rpm_float = 3000.0f;
       }
-      else if (rpm_float < -32768.0f)
+      else if (rpm_float < -3000.0f)
       {
-        ESP_LOGW(TAG, "Speed %.1f RPM below min (-32768 RPM), clamping", rpm_float);
-        rpm_ = -32768;
-      }
-      else
-      {
-        rpm_ = static_cast<int16_t>(rpm_float);
+        ESP_LOGW(TAG, "Speed %.0f RPM below min (-3000 RPM), clamping", rpm_float);
+        rpm_float = -3000.0f;
       }
 
-      ESP_LOGV(TAG, "Speed created: %.2f %s -> %d RPM",
-               value,
-               unit == SpeedUnit::STEPS_PER_SEC ? "steps/s" : unit == SpeedUnit::RPM            ? "RPM"
-                                                          : unit == SpeedUnit::REV_PER_SEC      ? "rev/s"
-                                                          : unit == SpeedUnit::DEGREES_PER_SEC  ? "deg/s"
-                                                          : unit == SpeedUnit::RADIANS_PER_SEC  ? "rad/s"
-                                                          : unit == SpeedUnit::DEGREES_PER_MIN  ? "deg/min"
-                                                          : unit == SpeedUnit::DEGREES_PER_HOUR ? "deg/h"
-                                                                                                : "unknown",
-               rpm_);
+      // Now safe to cast to int16_t
+      rpm_ = static_cast<int16_t>(std::round(rpm_float));
     }
 
-    int16_t Speed::rpm_for_hardware(const ServoXxdModbus *parent) const
+    // Get speed for hardware with microstepping compensation
+    int16_t Speed::rpm_for_hardware() const
     {
-      if (parent == nullptr)
+      if (parent_ == nullptr)
       {
-        ESP_LOGE(TAG, "Parent is null, cannot apply microstepping compensation");
+        ESP_LOGW(TAG, "rpm_for_hardware: parent is null, returning raw RPM");
         return rpm_;
       }
 
-      uint16_t microsteps = parent->get_microstepping();
-      float compensated_rpm = static_cast<float>(rpm_);
+      uint16_t microsteps = parent_->get_microstepping();
+      int16_t scaled_rpm = rpm_;
 
-      // Hardware calibration reference: 16, 32, or 64 subdivisions
-      // For other values, apply inverse scaling to compensate
-      // Hardware formula: asked_speed = actual_speed × (16 / current_microsteps)
-      // Our compensation: send_speed = desired_speed × (current_microsteps / 16)
-
-      if (microsteps == 16 || microsteps == 32 || microsteps == 64)
+      // Apply hardware scaling compensation
+      if (microsteps == 8)
       {
-        // Reference values - no compensation needed
-        return rpm_;
-      }
-      else if (microsteps == 8)
-      {
-        // Hardware would multiply by 2, so we divide by 2
-        compensated_rpm = compensated_rpm / 2.0f;
+        scaled_rpm = rpm_ * 2; // Compensate for 8 microsteps
       }
       else if (microsteps == 128)
       {
-        // Hardware would divide by 8, so we multiply by 8
-        compensated_rpm = compensated_rpm * 8.0f;
+        scaled_rpm = rpm_ / 8; // Compensate for 128 microsteps
       }
       else if (microsteps == 256)
       {
-        // Hardware would divide by 16, so we multiply by 16
-        compensated_rpm = compensated_rpm * 16.0f;
+        scaled_rpm = rpm_ / 16; // Compensate for 256 microsteps
       }
-      else if (microsteps < 16)
-      {
-        // General case for microsteps < 16: hardware multiplies by (16 / microsteps)
-        float factor = 16.0f / static_cast<float>(microsteps);
-        compensated_rpm = compensated_rpm / factor;
-      }
-      else
-      {
-        // General case for microsteps > 64: hardware divides by (microsteps / 16)
-        float factor = static_cast<float>(microsteps) / 16.0f;
-        compensated_rpm = compensated_rpm * factor;
-      }
+      // For 16, 32, 64: no scaling needed (reference values)
 
-      // Round and clamp to int16_t range
-      compensated_rpm = std::round(compensated_rpm);
+      // Re-clamp after scaling
+      if (scaled_rpm > 3000)
+        scaled_rpm = 3000;
+      if (scaled_rpm < -3000)
+        scaled_rpm = -3000;
 
-      if (compensated_rpm > 32767.0f)
-      {
-        ESP_LOGW(TAG, "Compensated speed %.1f RPM exceeds max (32767 RPM), clamping", compensated_rpm);
-        return 32767;
-      }
-      else if (compensated_rpm < -32768.0f)
-      {
-        ESP_LOGW(TAG, "Compensated speed %.1f RPM below min (-32768 RPM), clamping", compensated_rpm);
-        return -32768;
-      }
-
-      int16_t result = static_cast<int16_t>(compensated_rpm);
-
-      if (microsteps != 16 && microsteps != 32 && microsteps != 64)
-      {
-        ESP_LOGV(TAG, "Microstepping compensation: %d RPM -> %d RPM (microsteps=%d)",
-                 rpm_, result, microsteps);
-      }
-
-      return result;
+      return scaled_rpm;
     }
 
-    float Speed::steps_per_sec(const ServoXxdModbus *parent) const
+    // Get speed as steps per second
+    float Speed::steps_per_sec() const
     {
-      if (parent == nullptr)
+      if (parent_ == nullptr)
       {
-        ESP_LOGE(TAG, "Parent is null, cannot convert to steps/s");
+        ESP_LOGW(TAG, "steps_per_sec: parent is null, returning 0");
         return 0.0f;
       }
 
-      float steps_per_rev = parent->get_steps_per_revolution();
-      if (steps_per_rev <= 0.0f)
-      {
-        ESP_LOGE(TAG, "Invalid steps_per_revolution: %.2f", steps_per_rev);
-        return 0.0f;
-      }
-
-      // Convert RPM to steps/s
-      // steps/s = (rpm / 60) * steps_per_rev
-      float steps_per_s = (static_cast<float>(rpm_) / 60.0f) * steps_per_rev;
-
-      return steps_per_s;
+      float steps_per_rev = parent_->get_steps_per_revolution();
+      return (rpm_ / 60.0f) * steps_per_rev;
     }
 
   } // namespace servoxxd_modbus

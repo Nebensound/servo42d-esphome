@@ -37,21 +37,21 @@ namespace esphome
       }
     }
 
-    Position::Position(float value, PositionUnit unit, const ServoXxdModbus *parent)
+    Position::Position(float value, PositionUnit unit, const ServoXxdModbus *parent) : parent_(parent)
     {
       ESP_LOGV(TAG, "Creating Position: value=%.3f %s, parent=%p", value, unit_to_string(unit),
-               static_cast<const void *>(parent));
+               static_cast<const void *>(parent_));
 
       // Validate parent pointer for STEPS unit
       if (unit == PositionUnit::STEPS)
       {
-        if (parent == nullptr)
+        if (parent_ == nullptr)
         {
           ESP_LOGE(TAG, "Parent pointer is null (required for STEPS unit conversion)");
           return; // Leave position at zero
         }
 
-        float steps_per_revolution = parent->get_steps_per_revolution();
+        float steps_per_revolution = parent_->get_steps_per_revolution();
         if (steps_per_revolution <= 0.0f)
         {
           ESP_LOGE(TAG, "Invalid steps_per_revolution: %.1f (must be > 0)", steps_per_revolution);
@@ -68,7 +68,7 @@ namespace esphome
       {
         // STEPS: value is motor steps, convert using steps_per_revolution from parent
         // total_ticks = (value × 16384) / steps_per_revolution
-        float steps_per_revolution = parent->get_steps_per_revolution();
+        float steps_per_revolution = parent_->get_steps_per_revolution();
         total_ticks = static_cast<int64_t>((value * TICKS_PER_REV) / steps_per_revolution);
         break;
       }
@@ -190,15 +190,15 @@ namespace esphome
       return total;
     }
 
-    int32_t Position::steps(const ServoXxdModbus *parent) const
+    int32_t Position::steps() const
     {
-      if (parent == nullptr)
+      if (parent_ == nullptr)
       {
         ESP_LOGE(TAG, "steps() called with null parent pointer");
         return 0;
       }
 
-      float steps_per_rev = parent->get_steps_per_revolution();
+      float steps_per_rev = parent_->get_steps_per_revolution();
       if (steps_per_rev <= 0)
       {
         ESP_LOGE(TAG, "Invalid steps_per_revolution from parent: %.1f", steps_per_rev);
@@ -252,9 +252,9 @@ namespace esphome
       return arcsec_value;
     }
 
-    uint32_t Position::steps_as_u32(const ServoXxdModbus *parent) const
+    uint32_t Position::steps_as_u32() const
     {
-      int32_t steps_value = this->steps(parent);
+      int32_t steps_value = this->steps();
       // Convert signed to unsigned (wraps around if negative)
       return static_cast<uint32_t>(steps_value);
     }

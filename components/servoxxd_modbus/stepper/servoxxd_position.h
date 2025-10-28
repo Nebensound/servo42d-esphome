@@ -80,14 +80,15 @@ namespace esphome
        *
        * @param value Position magnitude in the specified unit
        * @param unit The unit of the position value
-       * @param parent Pointer to parent ServoXxdModbus (for steps_per_revolution, required for STEPS unit)
+       * @param parent Pointer to parent ServoXxdModbus (required for unit conversion)
        */
       Position(float value, PositionUnit unit, const ServoXxdModbus *parent);
 
       /**
-       * @brief Default constructor (position = 0)
+       * @brief Construct Position with parent only - initializes to position 0
+       * @param parent Pointer to parent ServoXxdModbus (required)
        */
-      Position() = default;
+      explicit Position(const ServoXxdModbus *parent) : revs_(0), angle_ticks_(0), parent_(parent) {}
 
       /**
        * @brief Construct a Position from total encoder ticks
@@ -131,10 +132,9 @@ namespace esphome
        *
        * Converts encoder ticks to steps using steps_per_revolution.
        *
-       * @param parent Pointer to parent ServoXxdModbus (for steps_per_revolution)
        * @return Position in steps (signed)
        */
-      int32_t steps(const ServoXxdModbus *parent) const;
+      int32_t steps() const;
 
       /**
        * @brief Get position in degrees
@@ -166,10 +166,9 @@ namespace esphome
        * Note: ESPHome base class uses uint32_t for position. This method
        * converts signed steps to unsigned (wraps around if negative).
        *
-       * @param parent Pointer to parent ServoXxdModbus (for steps_per_revolution)
        * @return Position in steps (unsigned)
        */
-      uint32_t steps_as_u32(const ServoXxdModbus *parent) const;
+      uint32_t steps_as_u32() const;
 
       // Operators for position arithmetic
       Position operator+(const Position &rhs) const;
@@ -181,6 +180,10 @@ namespace esphome
       static constexpr uint32_t TICKS_PER_REV = 16384u; ///< Encoder ticks per revolution (2^14)
       int32_t revs_{0};                                 ///< Full revolutions (signed)
       uint16_t angle_ticks_{0};                         ///< Angle within revolution (0-16383)
+      const ServoXxdModbus *parent_{nullptr};           ///< Parent component (for steps_per_revolution)
+
+      /// Private default constructor for factory methods only
+      Position() = default;
 
       /**
        * @brief Normalize angle_ticks to [0, 16383] and carry/borrow to revs_

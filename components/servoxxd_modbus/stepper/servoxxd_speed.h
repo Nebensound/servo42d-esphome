@@ -30,9 +30,9 @@ namespace esphome
     /// conversion from all supported units. Conversion happens in the constructor.
     ///
     /// Usage:
-    ///   Speed speed(1000.0f, SpeedUnit::STEPS_PER_SEC);
+    ///   Speed speed(1000.0f, SpeedUnit::STEPS_PER_SEC, parent);
     ///   int16_t rpm = speed.rpm_as_i16();
-    ///   int16_t hw_rpm = speed.rpm_for_hardware(parent);  // With microstepping scaling
+    ///   int16_t hw_rpm = speed.rpm_for_hardware();  // Uses stored parent
     class Speed
     {
       friend class ServoXxdModbus;
@@ -41,11 +41,12 @@ namespace esphome
       /// Construct Speed from value and unit
       /// @param value Speed value in the specified unit
       /// @param unit Speed unit (default: STEPS_PER_SEC)
-      /// @param parent Pointer to parent ServoXxdModbus (for steps_per_revolution, required for STEPS_PER_SEC conversion)
+      /// @param parent Pointer to parent ServoXxdModbus (required for unit conversion)
       Speed(float value, SpeedUnit unit, const ServoXxdModbus *parent);
 
-      /// Default constructor - initializes to 0 RPM
-      Speed() = default;
+      /// Construct Speed with parent only - initializes to 0 RPM
+      /// @param parent Pointer to parent ServoXxdModbus (required)
+      explicit Speed(const ServoXxdModbus *parent) : rpm_(0), parent_(parent) {}
 
       /// Get speed as RPM (float)
       float rpm() const { return rpm_; }
@@ -65,17 +66,16 @@ namespace esphome
       /// - Microsteps 128: divide by 8
       /// - Microsteps 256: divide by 16
       ///
-      /// @param parent Component instance with microstepping configuration
       /// @return Speed value compensated for hardware scaling
-      int16_t rpm_for_hardware(const ServoXxdModbus *parent) const;
+      int16_t rpm_for_hardware() const;
 
       /// Get speed as steps per second (for ESPHome stepper base class)
-      /// @param parent Component instance with steps_per_revolution
       /// @return Speed in steps per second
-      float steps_per_sec(const ServoXxdModbus *parent) const;
+      float steps_per_sec() const;
 
     private:
-      int16_t rpm_{0}; ///< Internal storage: RPM (signed, -32768 to +32767)
+      int16_t rpm_{0};                        ///< Internal storage: RPM (signed, -32768 to +32767)
+      const ServoXxdModbus *parent_{nullptr}; ///< Parent component (for microstepping and steps_per_revolution)
     };
 
   } // namespace servoxxd_modbus

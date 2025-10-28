@@ -58,7 +58,7 @@ void test_position_steps()
   std::cout << "  ✓ 3200 steps = " << pos.revolutions() << " rev + " << pos.angle_ticks() << " ticks" << std::endl;
 
   // Test reverse conversion
-  int32_t steps = pos.steps(&mock);
+  int32_t steps = pos.steps();
   assert(steps == 3200);
   std::cout << "  ✓ Reverse: 1 rev = " << steps << " steps" << std::endl;
 }
@@ -281,13 +281,13 @@ void test_position_unit_conversions()
   Position pos(1.0f, PositionUnit::REVOLUTIONS, &mock);
 
   constexpr float PI = 3.14159265358979323846f;
-  assert(pos.steps(&mock) == 3200);
+  assert(pos.steps() == 3200);
   assert(float_eq(pos.degrees(), 360.0f));
   assert(float_eq(pos.radians(), 2.0f * PI));
   assert(float_eq(pos.arcminutes(), 21600.0f));
   assert(float_eq(pos.arcseconds(), 1296000.0f));
 
-  std::cout << "  ✓ 1 rev = " << pos.steps(&mock) << " steps" << std::endl;
+  std::cout << "  ✓ 1 rev = " << pos.steps() << " steps" << std::endl;
   std::cout << "  ✓ 1 rev = " << pos.degrees() << " degrees" << std::endl;
   std::cout << "  ✓ 1 rev = " << pos.radians() << " radians" << std::endl;
   std::cout << "  ✓ 1 rev = " << pos.arcminutes() << " arcmin" << std::endl;

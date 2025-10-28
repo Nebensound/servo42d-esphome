@@ -145,10 +145,8 @@ void test_speed_microstepping_compensation()
   std::cout << "Testing microstepping compensation..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock_base(steps_per_rev);
-  Speed speed(100.0f, SpeedUnit::RPM, &mock_base);
 
-  // Test different microstepping values
+  // Test different microstepping values - need separate Speed objects for each
   MockServoXxdModbus mock_8(steps_per_rev, 8);
   MockServoXxdModbus mock_16(steps_per_rev, 16);
   MockServoXxdModbus mock_64(steps_per_rev, 64);
@@ -156,28 +154,33 @@ void test_speed_microstepping_compensation()
   MockServoXxdModbus mock_256(steps_per_rev, 256);
 
   // Reference: 16/32/64 should return unchanged
-  int16_t rpm_16 = speed.rpm_for_hardware(&mock_16);
+  Speed speed_16(100.0f, SpeedUnit::RPM, &mock_16);
+  int16_t rpm_16 = speed_16.rpm_for_hardware();
   assert(rpm_16 == 100);
   std::cout << "  ✓ microsteps=16: " << rpm_16 << " RPM (no compensation)" << std::endl;
 
-  int16_t rpm_64 = speed.rpm_for_hardware(&mock_64);
+  Speed speed_64(100.0f, SpeedUnit::RPM, &mock_64);
+  int16_t rpm_64 = speed_64.rpm_for_hardware();
   assert(rpm_64 == 100);
   std::cout << "  ✓ microsteps=64: " << rpm_64 << " RPM (no compensation)" << std::endl;
 
-  // microsteps=8: divide by 2
-  int16_t rpm_8 = speed.rpm_for_hardware(&mock_8);
-  assert(rpm_8 == 50);
-  std::cout << "  ✓ microsteps=8: " << rpm_8 << " RPM (÷2)" << std::endl;
+  // microsteps=8: multiply by 2 (hardware divides by 2, so we compensate)
+  Speed speed_8(100.0f, SpeedUnit::RPM, &mock_8);
+  int16_t rpm_8 = speed_8.rpm_for_hardware();
+  assert(rpm_8 == 200);
+  std::cout << "  ✓ microsteps=8: " << rpm_8 << " RPM (×2)" << std::endl;
 
-  // microsteps=128: multiply by 8
-  int16_t rpm_128 = speed.rpm_for_hardware(&mock_128);
-  assert(rpm_128 == 800);
-  std::cout << "  ✓ microsteps=128: " << rpm_128 << " RPM (×8)" << std::endl;
+  // microsteps=128: divide by 8 (hardware multiplies by 8, so we compensate)
+  Speed speed_128(100.0f, SpeedUnit::RPM, &mock_128);
+  int16_t rpm_128 = speed_128.rpm_for_hardware();
+  assert(rpm_128 == 12); // 100 / 8 = 12 (integer division)
+  std::cout << "  ✓ microsteps=128: " << rpm_128 << " RPM (÷8)" << std::endl;
 
-  // microsteps=256: multiply by 16
-  int16_t rpm_256 = speed.rpm_for_hardware(&mock_256);
-  assert(rpm_256 == 1600);
-  std::cout << "  ✓ microsteps=256: " << rpm_256 << " RPM (×16)" << std::endl;
+  // microsteps=256: divide by 16 (hardware multiplies by 16, so we compensate)
+  Speed speed_256(100.0f, SpeedUnit::RPM, &mock_256);
+  int16_t rpm_256 = speed_256.rpm_for_hardware();
+  assert(rpm_256 == 6); // 100 / 16 = 6 (integer division)
+  std::cout << "  ✓ microsteps=256: " << rpm_256 << " RPM (÷16)" << std::endl;
 }
 
 void test_speed_steps_per_sec_conversion()
@@ -189,7 +192,7 @@ void test_speed_steps_per_sec_conversion()
   Speed speed(60.0f, SpeedUnit::RPM, &mock);
 
   // 60 RPM = 1 rev/s = 3200 steps/s
-  float steps_per_s = speed.steps_per_sec(&mock);
+  float steps_per_s = speed.steps_per_sec();
   assert(float_eq(steps_per_s, 3200.0f));
 
   std::cout << "  ✓ 60 RPM = " << steps_per_s << " steps/s (expected 3200)" << std::endl;
@@ -217,15 +220,15 @@ void test_speed_range_clamping()
   float steps_per_rev = 3200.0f;
   MockServoXxdModbus mock(steps_per_rev);
 
-  // Test: Very high speed should clamp to int16_t max (32767)
+  // Test: Very high speed should clamp to hardware max (3000 RPM)
   Speed speed_high(40000.0f, SpeedUnit::RPM, &mock);
-  assert(speed_high.rpm_as_i16() == 32767);
-  std::cout << "  ✓ 40000 RPM clamped to " << speed_high.rpm_as_i16() << " (int16_t max)" << std::endl;
+  assert(speed_high.rpm_as_i16() == 3000);
+  std::cout << "  ✓ 40000 RPM clamped to " << speed_high.rpm_as_i16() << " (hardware max)" << std::endl;
 
-  // Test: Very low speed should clamp to int16_t min (-32768)
+  // Test: Very low speed should clamp to hardware min (-3000 RPM)
   Speed speed_low(-40000.0f, SpeedUnit::RPM, &mock);
-  assert(speed_low.rpm_as_i16() == -32768);
-  std::cout << "  ✓ -40000 RPM clamped to " << speed_low.rpm_as_i16() << " (int16_t min)" << std::endl;
+  assert(speed_low.rpm_as_i16() == -3000);
+  std::cout << "  ✓ -40000 RPM clamped to " << speed_low.rpm_as_i16() << " (hardware min)" << std::endl;
 }
 
 void test_speed_null_parent()
