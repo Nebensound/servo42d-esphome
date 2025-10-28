@@ -20,7 +20,6 @@ stepper:
     en_pin_active: ALWAYS
     auto_screen_off: false
     lock_keys_at_startup: false
-    update_interval: 500ms
     mode: ... # POSITION | SPEED
 ```
 
@@ -139,8 +138,6 @@ stepper:
   - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Constant ccurrent used while Homing. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). May only be used for `mode: SENSORLESS`. Default depends on `servo_type`: `0.2A` (28D), `0.2A` (35D), `0.8A` (42D), `0.4A` (57D).
   - **at_startup** (*Optional*, boolean): Run homing at startup. Default: `false`.
 
-  - **zero_mode_speed_level** (*Optional*, int): 0–4. Maps to `zero_mode_speed_level`. Default: `2`.
-  - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Only for `no_limit` mode; homing/0_Mode current. Maps to `homing_current`.
 - All other from [Base Configuration](#base-configuration).
 
 In following actions are exclusively used in position mode:
