@@ -19,6 +19,17 @@ namespace esphome
       virtual void set_address(uint8_t address) { address_ = address; }
       virtual uint8_t get_address() const { return address_; }
 
+      // Mock send method (for CommandQueue integration)
+      virtual void send(uint8_t function_code, uint16_t start_address, uint16_t count_or_value)
+      {
+        // Mock implementation for testing
+      }
+
+      virtual void send_raw(const std::vector<uint8_t> &payload)
+      {
+        // Mock implementation for testing
+      }
+
       // Virtual modbus callback methods
       virtual void on_modbus_data(const std::vector<uint8_t> &data) {}
       virtual void on_modbus_error(uint8_t function_code, uint8_t exception_code) {}
