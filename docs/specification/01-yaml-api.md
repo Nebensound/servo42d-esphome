@@ -1021,6 +1021,7 @@ Speed used during homing movement. Accepted type depends on `homing.mode`:
 > The controller firmware only supports five discrete speed levels for virtual homing. These map to internal speed settings (0–4) and cannot be specified as RPM or steps/s.
 
 **In all other cases (`ENDSTOP`, `SENSORLESS`):**
+
 - **Type:** [`speed`](#speed-type)
 - **Default:** `1 RPM`
 
@@ -1109,15 +1110,6 @@ stepper:
 ### Speed Mode Configuration
 
 Additional fields available only when [mode](#mode) is `SPEED`.
-
-> [!WARNING]
-> **Default Behavior on Startup**
->
-> With all defaults, the motor will immediately start rotating at `1 RPM` in clockwise direction when the component initializes. This is determined by:
->
-> - `initial_speed`: `1 RPM` (from [Basic Configuration](#initial_speed))
->
-> If you need the motor to remain stationary at startup, explicitly set `initial_speed: 0 RPM` or use an action to control when movement begins.
 
 ## Actions
 
