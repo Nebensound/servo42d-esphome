@@ -36,41 +36,54 @@ cv.All(
 
 **Description:** Motor speed with multiple unit options. Converted to RPM for motor communication.
 
+**Default Unit:** `STEPS_PER_SEC` (for ESPHome stepper compatibility)
+
 **Accepted Values:**
-- **Steps:** `steps/s`, `steps/sec`, `steps/min`, `steps/h`
-  - Examples: `1000 steps/s`, `60k steps/min`, `3.6M steps/h`
-- **Revolutions per minute:** `RPM`
-  - Examples: `60 RPM`, `1k RPM`, `1.5k RPM`
-- **Degrees:** `deg/s`, `deg/sec`, `deg/min`, `deg/h`
-  - Examples: `360 deg/s`, `21.6k deg/min`, `1.296M deg/h`
+- **Steps per second:** `steps/s`, `steps/sec` → `STEPS_PER_SEC`
+  - Example: `1000 steps/s`
+- **Revolutions per minute:** `RPM` → `RPM`
+  - Example: `60 RPM`
+- **Revolutions per second:** `rev/s`, `rev/sec`, `revolutions/s` → `REV_PER_SEC`
+  - Example: `1.5 rev/s`
+- **Degrees per second:** `deg/s`, `deg/sec`, `°/s` → `DEGREES_PER_SEC`
+  - Example: `360 deg/s`
+- **Radians per second:** `rad/s`, `rad/sec` → `RADIANS_PER_SEC`
+  - Example: `6.28 rad/s`
 - **Metric prefixes:** `k` (kilo), `M` (mega), `m` (milli), `µ/u` (micro)
 
-**Validation Strategy:**
-```python
-def validate_speed(value):
-    """Parse speed with unit, leverage cv.float_with_unit() for metric prefixes."""
-    # 1. Detect unit from suffix (steps/s, steps/min, steps/h, RPM, deg/s, deg/min, deg/h)
-    # 2. Use cv.float_with_unit() for that specific unit (gets metric prefix support)
-    # 3. Return {"value": float, "unit": str} for later conversion
-```
+> [!NOTE]
+> Unit aliases (e.g., `steps/s`, `steps/sec`) are mapped to the same enum value during validation. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
 
-**Conversion (Code Generation):**
-```python
-# Conversion to RPM based on steps_per_revolution
-if unit == "steps/s":
-    rpm = (value * 60) / steps_per_rev
-elif unit == "steps/min":
-    rpm = value / steps_per_rev
-elif unit == "steps/h":
-    rpm = (value / 60) / steps_per_rev
-elif unit == "RPM":
-    rpm = value
-elif unit == "deg/s":
-    rpm = (value * 60) / 360
-elif unit == "deg/min":
-    rpm = value / 360
-elif unit == "deg/h":
-    rpm = (value / 60) / 360
+> [!NOTE]
+> Metric prefixes may only be used when the value is a plain number or string, not if its a lambda.
+
+**Validation:**
+- Use `cv.float_with_unit()` for metric prefix support
+- Map unit string aliases to enum values
+- Return dict: `{"value": float, "unit": enum_string}`
+
+**Code Generation:**
+
+Static values → Convert to RPM at build-time:
+- `STEPS_PER_SEC`: `rpm = (value * 60.0) / steps_per_revolution`
+- `RPM`: `rpm = value`
+- `REV_PER_SEC`: `rpm = value * 60.0`
+- `DEGREES_PER_SEC`: `rpm = (value * 60.0) / 360.0`
+- `RADIANS_PER_SEC`: `rpm = (value * 60.0) / (2π)`
+
+Lambdas → Pass to C++ for runtime conversion:
+- `value`: Lambda code (templatable)
+- `unit`: Enum integer
+
+**Unit Enum (C++):**
+```cpp
+enum class SpeedUnit : uint8_t {
+    STEPS_PER_SEC,     // Default - ESPHome stepper compatibility
+    RPM,
+    REV_PER_SEC,
+    DEGREES_PER_SEC,
+    RADIANS_PER_SEC
+};
 ```
 
 **C++ Type:** `int16_t` (RPM, signed for bidirectional)
@@ -80,99 +93,118 @@ elif unit == "deg/h":
 
 
 
-### Acceleration Type
+### `acceleration` Type
 
-The `acceleration` type accepts motor accelerations in different units and handles metric prefixes for each unit.
+**Description:** Motor acceleration with multiple unit options. Converted to RPM/s for motor communication.
+
+**Default Unit:** `STEPS_PER_SEC_SQ` (for ESPHome stepper compatibility)
 
 **Accepted Values:**
-- **Steps:** `steps/s²`, `steps/s/s`, `steps/min²`, `steps/min/min`, `steps/h²`, `steps/h/h` - Steps per time unit squared (e.g., `1000 steps/s²`, `10k steps/min²`)
-- **Rotations:** `RPM/s`, `RPM/sec`, `RPM/min`, `RPM/h` - RPM per time unit (e.g., `100 RPM/s`, `6k RPM/min`)
-- **Degrees:** `deg/s²`, `deg/s/s`, `deg/min²`, `deg/min/min`, `deg/h²`, `deg/h/h` - Degrees per time unit squared (e.g., `360 deg/s²`, `21.6k deg/min²`)
+- **Steps per second squared:** `steps/s²`, `steps/s/s` → `STEPS_PER_SEC_SQ`
+  - Example: `1000 steps/s²`
+- **RPM per second:** `RPM/s`, `RPM/sec` → `RPM_PER_SEC`
+  - Example: `100 RPM/s`
+- **Revolutions per second squared:** `rev/s²`, `rev/s/s` → `REV_PER_SEC_SQ`
+  - Example: `1.5 rev/s²`
+- **Degrees per second squared:** `deg/s²`, `deg/s/s`, `°/s²` → `DEGREES_PER_SEC_SQ`
+  - Example: `360 deg/s²`
+- **Radians per second squared:** `rad/s²`, `rad/s/s` → `RADIANS_PER_SEC_SQ`
+  - Example: `6.28 rad/s²`
+- **Metric prefixes:** `k` (kilo), `M` (mega), `m` (milli), `µ/u` (micro)
 
-**Validation Strategy:**
+> [!NOTE]
+> Unit aliases (e.g., `steps/s²`, `steps/s/s`) are mapped to the same enum value during validation. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
 
-```python
-import esphome.config_validation as cv
+**Validation:**
+- Use `cv.float_with_unit()` for metric prefix support
+- Map unit string aliases to enum values
+- Return dict: `{"value": float, "unit": enum_string}`
 
-def validate_acceleration(value):
-    """
-    Validates acceleration with unit detection and metric prefix support.
-    Returns {"value": float, "unit": str} for code generation.
-    """
-    if isinstance(value, str):
-        value = value.strip().lower()
-        
-        # Detect unit and use cv.float_with_unit for metric prefix support
-        if "rpm/h" in value:
-            parsed = cv.float_with_unit("acceleration", "rpm/h")(value)
-            return {"value": parsed, "unit": "RPM/h"}
-        elif "rpm/min" in value:
-            parsed = cv.float_with_unit("acceleration", "rpm/min")(value)
-            return {"value": parsed, "unit": "RPM/min"}
-        elif "rpm/s" in value or "rpm/sec" in value:
-            parsed = cv.float_with_unit("acceleration", "rpm/(s|sec)")(value)
-            return {"value": parsed, "unit": "RPM/s"}
-        elif "deg/h²" in value or "deg/h/h" in value:
-            parsed = cv.float_with_unit("acceleration", "deg/(h(²|/h))")(value)
-            return {"value": parsed, "unit": "deg/h²"}
-        elif "deg/min²" in value or "deg/min/min" in value:
-            parsed = cv.float_with_unit("acceleration", "deg/(min(²|/min))")(value)
-            return {"value": parsed, "unit": "deg/min²"}
-        elif "deg/s²" in value or "deg/s/s" in value:
-            parsed = cv.float_with_unit("acceleration", "deg/(s(²|/s))")(value)
-            return {"value": parsed, "unit": "deg/s²"}
-        elif "steps/h²" in value or "steps/h/h" in value:
-            parsed = cv.float_with_unit("acceleration", "steps/(h(²|/h))")(value)
-            return {"value": parsed, "unit": "steps/h²"}
-        elif "steps/min²" in value or "steps/min/min" in value:
-            parsed = cv.float_with_unit("acceleration", "steps/(min(²|/min))")(value)
-            return {"value": parsed, "unit": "steps/min²"}
-        elif "steps/s²" in value or "steps/s/s" in value:
-            parsed = cv.float_with_unit("acceleration", "steps/(s(²|/s))")(value)
-            return {"value": parsed, "unit": "steps/s²"}
-        else:
-            raise cv.Invalid(f"Unknown acceleration unit in '{value}'")
-    
-    raise cv.Invalid("Acceleration must be a string with unit (e.g., '100 RPM/s', '500 steps/s²', '6k RPM/min')")
-```
+**Code Generation:**
 
-**Conversion Logic (Code Generation):**
+Static values → Convert to RPM/s at build-time (clamp to 0-65535):
+- `STEPS_PER_SEC_SQ`: `rpm_per_s = (value * 60.0) / steps_per_revolution`
+- `RPM_PER_SEC`: `rpm_per_s = value`
+- `REV_PER_SEC_SQ`: `rpm_per_s = value * 60.0`
+- `DEGREES_PER_SEC_SQ`: `rpm_per_s = (value * 60.0) / 360.0`
+- `RADIANS_PER_SEC_SQ`: `rpm_per_s = (value * 60.0) / (2π)`
 
-```python
-def convert_acceleration_to_rpm_per_s(value: float, unit: str, steps_per_revolution: int) -> int:
-    """
-    Converts acceleration to RPM/s for motor communication.
-    Motor expects uint16_t RPM/s (0-65535).
-    """
-    if unit == "steps/s²":
-        rpm_per_s = (value * 60.0) / steps_per_revolution
-    elif unit == "steps/min²":
-        rpm_per_s = value / steps_per_revolution
-    elif unit == "steps/h²":
-        rpm_per_s = (value / 60.0) / steps_per_revolution
-    elif unit == "deg/s²":
-        rpm_per_s = (value * 60.0) / 360.0
-    elif unit == "deg/min²":
-        rpm_per_s = value / 360.0
-    elif unit == "deg/h²":
-        rpm_per_s = (value / 60.0) / 360.0
-    elif unit == "RPM/s":
-        rpm_per_s = value
-    elif unit == "RPM/min":
-        rpm_per_s = value / 60.0
-    elif unit == "RPM/h":
-        rpm_per_s = value / 3600.0
-    else:
-        raise ValueError(f"Unknown unit: {unit}")
-    
-    # Clamp to uint16_t range: 0 to 65535
-    return int(max(0, min(65535, round(rpm_per_s))))
+Lambdas → Pass to C++ for runtime conversion:
+- `value`: Lambda code (templatable)
+- `unit`: Enum integer
+
+**Unit Enum (C++):**
+```cpp
+enum class AccelerationUnit : uint8_t {
+    STEPS_PER_SEC_SQ = 0,  // Default - ESPHome stepper compatibility
+    RPM_PER_SEC = 1,
+    REV_PER_SEC_SQ = 2,
+    DEGREES_PER_SEC_SQ = 3,
+    RADIANS_PER_SEC_SQ = 4
+};
 ```
 
 **C++ Type:** `uint16_t` (RPM/s, unsigned since acceleration is always positive)
 
 **References:**
 - ESPHome `cv.float_with_unit`: https://esphome.io/components/sensor/index.html#config-validation
+
+
+
+### `position` Type
+
+**Description:** Motor position with multiple unit options. Converted to steps for motor communication.
+
+**Default Unit:** `STEPS` (for ESPHome stepper compatibility)
+
+**Accepted Values:**
+- **Steps:** `steps`, `step` → `STEPS`
+  - Example: `3200 steps`
+- **Revolutions:** `rev`, `revolutions` → `REVOLUTIONS`
+  - Example: `2.5 rev`
+- **Degrees:** `deg`, `degrees`, `°` → `DEGREES`
+  - Example: `720 deg`
+- **Radians:** `rad`, `radians` → `RADIANS`
+  - Example: `6.28 rad`
+- **Metric prefixes:** `k` (kilo), `M` (mega), `m` (milli), `µ/u` (micro)
+
+> [!NOTE]
+> Unit aliases (e.g., `rev`, `revolutions`) are mapped to the same enum value during validation. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
+
+> [!NOTE]
+> Metric prefixes may only be used when the value is a plain number or string, not if its a lambda.
+
+**Validation:**
+- Use `cv.float_with_unit()` for metric prefix support
+- Map unit string aliases to enum values
+- Return dict: `{"value": float, "unit": enum_string}`
+
+**Code Generation:**
+
+Static values → Convert to steps at build-time:
+- `STEPS`: `steps = value`
+- `REVOLUTIONS`: `steps = value * steps_per_revolution`
+- `DEGREES`: `steps = (value / 360.0) * steps_per_revolution`
+- `RADIANS`: `steps = (value / (2π)) * steps_per_revolution`
+
+Lambdas → Pass to C++ for runtime conversion:
+- `value`: Lambda code (templatable)
+- `unit`: Enum integer
+
+**Unit Enum (C++):**
+```cpp
+enum class PositionUnit : uint8_t {
+    STEPS,         // Default - ESPHome stepper compatibility
+    REVOLUTIONS,
+    DEGREES,
+    RADIANS
+};
+```
+
+**C++ Type:** `int32_t` (steps, signed for bidirectional positioning)
+
+**References:**
+- Uses [`cv.float_with_unit()`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py) internally per unit
 
 
 
@@ -186,25 +218,10 @@ def convert_acceleration_to_rpm_per_s(value: float, unit: str, steps_per_revolut
 - Time period - Disable motor after specified idle time (e.g., `5s`, `30s`, `2min`)
   - Range: `1ms` to `4294967294ms` (~49.7 days)
 
-**Validation Strategy:**
-
-```python
-import esphome.config_validation as cv
-
-def validate_auto_sleep(value):
-    """
-    Validates auto_sleep with boolean, inf, or time period support.
-    Returns uint32_t milliseconds for C++.
-    """
-    if value is False or (isinstance(value, str) and value.lower() == "inf"):
-        return 0xFFFFFFFF  # UINT32_MAX = Feature disabled
-    elif value is True:
-        return 0  # Immediately disable (0ms delay)
-    else:
-        # Time period string like "5s", "30s", "2min"
-        ms = cv.positive_time_period_milliseconds(value)
-        return min(ms, 0xFFFFFFFE)  # Clamp to UINT32_MAX - 1
-```
+**Validation:**
+- Accept `false`/`inf` → return `UINT32_MAX` (disabled)
+- Accept `true`/`0s` → return `0` (immediate)
+- Accept time period → use `cv.positive_time_period_milliseconds`, clamp to `UINT32_MAX - 1`
 
 **C++ Type:** `uint32_t` (milliseconds)
 
@@ -259,46 +276,10 @@ auto_sleep: 5min       # Disable after 5 minutes
 - **Plain number:** Interpreted as milliamperes (e.g., `1500` = `1500mA`)
 - **Metric prefixes:** Supported via ESPHome's current validator
 
-**Validation Strategy:**
-
-```python
-import esphome.config_validation as cv
-
-def validate_current(config, servo_type):
-    """
-    Validates current with ESPHome's cv.current and enforces servo_type limits.
-    Returns milliamperes (mA) as float for code generation.
-    """
-    # Use ESPHome's built-in current validator (handles A/mA/plain numbers)
-    current_amps = cv.current(config[CONF_WORKING_CURRENT])
-    current_ma = current_amps * 1000.0
-    
-    # Enforce limits based on servo_type
-    max_current_ma = {
-        "SERVO28D": 3000.0,  # 3.0A
-        "SERVO35D": 3000.0,  # 3.0A
-        "SERVO42D": 3000.0,  # 3.0A
-        "SERVO57D": 5200.0,  # 5.2A
-    }
-    
-    servo = config[CONF_SERVO_TYPE]
-    if current_ma > max_current_ma[servo]:
-        raise cv.Invalid(
-            f"working_current {current_ma}mA exceeds maximum "
-            f"{max_current_ma[servo]}mA for {servo}"
-        )
-    
-    return current_ma
-```
-
-**Conversion (Code Generation):**
-
-```python
-# ESPHome's cv.current already returns amperes as float
-# Convert to milliamperes for Modbus
-current_amps = cv.current(value)  # Returns float (amperes)
-current_ma = int(current_amps * 1000)  # Convert to mA (uint16_t)
-```
+**Validation:**
+- Use ESPHome's `cv.current` (handles A/mA/plain numbers automatically)
+- Convert to milliamperes: `current_ma = current_amps * 1000.0`
+- Enforce servo_type limits (see defaults/maximums above)
 
 **C++ Type:** `uint16_t` (milliamperes, 0-65535 mA)
 
@@ -324,13 +305,9 @@ working_current: 2.5A      # With decimal
 - `CW` – Clockwise (positive direction)
 - `CCW` – Counter-clockwise (negative direction)
 
-**Validation Strategy:**
+**Validation:**
 
-```python
-import esphome.config_validation as cv
-
-validate_direction = cv.one_of("CW", "CCW", lower=True)
-```
+Use `cv.one_of("CW", "CCW", lower=True)`
 
 **C++ Type:** enum (component-internal)
 
@@ -348,15 +325,11 @@ validate_direction = cv.one_of("CW", "CCW", lower=True)
 > [!IMPORTANT]
 > `NEAREST` is only valid when `homing.mode` is `VIRTUAL`. Validation must check this context.
 
-**Validation Strategy:**
+**Validation:**
 
-```python
-import esphome.config_validation as cv
+Use `cv.one_of("CW", "CCW", "NEAREST", lower=True)`
 
-validate_homing_direction = cv.one_of("CW", "CCW", "NEAREST", lower=True)
-# Additional contextual check in field validation:
-# if value == "NEAREST": require homing.mode == "VIRTUAL"
-```
+Additional context check: If `NEAREST`, require `homing.mode == "VIRTUAL"`
 
 **C++ Type:** enum (component-internal)
 
@@ -376,16 +349,9 @@ validate_homing_direction = cv.one_of("CW", "CCW", "NEAREST", lower=True)
 > [!NOTE]
 > The controller firmware quantizes these into five discrete speed levels (0–4). The actual RPM values are hardware-dependent and not user-configurable.
 
-**Validation Strategy:**
+**Validation:**
 
-```python
-import esphome.config_validation as cv
-
-validate_zeroing_speed = cv.one_of(
-    "VERY_SLOW", "SLOW", "MEDIUM", "FAST", "VERY_FAST",
-    lower=True
-)
-```
+Use `cv.one_of("VERY_SLOW", "SLOW", "MEDIUM", "FAST", "VERY_FAST", lower=True)`
 
 **C++ Type:** enum (component-internal, maps to firmware speed levels 0–4)
 
@@ -400,6 +366,62 @@ enum class ZeroingSpeed : uint8_t {
 };
 ```
 
+
+### `templatable_with_unit` Type
+
+**Description:** Generic type for templatable values with optional unit specification. Used for actions where the value can be either a number or a lambda, but the unit is always a static enum (e.g., for position, speed, acceleration).
+
+**Motivation:** ESPHome's standard `stepper` component calculates positions in steps, which requires users to think in motor steps rather than the actual physical units they care about (revolutions, degrees). This component internally uses angles and revolutions for calculations. The `templatable_with_unit` type allows users to specify values in their preferred unit while maintaining compatibility with ESPHome's stepper interface. When no unit is specified, the value falls back to the standard stepper unit (steps) to ensure compatibility with existing stepper configurations and automations.
+
+**Accepted Formats:**
+1. **Plain number**: Default unit is used
+   ```yaml
+   parameter: 1000
+   ```
+2. **String with unit**: Parsed at compile-time
+   ```yaml
+   parameter: "60 RPM"
+   parameter: "5.5 revolutions"
+   ```
+3. **Dict with explicit value and unit**:
+   ```yaml
+   parameter:
+     value: 60        # Number or lambda
+     unit: RPM        # Unit parsed at compile-time
+   ```
+4. **Lambda without unit** (uses default unit):
+   ```yaml
+   parameter: !lambda "return id(sensor).state;"
+   ```
+5. **Dict with lambda and unit**:
+   ```yaml
+   parameter:
+     value: !lambda "return id(sensor).state;"
+     unit: RPM
+   ```
+
+**Validation:**
+
+Handle 5 formats:
+1. Plain number → `{"value": float, "unit": default_unit}`
+2. String with unit → Parse and return `{"value": float, "unit": enum_string}`
+3. Dict with value/unit → Validate with `cv.templatable(cv.float_)` and `cv.enum()`
+4. Lambda without unit → `{"value": lambda, "unit": default_unit}`
+5. Dict with lambda and unit → Same as 3
+
+Returns: `{"value": templatable, "unit": enum_string}`
+
+**Usage:**
+- Actions for position, speed, acceleration, etc. (e.g., `set_speed`, `set_acceleration`, `move_to`)
+
+**C++ API Pattern:**
+```cpp
+void action(float value, UnitEnum unit = UnitEnum::DEFAULT);
+```
+
+**References:**
+- [`cv.templatable()`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py) – Validates static values, passes lambdas unchanged
+- Conversion uses `steps_per_revolution` from component configuration
 
 
 ## Configuration
@@ -1041,28 +1063,12 @@ Additional fields available only when [mode](#mode) is `SPEED`.
 
 > [!WARNING]
 > **Default Behavior on Startup**
-> 
-> With all defaults, the motor will immediately start rotating at `1 RPM` in `CW` direction when the component initializes. This is determined by:
+>
+> With all defaults, the motor will immediately start rotating at `1 RPM` in clockwise direction when the component initializes. This is determined by:
 > - `initial_speed`: `1 RPM` (from [Basic Configuration](#initial_speed))
-> - `initial_direction`: `CW` (see below)
-> 
+>
 > If you need the motor to remain stationary at startup, explicitly set `initial_speed: 0 RPM` or use an action to control when movement begins.
 
-#### `initial_direction`
-
-Direction for initial continuous movement when speed mode starts.
-
-- **Type:** [`direction`](#direction-type)
-- **Required:** ❌ Optional
-- **Default:** `CW`
-
-**Example:**
-```yaml
-stepper:
-  - platform: servo42d_rs485
-    mode: SPEED
-    initial_direction: CCW  # Start rotating counter-clockwise
-```
 
 
 ## Actions
@@ -1279,19 +1285,32 @@ Set the maximum speed of the stepper at runtime.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **speed** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`speed`](#speed-type)): The speed to drive the stepper at. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
+- **speed** (**Required**, [`templatable_with_unit`](#templatable_with_unit-type) as [`speed`](#speed-type)): The speed to drive the stepper at. Supports units like `steps/s`, `RPM`, `rev/s`, `deg/s`, `rad/s`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
 ```cpp
-void set_speed(float speed_steps_per_sec);
+struct Speed {
+    float value;
+    SpeedUnit unit;
+};
+
+void set_speed(Speed speed);
 ```
 
-**Example:**
+**Examples:**
 ```yaml
 on_...:
+  # Plain number with unit
   - stepper.set_speed:
       id: my_stepper
       speed: 250 steps/s
+  
+  # Lambda with unit
+  - stepper.set_speed:
+      id: my_stepper
+      speed:
+        value: !lambda "return id(speed_sensor).state;"
+        unit: RPM
 ```
 
 
@@ -1302,22 +1321,35 @@ Set the acceleration of the stepper at runtime.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **acceleration** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`acceleration`](#acceleration-type)): The acceleration to use when starting to move. Supports units like `steps/s²`, `RPM/s`, etc.
+- **acceleration** (**Required**, [`templatable_with_unit`](#templatable_with_unit-type) as [`acceleration`](#acceleration-type)): The acceleration to use when starting to move. Supports units like `steps/s²`, `RPM/s`, `rev/s²`, `deg/s²`, `rad/s²`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
 ```cpp
-void set_acceleration(float acceleration_steps_per_sec2);
+struct Acceleration {
+    float value;
+    AccelerationUnit unit;
+};
+
+void set_acceleration(Acceleration acceleration);
 ```
 
 > [!NOTE]
 > Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. Both use the same internal value, so calling either action will affect both acceleration and deceleration.
 
-**Example:**
+**Examples:**
 ```yaml
 on_...:
+  # Plain number with unit
   - stepper.set_acceleration:
       id: my_stepper
-      acceleration: 250 steps/s^2
+      acceleration: 250 steps/s²
+  
+  # Lambda with unit
+  - stepper.set_acceleration:
+      id: my_stepper
+      acceleration:
+        value: !lambda "return id(accel_sensor).state;"
+        unit: RPM/s
 ```
 
 
@@ -1328,11 +1360,16 @@ Stop the current motor movement. Available in both Position and Speed modes.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`acceleration`](#acceleration-type)): Deceleration to use when stopping the motor. Supports units like `steps/s²`, `RPM/s`, etc.
+- **acceleration** (*Optional*, [`templatable_with_unit`](#templatable_with_unit-type) as [`acceleration`](#acceleration-type)): Deceleration to use when stopping the motor. Supports units like `steps/s²`, `RPM/s`, `rev/s²`, `deg/s²`, `rad/s²`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
 ```cpp
-void stop(optional<float> deceleration_steps_per_sec2);
+struct Acceleration {
+    float value;
+    AccelerationUnit unit;
+};
+
+void stop(optional<Acceleration> deceleration);
 ```
 
 > [!NOTE]
@@ -1341,12 +1378,20 @@ void stop(optional<float> deceleration_steps_per_sec2);
 > [!WARNING]
 > At speeds above about 1000 RPM, avoid stopping too abruptly. Use a non-zero `acceleration` (deceleration) for smoother, safer stops to protect mechanics and couplings.
 
-**Example:**
+**Examples:**
 ```yaml
 on_...:
+  # Plain number with unit
   - stepper.stop:
       id: my_stepper
-      acceleration: 500 steps/s^2
+      acceleration: 500 steps/s²
+  
+  # Lambda with unit
+  - stepper.stop:
+      id: my_stepper
+      acceleration:
+        value: !lambda "return id(decel_sensor).state;"
+        unit: RPM/s
 ```
 
 
@@ -1383,41 +1428,89 @@ Set the target position of the motor. The stepper will move towards the target p
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **target** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The target position in steps.
+- **target** (**Required**, [`templatable_with_unit`](#templatable_with_unit-type) as [`position`](#position-type)): The target position. Supports units like `steps`, `revolutions`, `degrees`, `radians`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
 ```cpp
-void set_target(int32_t target);
+struct Position {
+    float value;
+    PositionUnit unit;
+};
+
+void set_target(Position target);
 ```
 
-**Example:**
+**Examples:**
 ```yaml
 on_...:
+  # Plain number (uses default unit: steps)
   - stepper.set_target:
       id: my_stepper
-      target: 1000
+      target: 3200
+  
+  # String with unit
+  - stepper.set_target:
+      id: my_stepper
+      target: 2.5 rev
+  
+  # Dict format with unit
+  - stepper.set_target:
+      id: my_stepper
+      target:
+        value: 720
+        unit: deg
+  
+  # Lambda (uses default unit: steps)
+  - stepper.set_target:
+      id: my_stepper
+      target: !lambda "return id(target_sensor).state;"
+  
+  # Lambda with explicit unit
+  - stepper.set_target:
+      id: my_stepper
+      target:
+        value: !lambda "return id(target_sensor).state;"
+        unit: rev
 ```
 
 
 #### `stepper.report_position`
 
-Report the current position to a specific value (in steps). Sets an offset for future movements. To store a position for virtual homing, use [`stepper.set_zero`](#stepperset_zero) instead.
+Report the current position to a specific value. Sets an offset for future movements. To store a position for virtual homing, use [`stepper.set_zero`](#stepperset_zero) instead.
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **position** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The position to report in steps.
+- **position** (**Required**, [`templatable_with_unit`](#templatable_with_unit-type) as [`position`](#position-type)): The position to report. Supports units like `steps`, `revolutions`, `degrees`, `radians`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
 ```cpp
-void report_position(int32_t position);
+struct Position {
+    float value;
+    PositionUnit unit;
+};
+
+void report_position(Position position);
 ```
 
-**Example:**
+**Examples:**
 ```yaml
 on_...:
+  # Plain number (uses default unit: steps)
   - stepper.report_position:
       id: my_stepper
       position: 0
+  
+  # String with unit
+  - stepper.report_position:
+      id: my_stepper
+      position: 1 rev
+  
+  # Dict format
+  - stepper.report_position:
+      id: my_stepper
+      position:
+        value: 90
+        unit: deg
 ```
 
 
@@ -1475,24 +1568,46 @@ Run the motor continuously at specified speed. Used in speed mode and for contin
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **speed** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`speed`](#speed-type)): Target speed. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
-- **direction** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`direction`](#direction-type)): Direction, one of clockwise `CW`, counter-clockwise `CCW`.
-- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), [`acceleration`](#acceleration-type)): Acceleration for speed-mode change. Supports units like `steps/s²`, `RPM/s`, etc.
+- **speed** (*Optional*, [`templatable_with_unit`](#templatable_with_unit-type) as [`speed`](#speed-type)): Target speed (signed; sign determines direction). Supports units like `steps/s`, `RPM`, `rev/s`, `deg/s`, `rad/s`. Value can be a number, string with unit, or lambda.
+- **acceleration** (*Optional*, [`templatable_with_unit`](#templatable_with_unit-type) as [`acceleration`](#acceleration-type)): Acceleration for speed-mode change. Supports units like `steps/s²`, `RPM/s`, `rev/s²`, `deg/s²`, `rad/s²`. Value can be a number, string with unit, or lambda.
 
 **C++ API:**
 ```cpp
-void run_continuous(optional<float> speed_steps_per_sec, optional<Direction> direction, optional<float> acceleration_steps_per_sec2);
+struct Speed {
+    float value;
+    SpeedUnit unit;
+};
+
+struct Acceleration {
+    float value;
+    AccelerationUnit unit;
+};
+
+void run_continuous(optional<Speed> speed,
+                    optional<Acceleration> acceleration);
 ```
 
 > [!NOTE]
-> Exactly one of `speed`, `direction`, or `acceleration` must be provided per call. Omitted values keep their last-used value. If a value was never set before, the component default (from `initial_speed`, `initial_direction`, or `initial_acceleration`) is used.
+> At least one of `speed` or `acceleration` must be provided per call. Omitted values keep their last-used value. If a value was never set before, the component default (e.g., from `initial_speed` or `initial_acceleration`) is used. The sign of `speed` determines direction (positive => clockwise, negative => counter-clockwise).
 
-**Example:**
+**Examples:**
 ```yaml
 on_...:
+  # Set all parameters (clockwise)
   - stepper.run_continuous:
       id: my_stepper
-      direction: CW
       acceleration: 1000 steps/s²
       speed: 1000 steps/s
+  
+  # Change only speed (counter-clockwise)
+  - stepper.run_continuous:
+      id: my_stepper
+    speed: -60 RPM
+  
+  # Use lambda for dynamic speed
+  - stepper.run_continuous:
+      id: my_stepper
+      speed:
+        value: !lambda "return id(speed_sensor).state;"
+        unit: RPM
 ```

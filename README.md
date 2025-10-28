@@ -40,9 +40,21 @@ stepper:
   - `SR_OPEN`: Open-loop mode, stepper behaves like a regular stepper motor. Working current is `working_current`, holding current is `holding_current_percent` of working current.
   - `SR_CLOSE`: Closed-loop mode, same as `SR_OPEN` but with position feedback from encoder to prevent missed steps.
   - `SR_VFOC`: FOC mode (recommended), same as `SR_CLOSE` but current may be adaptet to the steppers needs up to the max `working_current`. `holding_current_percent` is ignored in this mode.
-- **initial_speed** (*Optional*, float): Initial/target speed for motor operations. Supports units: `steps/s`, `RPM`, `revolutions/s`, `degrees/s`. Defaults to `1 RPM`. Must be ≤ `max_speed`
-- **max_speed** (*Optional*, float): Maximum speed the contoller will ask for. Defaults to `control_mode` based Hardware limits: `SR_OPEN`: 400 RPM, `SR_CLOSE`: 1500 RPM, `SR_VFOC`: 3000 RPM.
-- **initial_acceleration** (*Optional*, float): The acceleration in steps/s^2 (steps per seconds squared) to use when changing the speed (for example when starting) of the stepper. The default is `inf` which means infinite acceleration, so the stepper will try to drive with the full speed immediately. This value is helpful if that first motion of the motor is too jerky for what it's moving. If you make this a small number, it will take the motor a moment to get up to speed. `revolutions/s^2` may also be used.
+- **initial_speed** (*Optional*): Initial/target speed for motor operations. Defaults to `1 RPM`. Must be ≤ `max_speed`.
+  - You can write it in any of these forms:
+    - `initial_speed: 1000`                    # steps/s (default unit)
+    - `initial_speed: "60 RPM"`
+    - `initial_speed: { value: 60, unit: RPM }`
+- **max_speed** (*Optional*): Maximum speed the controller will ask for. Defaults to control-mode hardware limits: `SR_OPEN`: 400 RPM, `SR_CLOSE`: 1500 RPM, `SR_VFOC`: 3000 RPM.
+  - Supported forms:
+    - `max_speed: 6000`                        # steps/s (default unit)
+    - `max_speed: "2000 RPM"`
+    - `max_speed: { value: 2000, unit: RPM }`
+- **initial_acceleration** (*Optional*): Acceleration when changing speed. Default: `inf` (instant).
+  - Supported forms:
+    - `initial_acceleration: 500`              # steps/s^2 (default unit)
+    - `initial_acceleration: "100 RPM/s"`
+    - `initial_acceleration: { value: 100, unit: RPM_PER_SEC }`
 - **working_current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Working current. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). Defaults and maximums depend on `servo_type`:
   - Defaults: `0.6A` (28D), `0.8A` (35D), `1.6A` (42D), `3.2A` (57D)
   - Max: up to `3.0A` (28D/35D/42D), up to `5.2A` (57D)
@@ -71,7 +83,6 @@ stepper:
 
 
 ### Configuration
-- **initial_direction** (*Optional*, enum): Direction for initial continuous movement. One of `CW` or `CCW`. Defaults to `CW`.
 - All other from [Base Configuration](#base-configuration).
 
 In following actions are exclisively used in speed mode:
@@ -115,6 +126,11 @@ stepper:
   - **speed**: (*Optional*, string): Homing speed. Supports units: `RPM` or `steps/s`. Default: `1 RPM`.
     > [!NOTE]
     > In `mode: VIRTUAL`, the speed may only be provided in five discrete levels. Use `VERY_SLOW`, `SLOW`, `MEDIUM`, `FAST` or `VERY_FAST` in this mode to set the speed.
+    
+    Examples for ENDSTOP/SENSORLESS:
+    - `speed: 1`                 # steps/s (default unit)
+    - `speed: "50 RPM"`
+    - `speed: { value: 50, unit: RPM }`
   - **endstop_trigger** (*Optional*, enum): Endstop may be `LOW` or `HIGH` to be recognized as triggered. May only be used for `mode: ENDSTOP`. Default: `HIGH`.
   - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Constant ccurrent used while Homing. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). May only be used for `mode: SENSORLESS`. Default depends on `servo_type`: `0.2A` (28D), `0.2A` (35D), `0.8A` (42D), `0.4A` (57D).
   - **at_startup** (*Optional*, boolean): Run homing at startup. Default: `false`.
@@ -136,31 +152,69 @@ Set the target position of the motor. The stepper will move towards the target p
 
 ```yaml
 on_...:
+  # Syntax 1: Plain number (steps)
   - stepper.set_target:
       id: my_stepper
       target: 1000
+
+  # Syntax 2: String with unit (parsed at compile-time)
+  - stepper.set_target:
+      id: my_stepper
+      target: "5.5 revolutions"
+
+  # Syntax 3: Dict with explicit unit
+  - stepper.set_target:
+      id: my_stepper
+      target:
+        value: 5.5
+        unit: REVOLUTIONS
+
+  # Syntax 4: Lambda with unit
+  - stepper.set_target:
+      id: my_stepper
+      target:
+        value: !lambda "return id(sensor).state;"
+        unit: REVOLUTIONS
 ```
 
 ### Configuration
 
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **target** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The target position in steps.
+- **target** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The target position. Accepts:
+  - **Plain number** (int/float): Interpreted as steps (e.g., `1000`)
+  - **String with unit**: Parsed at compile-time (e.g., `"5.5 revolutions"`, `"180 degrees"`)
+  - **Dict**: `{value: <number or lambda>, unit: <STEPS|REVOLUTIONS|DEGREES|RADIANS>}`
+    - `value` is templatable (can be lambda)
+    - `unit` is static enum (not templatable)
 
 ## `stepper.report_position`
 
-Report the current position to a specific value (in steps). Sets an offset for future movements. To store a position for virtual homing, use [`stepper.set_zero`](#stepperset_zero) instead.
+Report the current position to a specific value. Sets an offset for future movements. To store a position for virtual homing, use [`stepper.set_zero`](#stepperset_zero) instead.
 
 ```yaml
 on_...:
+  # Syntax 1: Plain number (steps)
   - stepper.report_position:
       id: my_stepper
       position: 0
+
+  # Syntax 2: String with unit
+  - stepper.report_position:
+      id: my_stepper
+      position: "2 revolutions"
+
+  # Syntax 3: Dict with explicit unit
+  - stepper.report_position:
+      id: my_stepper
+      position:
+        value: 2.5
+        unit: REVOLUTIONS
 ```
 
 ### Configuration
 
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **position** (**Required**, int, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The position to report in steps.
+- **position** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The position to report. Accepts same formats as [`target` in set_target](#stepperset_target).
 
 ## `stepper.home`
 ```yaml
@@ -187,22 +241,34 @@ Run the motor continuously at specified speed.
 
 ```yaml
 on_...:
+  # Full configuration
   - stepper.run_continuous:
       id: my_stepper
-      direction: CW
       acceleration: 1000 steps/s²
       speed: 1000 steps/s
+
+  # With dict syntax for speed
+  - stepper.run_continuous:
+      id: my_stepper
+      speed:
+        value: -60
+        unit: RPM
 ```
 
 ### Configuration
 
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **speed** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): Target speed in `steps/s`. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
-- **direction** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), enum): Direction, one of clockwise `CW`, counter-clockwise `CCW`.
-- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float/string): Acceleration for speed-mode change in `steps/s^2`. `revolutions/s^2` is also supported.
+- **speed** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): Target speed (signed; sign determines direction). Accepts:
+  - **Plain number**: Interpreted as steps/s (e.g., `1000`, `-1000`)
+  - **String with unit**: Parsed at compile-time (e.g., `"60 RPM"`, `"-360 deg/s"`)
+  - **Dict**: `{value: <number or lambda>, unit: <STEPS_PER_SEC|RPM|REV_PER_SEC|DEGREES_PER_SEC|RADIANS_PER_SEC>}`
+- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): Acceleration. Accepts:
+  - **Plain number**: Interpreted as steps/s² (e.g., `500`)
+  - **String with unit**: Parsed at compile-time (e.g., `"100 RPM/s"`)
+  - **Dict**: `{value: <number or lambda>, unit: <STEPS_PER_SEC_SQ|RPM_PER_SEC|REV_PER_SEC_SQ>}`
 
 > [!NOTE]
-> Exactly one of `speed`, `direction`, or `acceleration` must be provided per call. Omitted values keep their last-used value. If a value was never set before, the component default is used.
+> At least one of `speed` or `acceleration` must be provided per call. Omitted values keep their last-used value. If a value was never set before, the component default is used. The sign of `speed` determines direction (positive=CW, negative=CCW).
 
 ## `stepper.stop`
 
@@ -210,14 +276,22 @@ Stop the current motor movement.
 
 ```yaml
 on_...:
+  # Plain number
   - stepper.stop:
       id: my_stepper
       acceleration: 500 steps/s^2
+
+  # With dict syntax
+  - stepper.stop:
+      id: my_stepper
+      acceleration:
+        value: 100
+        unit: RPM_PER_SEC
 ```
 
 ### Configuration
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float/string): Deceleration to use when stopping the motor in `steps/s^2`. `revolutions/s^2` is also supported.
+- **acceleration** (*Optional*, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): Deceleration to use when stopping. Accepts same formats as acceleration in [`run_continuous`](#stepperrun_continuous).
 
 > [!NOTE]
 > `acceleration` keeps its last-used value. If a value was never set before, the component default is used.
@@ -347,15 +421,23 @@ Set the maximum speed of the stepper at runtime.
 
 ```yaml
 on_...:
+  # Plain number (steps/s)
   - stepper.set_speed:
       id: my_stepper
       speed: 250 steps/s
+
+  # With dict syntax
+  - stepper.set_speed:
+      id: my_stepper
+      speed:
+        value: 60
+        unit: RPM
 ```
 
 ### Configuration
 
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **speed** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): The speed in `steps/s` (steps per seconds) to drive the stepper at. Supports units like `steps/s`, `RPM`, `revolutions/s`, `degrees/s`.
+- **speed** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The speed to drive the stepper at. Accepts same formats as [`speed` in run_continuous](#stepperrun_continuous).
 
 ## `stepper.set_acceleration`
 
@@ -363,15 +445,23 @@ Set the acceleration of the stepper at runtime.
 
 ```yaml
 on_...:
+  # Plain number (steps/s²)
   - stepper.set_acceleration:
       id: my_stepper
       acceleration: 250 steps/s^2
+
+  # With dict syntax
+  - stepper.set_acceleration:
+      id: my_stepper
+      acceleration:
+        value: 100
+        unit: RPM_PER_SEC
 ```
 
 ### Configuration
 
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
-- **acceleration** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable), float): The acceleration in `steps/s^2` (steps per seconds squared) to use when starting to move. `revolutions/s^2` is also supported.
+- **acceleration** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The acceleration to use when starting to move. Accepts same formats as acceleration in [`run_continuous`](#stepperrun_continuous).
 
 > [!NOTE]
 > Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. Both use the same internal value, so calling either action will affect both acceleration and deceleration.
