@@ -460,7 +460,13 @@ class Speed {
 };
 
 enum class SpeedUnit : uint8_t {
-  STEPS_PER_SEC = 0, RPM = 1, REV_PER_SEC = 2, DEGREES_PER_SEC = 3, RADIANS_PER_SEC = 4
+  STEPS_PER_SEC = 0,
+  RPM = 1,
+  REV_PER_SEC = 2,
+  DEGREES_PER_SEC = 3,
+  RADIANS_PER_SEC = 4,
+  DEGREES_PER_MIN = 5,
+  DEGREES_PER_HOUR = 6
 };
 ```
 
@@ -498,7 +504,11 @@ class Acceleration {
 };
 
 enum class AccelerationUnit : uint8_t {
-  STEPS_PER_SEC_SQ = 0, RPM_PER_SEC = 1, REV_PER_SEC_SQ = 2, DEGREES_PER_SEC_SQ = 3, RADIANS_PER_SEC_SQ = 4
+  STEPS_PER_SEC_SQ = 0,
+  RPM_PER_SEC = 1,
+  REV_PER_SEC_SQ = 2,
+  DEGREES_PER_SEC_SQ = 3,
+  RADIANS_PER_SEC_SQ = 4
 };
 ```
 
@@ -579,7 +589,12 @@ class Position {
 };
 
 enum class PositionUnit : uint8_t {
-  STEPS = 0, REVOLUTIONS = 1, DEGREES = 2, RADIANS = 3
+  STEPS = 0,
+  REVOLUTIONS = 1,
+  DEGREES = 2,
+  RADIANS = 3,
+  ARCMINUTES = 4,
+  ARCSECONDS = 5
 };
 ```
 
@@ -713,6 +728,7 @@ The component follows ESPHome's standard architecture by inheriting from three b
 > - `void set_speed(Speed speed)` - Our Speed-based API (coexists with base class `set_max_speed()`)
 >
 > **Speed Handling:**
+>
 > - ESPHome may call base class `set_max_speed(float steps_per_second)` → updates `max_speed_` directly
 > - Our YAML config calls our `set_speed(Speed)` → converts from units and updates internal state
 > - Component must monitor `max_speed_` in `loop()` for external changes and sync internal Speed representation if needed
@@ -1011,11 +1027,11 @@ enum class CommandState {
 #### MotorControl Contracts and conversions
 
 - run_continuous:
-  - Accepts optional Speed and Acceleration structs with units
+  - Accepts optional Speed and Acceleration objects
   - At least one parameter must be provided per call
   - Omitted parameters keep their last-used values
   - Speed sign determines direction (positive = CW, negative = CCW)
-  - Convert to RPM and internal acceleration using Helpers
+  - Get RPM from speed.rpm() and acceleration from accel.acc_internal()
   - Clamp RPM to mode-dependent limit (SR_OPEN: 400, SR_CLOSE: 1500, SR_VFOC: 3000)
 - set_working_current:
   - Must validate against servo_type limits before sending to hardware
@@ -1032,13 +1048,13 @@ enum class CommandState {
   - All stored Position values and targets are implicitly affected (steps change)
   - Target/offset logic remains consistent in "steps" of new microstep setting
 - stop:
-  - If deceleration provided, convert to internal value using Helpers
-  - Else use last_accel or default clamp
+  - If deceleration provided, get hardware value from decel.acc_internal()
+  - Else use last_accel.acc_internal() or default
   - Never use instant stop here (that's emergency_stop)
 - home:
   - VIRTUAL: configure 0_Mode params (using speed level 0-4) and restart device to return to stored zero
-  - SENSORLESS: use homing_current as threshold; direction and speed as configured; convert speed to RPM
-  - ENDSTOP: configure endstop trigger and speed (convert to RPM); then issue GoHome command
+  - SENSORLESS: use homing_current as threshold; direction and speed as configured; get RPM from speed.rpm()
+  - ENDSTOP: configure endstop trigger and speed (get RPM from speed.rpm()); then issue GoHome command
 
 ### class Position
 
@@ -1054,13 +1070,13 @@ enum class CommandState {
 
 #### Position Contracts and conversions
 
-- set_target accepts Position struct with value and unit
-- Convert to steps using Helpers::position_to_steps()
+- set_target accepts Position object
+- Get steps from target.steps(steps_per_revolution)
 - Convert steps to device's expected units:
   - Modes that expect pulses (full steps): divide by microsteps if required
   - Modes that expect encoder ticks: use 16384 ticks/rev conversion
 - report_position(Position):
-  - Convert position to steps
+  - Get steps from position.steps(steps_per_revolution)
   - Set position_offset_ = encoder_position_steps − steps
   - Update current_pos_ and sync base class current_position
   - Update target_pos_ = current_pos_ and sync base class target_position
@@ -1075,22 +1091,24 @@ The component supports multiple unit types for speed, acceleration, and position
 **Public API:** Actions accept `Speed` struct with value and unit ([YAML type](./01-yaml-api.md#speed-type))
 **Internal representation:** Motor controller requires RPM (signed int16_t)
 
-Conversion formulas (using `steps_per_revolution`):
+Conversion formulas (implemented in `Speed` class constructor):
 
 - `STEPS_PER_SEC`: `rpm = (value * 60.0) / steps_per_revolution`
 - `RPM`: `rpm = value` (direct)
 - `REV_PER_SEC`: `rpm = value * 60.0`
 - `DEGREES_PER_SEC`: `rpm = (value * 60.0) / 360.0`
 - `RADIANS_PER_SEC`: `rpm = (value * 60.0) / (2π)`
+- `DEGREES_PER_MIN`: `rpm = value / 6.0`
+- `DEGREES_PER_HOUR`: `rpm = value / 360.0`
 
-Implementation: `Helpers::speed_to_rpm(Speed speed, float steps_per_revolution) → int16_t`
+Implementation: `Speed::Speed(float value, SpeedUnit unit)` constructor performs conversion and stores `rpm_` internally
 
 ### Acceleration Conversions
 
 **Public API:** Actions accept `Acceleration` struct with value and unit ([YAML type](./01-yaml-api.md#acceleration-type))
-**Internal representation:** Motor controller requires RPM/s (unsigned uint16_t, clamped 0-65535)
+**Internal representation:** Motor controller requires hardware value 0-255 (inverse time mapping)
 
-Conversion formulas (using `steps_per_revolution`):
+Conversion formulas (implemented in `Acceleration` class constructor):
 
 - `STEPS_PER_SEC_SQ`: `rpm_per_s = (value * 60.0) / steps_per_revolution`
 - `RPM_PER_SEC`: `rpm_per_s = value` (direct)
@@ -1098,13 +1116,14 @@ Conversion formulas (using `steps_per_revolution`):
 - `DEGREES_PER_SEC_SQ`: `rpm_per_s = (value * 60.0) / 360.0`
 - `RADIANS_PER_SEC_SQ`: `rpm_per_s = (value * 60.0) / (2π)`
 
-Implementation: `Helpers::acceleration_to_rpm_per_s(Acceleration accel, float steps_per_revolution) → uint16_t`
+Implementation: `Acceleration::Acceleration(float value, AccelerationUnit unit)` constructor performs:
+
+1. Convert user units → RPM/s
+2. Apply inverse formula: `acc_ = 256 - (20000 / rpm_per_s)`
+3. Clamp to hardware range 0-255
 
 > [!NOTE]
-> The motor firmware also has an internal 0-255 acceleration mapping. The conversion chain is:
->
-> - User units → RPM/s (via Helpers)
-> - RPM/s → internal 0-255 (via firmware-specific mapping in Helpers)
+> The motor firmware uses a non-linear 0-255 acceleration value. The `Acceleration` class handles both conversions internally
 
 ### Position Conversions
 
@@ -1126,13 +1145,17 @@ float rads = pos.radians();                         // Radians
 uint32_t motor_pulses = pos.steps_as_u32(steps_per_revolution, microsteps);
 ```
 
-Conversion formulas (internal to `Position` class):
+Conversion formulas (implemented in `Position` class constructor and methods):
 
 - Total ticks: `ticks_total = (int64_t)revolutions * 16384 + angle_ticks`
 - Ticks ↔ Steps: `steps = (ticks_total * steps_per_revolution) / 16384`
 - Revolutions (float): `revs_f = ticks_total / 16384.0`
 - Degrees: `degrees = (revs_f * 360.0)`
 - Radians: `radians = (revs_f * 2π)`
+- Arcminutes: `arcminutes = degrees * 60.0` (1° = 60')
+- Arcseconds: `arcseconds = degrees * 3600.0` (1° = 3600")
+
+Implementation: `Position::Position(float value, PositionUnit unit)` constructor and accessor methods like `steps()`, `degrees()`, `radians()` perform conversions on-demand
 
 ### Encoder Ticks Mapping
 
@@ -1281,9 +1304,8 @@ Implementation: Clamps applied in action methods before enqueueing commands, usi
   - Convert Position to steps using target.steps(steps_per_revolution)
   - Update target_pos_ = target
   - Update base class target_position = target_pos_.steps(steps_per_revolution)
-  - Compute speed_rpm from last set_speed or defaults using Helpers::speed_to_rpm()
-  - Compute accel_rpm_per_s from last set_acceleration or defaults using Helpers::acceleration_to_rpm_per_s()
-  - Convert accel_rpm_per_s to internal 0-255 value if needed by firmware
+  - Get speed_rpm from last_speed.rpm() or defaults
+  - Get acceleration from last_accel.acc_internal() or defaults
   - Send Mode 2 absolute move with position_offset_ applied
   - Update target_synced flag
 
@@ -1297,20 +1319,73 @@ Implementation: Clamps applied in action methods before enqueueing commands, usi
   - At least one parameter must be provided
   - If speed provided:
     - Extract sign to determine direction (positive = CW, negative = CCW)
-    - Convert to RPM using Helpers::speed_to_rpm()
+    - Get RPM from speed.rpm()
     - Update last_speed
   - If accel provided:
-    - Convert to RPM/s using Helpers::acceleration_to_rpm_per_s()
+    - Get hardware value from accel.acc_internal()
     - Update last_accel
   - Clamp RPM to control-mode limits
   - Send speed-mode payload (direction, acceleration, RPM)
 
 - `stop(optional<Acceleration> decel)`
   - If decel provided:
-    - Convert to RPM/s using Helpers::acceleration_to_rpm_per_s()
-    - Convert to internal value if needed
-  - Else use last_accel or default clamp
+    - Get hardware value from decel.acc_internal()
+  - Else use last_accel.acc_internal() or default
   - Send speed-mode payload with speed=0 and controlled deceleration
+
+
+## Unit Conversion Architecture
+
+**Design Principle:** All unit conversions happen in C++ at runtime, not in Python at build time.
+
+### Python Responsibility
+
+The Python validators (`validate_speed_with_unit`, `validate_acceleration_with_unit`, `validate_position_with_unit`) handle:
+
+1. **Unit Parsing**: Parse string inputs like "60 RPM", "1.5 rev/s", "360 deg/s"
+2. **Unit Alias Mapping**: Map aliases to canonical enums (e.g., "rpm", "RPM", "rev/min" → `SpeedUnit::RPM`)
+3. **Unit Prefix Handling**: Handle SI prefixes (k for kilo, m for milli, etc.)
+4. **Validation**: Ensure values are positive, in valid ranges
+5. **Output Format**: Always return `{value: float, unit: enum}` dict
+6. **Pass to C++**: Pass both value and unit enum to C++
+
+**Python does NOT:**
+
+- Convert between units (no mathematical conversion)
+- Access `steps_per_revolution` for conversion
+- Perform build-time unit conversion
+
+### C++ Responsibility
+
+The C++ unit type classes (`Speed`, `Acceleration`, `Position`) handle:
+
+1. **Runtime Conversion**: Convert at runtime using the actual `steps_per_revolution`
+2. **Unit Enum Interpretation**: Switch on unit enum in constructor
+3. **Hardware Adaptation**: Store hardware-native format (RPM, 0-255 acc, encoder ticks)
+4. **Clamping**: Clamp to hardware limits after conversion
+
+### Conversion Implementation
+
+Type class constructors convert from any unit to hardware-native format:
+
+- **Speed**: Constructor switches on `SpeedUnit`, converts to `int16_t rpm_`
+- **Acceleration**: Constructor converts to RPM/s, then applies inverse formula to `uint8_t acc_` (0-255)
+- **Position**: Constructor converts to total ticks, splits into `int32_t revs_` + `uint16_t angle_ticks_`
+
+Conversion formulas are documented in the [Speed Conversions](#speed-conversions), [Acceleration Conversions](#acceleration-conversions), and [Position Conversions](#position-conversions) sections above.
+
+### Implementation Flow
+
+**Actions:**
+- Python passes `{value, unit}` dict to C++ Action classes
+- Action class stores both values as members
+- In `play()`: construct type object (e.g., `Position(value_, unit_)`), conversion happens in constructor
+- Call component method with constructed object
+
+**Configuration:**
+- Python constructs type objects during setup, passes to component setters
+- Component stores objects (e.g., `last_speed_`, `last_accel_`)
+- Access hardware values when needed via methods (`.rpm()`, `.acc_internal()`, `.steps()`)
 
 
 ## Open items and extensions
@@ -1335,3 +1410,5 @@ Additional criteria:
 - Shared accel/decel and stop-in-both-modes semantics implemented
 - Command queue serializes Modbus requests with deduplication and timeouts
 - Position and speed examples in README.md work as described
+- **Unit conversion happens exclusively in C++ at runtime with `steps_per_revolution`**
+- **Python validators only parse units and pass value+unit to C++**

@@ -46,16 +46,29 @@ stepper:
 - **speed** (*Optional*): Target speed in `steps/s` (ESPHome stepper compatibility). Can also be written as **max_speed** for backward compatibility. Defaults to `1 RPM`. Hardware limits based on `control_mode` are enforced: `SR_OPEN`: 400 RPM, `SR_CLOSE`: 1500 RPM, `SR_VFOC`: 3000 RPM.
   - Supported forms:
     - `speed: 6000`                        # steps/s (default unit)
-    - `speed: "2000 RPM"`
+    - `speed: "2000 RPM"`                  # RPM (revolutions per minute)
+    - `speed: "60 rev/min"`                # Alternative: rev/min = RPM
+    - `speed: "1.5 rev/s"`                 # Revolutions per second
+    - `speed: "360 deg/s"`                 # Degrees per second (1 rev/s)
+    - `speed: "180 deg/min"`               # Degrees per minute (0.5 RPM)
+    - `speed: "15 deg/h"`                  # Degrees per hour (astronomical tracking)
     - `speed: { value: 2000, unit: RPM }`
     - `max_speed: 2000 RPM`                # Alternative name (exact same meaning)
   > [!NOTE]
-  > `speed` and `max_speed` are aliases - use one or the other, not both.
+  > `speed` and `max_speed` are aliases - use one or the other, not both. Multiple unit string formats are accepted (e.g., `rpm`, `RPM`, `rev/min` all work).
+  
+  > [!TIP]
+  > **Use Cases for Angular Velocity Units:**
+  > - **High-speed rotation:** `steps/s`, `RPM`, `rev/s`, `deg/s` - For fast movements and robotics
+  > - **Moderate rotation:** `deg/min` - For slow continuous rotation (display turntables, camera pans)
+  > - **Astronomical tracking:** `deg/h` - For telescope mounts following celestial objects (Earth rotates 15°/hour)
 
 - **acceleration** (*Optional*): Acceleration in `steps/s²` (ESPHome stepper compatibility). Default: `inf` (instant).
   - Supported forms:
-    - `acceleration: 500`              # steps/s^2 (default unit)
-    - `acceleration: "100 RPM/s"`
+    - `acceleration: 500`                  # steps/s^2 (default unit)
+    - `acceleration: "100 RPM/s"`          # RPM per second
+    - `acceleration: "60 rev/min/s"`       # Alternative: rev/min/s = RPM/s
+    - `acceleration: "1.5 rev/s²"`         # Revolutions per second squared
     - `acceleration: { value: 100, unit: RPM_PER_SEC }`
   > [!IMPORTANT]
   > **Hardware Limitation:** The motor controller does not support separate acceleration and deceleration values. Specifying a `deceleration` field will cause a **validation error**. Use `acceleration` only, which affects both acceleration and deceleration rates.
@@ -183,8 +196,23 @@ on_...:
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **target** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The target position. Accepts:
   - **Plain number** (int/float): Interpreted as steps (e.g., `1000`)
-  - **String with unit**: Parsed at compile-time (e.g., `"5.5 revolutions"`, `"180 degrees"`)
-  - **Dict**: `{value: <number or lambda>, unit: <STEPS|REVOLUTIONS|DEGREES|RADIANS>}`
+  - **String with unit**: Parsed at compile-time (e.g., `"5.5 revolutions"`, `"180 degrees"`, `"30 arcmin"`, `"1800 arcsec"`)
+  - **Dict**: `{value: <number or lambda>, unit: <STEPS|REVOLUTIONS|DEGREES|RADIANS|ARCMINUTES|ARCSECONDS>}`
+  
+  Supported unit formats:
+  - **Steps:** `steps`, `step`
+  - **Revolutions:** `rev`, `revolutions`
+  - **Degrees:** `deg`, `degrees`, `°`
+  - **Radians:** `rad`, `radians`
+  - **Arcminutes:** `arcmin`, `arcminute`, `'`, `amin` (1° = 60 arcminutes)
+  - **Arcseconds:** `arcsec`, `arcsecond`, `"`, `asec` (1° = 3600 arcseconds)
+  
+  > [!TIP]
+  > **Use Cases for Position Units:**
+  > - **Motor control:** `steps` - Direct motor steps for ESPHome compatibility
+  > - **Mechanical systems:** `revolutions` - Natural unit for rotating mechanisms
+  > - **Angular positioning:** `degrees`, `radians` - Standard engineering units
+  > - **High-precision optics:** `arcminutes`, `arcseconds` - Sub-degree positioning for microscopes, telescopes, laser alignment systems
     - `value` is templatable (can be lambda)
     - `unit` is static enum (not templatable)
 
@@ -517,6 +545,105 @@ Required settings via motor menu:
 - **UartBaud**: Set baud rate (recommended: `9600`)
 
 **Navigation:** Press `Menu` → Use `Next` to select → Press `Enter` to edit → Use `Next` to change → Press `Enter` to confirm
+
+## Example Configurations
+
+### Astronomical Telescope Mount
+
+Use `deg/h` for sidereal tracking and `arcmin`/`arcsec` for precise positioning:
+
+```yaml
+stepper:
+  - platform: servoxxd_modbus
+    id: telescope_ra
+    address: 0x01
+    servo_type: SERVO42D
+    steps_per_revolution: 3200
+    control_mode: SR_VFOC
+    mode: POSITION
+    
+    # Sidereal tracking speed (Earth rotation: 15°/hour)
+    speed: 15 deg/h
+    acceleration: 10 deg/s²
+    
+    homing:
+      mode: ENDSTOP
+      speed: 30 deg/min
+      direction: CW
+
+# Slew to precise coordinates
+script:
+  - id: goto_target
+    then:
+      - stepper.set_speed:
+          id: telescope_ra
+          speed: 180 deg/min  # Fast slew
+      - stepper.set_target:
+          id: telescope_ra
+          target: 3600 arcsec  # 1 degree = 3600 arcseconds
+      - delay: 5s
+      - stepper.set_speed:
+          id: telescope_ra
+          speed: 15 deg/h  # Resume tracking
+```
+
+### Display Turntable
+
+Slow continuous rotation with `deg/min`:
+
+```yaml
+stepper:
+  - platform: servoxxd_modbus
+    id: turntable
+    address: 0x02
+    servo_type: SERVO35D
+    steps_per_revolution: 3200
+    control_mode: SR_VFOC
+    mode: SPEED
+    
+    # Moderate rotation for display
+    speed: 30 deg/min  # 1 full rotation every 12 minutes
+    acceleration: 50 deg/s²
+
+# Control via automation
+on_button:
+  - stepper.run_continuous:
+      id: turntable
+      speed: 60 deg/min  # Double speed
+```
+
+### Precision Optical Alignment
+
+Use `arcmin` for sub-degree positioning:
+
+```yaml
+stepper:
+  - platform: servoxxd_modbus
+    id: laser_gimbal
+    address: 0x03
+    servo_type: SERVO28D
+    steps_per_revolution: 6400  # High resolution (32 microsteps)
+    microsteps: 32
+    control_mode: SR_VFOC
+    mode: POSITION
+    
+    speed: 10 deg/s
+    acceleration: 100 deg/s²
+
+# Fine adjustment in arcminutes
+script:
+  - id: fine_adjust
+    then:
+      - stepper.set_target:
+          id: laser_gimbal
+          target: 30 arcmin  # 0.5 degrees
+      - delay: 1s
+      - stepper.set_target:
+          id: laser_gimbal
+          target:
+            value: !lambda "return id(sensor).state;"  # Dynamic positioning
+            unit: ARCMINUTES
+```
 
 <!-- Examples moved into Speed Mode and Position Mode sections above -->
 ## See Also

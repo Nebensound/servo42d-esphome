@@ -43,20 +43,31 @@ cv.All(
 
 **Accepted Values:**
 
-- **Steps per second:** `steps/s`, `steps/sec` → `STEPS_PER_SEC`
+- **Steps per second:** → `STEPS_PER_SEC`
+  - Accepted strings: `steps/s`, `steps/sec`, `step/s`, `step/sec`
   - Example: `1000 steps/s`
-- **Revolutions per minute:** `RPM` → `RPM`
-  - Example: `60 RPM`
-- **Revolutions per second:** `rev/s`, `rev/sec`, `revolutions/s` → `REV_PER_SEC`
+- **Revolutions per minute:** → `RPM`
+  - Accepted strings: `RPM`, `rpm`, `rev/min`, `revolutions/min`
+  - Example: `60 RPM` or `60 rev/min`
+- **Revolutions per second:** → `REV_PER_SEC`
+  - Accepted strings: `rev/s`, `rev/sec`, `rps`, `revolutions/s`, `revolutions/sec`
   - Example: `1.5 rev/s`
-- **Degrees per second:** `deg/s`, `deg/sec`, `°/s` → `DEGREES_PER_SEC`
+- **Degrees per second:** → `DEGREES_PER_SEC`
+  - Accepted strings: `deg/s`, `deg/sec`, `°/s`, `degrees/s`, `degrees/sec`
   - Example: `360 deg/s`
-- **Radians per second:** `rad/s`, `rad/sec` → `RADIANS_PER_SEC`
+- **Radians per second:** → `RADIANS_PER_SEC`
+  - Accepted strings: `rad/s`, `rad/sec`, `radians/s`, `radians/sec`
   - Example: `6.28 rad/s`
+- **Degrees per minute:** → `DEGREES_PER_MIN`
+  - Accepted strings: `deg/min`, `deg/m`, `°/min`, `degrees/minute`
+  - Example: `360 deg/min`
+- **Degrees per hour:** → `DEGREES_PER_HOUR`
+  - Accepted strings: `deg/h`, `deg/hr`, `°/h`, `degrees/hour`
+  - Example: `15 deg/h`
 - **Metric prefixes:** `k` (kilo), `M` (mega), `m` (milli), `µ/u` (micro)
 
 > [!NOTE]
-> Unit aliases (e.g., `steps/s`, `steps/sec`) are mapped to the same enum value during validation. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
+> Multiple string aliases are accepted for user convenience (e.g., `rpm`, `RPM`, `rev/min` all map to `SpeedUnit::RPM`). Python validation normalizes these to the corresponding C++ enum. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
 
 > [!NOTE]
 > Metric prefixes may only be used when the value is a plain number or string, not if its a lambda.
@@ -64,7 +75,14 @@ cv.All(
 **Validation:**
 
 - Use `cv.float_with_unit()` for metric prefix support
-- Map unit string aliases to enum values
+- Map unit string aliases to enum values (case-insensitive):
+  - `steps/s`, `steps/sec`, `step/s`, `step/sec` → `STEPS_PER_SEC`
+  - `RPM`, `rpm`, `rev/min`, `revolutions/min` → `RPM`
+  - `rev/s`, `rev/sec`, `rps`, `revolutions/s` → `REV_PER_SEC`
+  - `deg/s`, `deg/sec`, `°/s`, `degrees/s` → `DEGREES_PER_SEC`
+  - `rad/s`, `rad/sec`, `radians/s` → `RADIANS_PER_SEC`
+  - `deg/min`, `deg/m`, `°/min`, `degrees/minute` → `DEGREES_PER_MIN`
+  - `deg/h`, `deg/hr`, `°/h`, `degrees/hour` → `DEGREES_PER_HOUR`
 - Return dict: `{"value": float, "unit": enum_string}`
 
 **Code Generation:**
@@ -76,6 +94,8 @@ Static values → Convert to RPM at build-time:
 - `REV_PER_SEC`: `rpm = value * 60.0`
 - `DEGREES_PER_SEC`: `rpm = (value * 60.0) / 360.0`
 - `RADIANS_PER_SEC`: `rpm = (value * 60.0) / (2π)`
+- `DEGREES_PER_MIN`: `rpm = value / 6.0`
+- `DEGREES_PER_HOUR`: `rpm = value / 360.0`
 
 Lambdas → Pass to C++ for runtime conversion:
 
@@ -86,11 +106,13 @@ Lambdas → Pass to C++ for runtime conversion:
 
 ```cpp
 enum class SpeedUnit : uint8_t {
-    STEPS_PER_SEC,     // Default - ESPHome stepper compatibility
-    RPM,
-    REV_PER_SEC,
-    DEGREES_PER_SEC,
-    RADIANS_PER_SEC
+    STEPS_PER_SEC = 0,     // Default - ESPHome stepper compatibility
+    RPM = 1,
+    REV_PER_SEC = 2,
+    DEGREES_PER_SEC = 3,
+    RADIANS_PER_SEC = 4,
+    DEGREES_PER_MIN = 5,
+    DEGREES_PER_HOUR = 6
 };
 ```
 
@@ -108,25 +130,35 @@ enum class SpeedUnit : uint8_t {
 
 **Accepted Values:**
 
-- **Steps per second squared:** `steps/s²`, `steps/s/s` → `STEPS_PER_SEC_SQ`
+- **Steps per second squared:** → `STEPS_PER_SEC_SQ`
+  - Accepted strings: `steps/s²`, `steps/s/s`, `step/s²`, `step/s/s`, `steps/sec²`, `steps/sec/sec`
   - Example: `1000 steps/s²`
-- **RPM per second:** `RPM/s`, `RPM/sec` → `RPM_PER_SEC`
+- **RPM per second:** → `RPM_PER_SEC`
+  - Accepted strings: `RPM/s`, `RPM/sec`, `rpm/s`, `rpm/sec`, `rev/min/s`, `rev/min/sec`
   - Example: `100 RPM/s`
-- **Revolutions per second squared:** `rev/s²`, `rev/s/s` → `REV_PER_SEC_SQ`
+- **Revolutions per second squared:** → `REV_PER_SEC_SQ`
+  - Accepted strings: `rev/s²`, `rev/s/s`, `rps/s`, `revolutions/s²`, `revolutions/s/s`, `rev/sec²`, `rev/sec/sec`
   - Example: `1.5 rev/s²`
-- **Degrees per second squared:** `deg/s²`, `deg/s/s`, `°/s²` → `DEGREES_PER_SEC_SQ`
+- **Degrees per second squared:** → `DEGREES_PER_SEC_SQ`
+  - Accepted strings: `deg/s²`, `deg/s/s`, `°/s²`, `degrees/s²`, `degrees/s/s`, `deg/sec²`, `deg/sec/sec`
   - Example: `360 deg/s²`
-- **Radians per second squared:** `rad/s²`, `rad/s/s` → `RADIANS_PER_SEC_SQ`
+- **Radians per second squared:** → `RADIANS_PER_SEC_SQ`
+  - Accepted strings: `rad/s²`, `rad/s/s`, `radians/s²`, `radians/s/s`, `rad/sec²`, `rad/sec/sec`
   - Example: `6.28 rad/s²`
 - **Metric prefixes:** `k` (kilo), `M` (mega), `m` (milli), `µ/u` (micro)
 
 > [!NOTE]
-> Unit aliases (e.g., `steps/s²`, `steps/s/s`) are mapped to the same enum value during validation. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
+> Multiple string aliases are accepted for user convenience (e.g., `RPM/s`, `rpm/s`, `rev/min/s` all map to `AccelerationUnit::RPM_PER_SEC`). Python validation normalizes these to the corresponding C++ enum. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
 
 **Validation:**
 
 - Use `cv.float_with_unit()` for metric prefix support
-- Map unit string aliases to enum values
+- Map unit string aliases to enum values (case-insensitive):
+  - `steps/s²`, `steps/s/s`, `step/s²`, `steps/sec²` → `STEPS_PER_SEC_SQ`
+  - `RPM/s`, `RPM/sec`, `rpm/s`, `rev/min/s` → `RPM_PER_SEC`
+  - `rev/s²`, `rev/s/s`, `rps/s`, `revolutions/s²` → `REV_PER_SEC_SQ`
+  - `deg/s²`, `deg/s/s`, `°/s²`, `degrees/s²` → `DEGREES_PER_SEC_SQ`
+  - `rad/s²`, `rad/s/s`, `radians/s²` → `RADIANS_PER_SEC_SQ`
 - Return dict: `{"value": float, "unit": enum_string}`
 
 **Code Generation:**
@@ -170,18 +202,28 @@ enum class AccelerationUnit : uint8_t {
 
 **Accepted Values:**
 
-- **Steps:** `steps`, `step` → `STEPS`
+- **Steps:** → `STEPS`
+  - Accepted strings: `steps`, `step`
   - Example: `3200 steps`
-- **Revolutions:** `rev`, `revolutions` → `REVOLUTIONS`
+- **Revolutions:** → `REVOLUTIONS`
+  - Accepted strings: `rev`, `revs`, `revolutions`, `revolution`
   - Example: `2.5 rev`
-- **Degrees:** `deg`, `degrees`, `°` → `DEGREES`
+- **Degrees:** → `DEGREES`
+  - Accepted strings: `deg`, `degrees`, `°`
   - Example: `720 deg`
-- **Radians:** `rad`, `radians` → `RADIANS`
+- **Radians:** → `RADIANS`
+  - Accepted strings: `rad`, `rads`, `radians`, `radian`
   - Example: `6.28 rad`
+- **Arcminutes:** → `ARCMINUTES`
+  - Accepted strings: `arcmin`, `arcminute`, `arcminutes`, `'`, `amin`
+  - Example: `60 arcmin` (1 degree = 60 arcminutes)
+- **Arcseconds:** → `ARCSECONDS`
+  - Accepted strings: `arcsec`, `arcsecond`, `arcseconds`, `"`, `asec`
+  - Example: `3600 arcsec` (1 degree = 3600 arcseconds)
 - **Metric prefixes:** `k` (kilo), `M` (mega), `m` (milli), `µ/u` (micro)
 
 > [!NOTE]
-> Unit aliases (e.g., `rev`, `revolutions`) are mapped to the same enum value during validation. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
+> Multiple string aliases are accepted for user convenience (e.g., `rev`, `revs`, `revolutions` all map to `PositionUnit::REVOLUTIONS`). Python validation normalizes these to the corresponding C++ enum. The `unit` field in dicts is **not templatable** and must be a compile-time constant.
 
 > [!NOTE]
 > Metric prefixes may only be used when the value is a plain number or string, not if its a lambda.
@@ -189,7 +231,13 @@ enum class AccelerationUnit : uint8_t {
 **Validation:**
 
 - Use `cv.float_with_unit()` for metric prefix support
-- Map unit string aliases to enum values
+- Map unit string aliases to enum values (case-insensitive):
+  - `steps`, `step` → `STEPS`
+  - `rev`, `revs`, `revolutions`, `revolution` → `REVOLUTIONS`
+  - `deg`, `degrees`, `°` → `DEGREES`
+  - `rad`, `rads`, `radians`, `radian` → `RADIANS`
+  - `arcmin`, `arcminute`, `arcminutes`, `'`, `amin` → `ARCMINUTES`
+  - `arcsec`, `arcsecond`, `arcseconds`, `"`, `asec` → `ARCSECONDS`
 - Return dict: `{"value": float, "unit": enum_string}`
 
 **Code Generation:**
@@ -200,6 +248,8 @@ Static values → Convert to steps at build-time:
 - `REVOLUTIONS`: `steps = value * steps_per_revolution`
 - `DEGREES`: `steps = (value / 360.0) * steps_per_revolution`
 - `RADIANS`: `steps = (value / (2π)) * steps_per_revolution`
+- `ARCMINUTES`: `steps = (value / 21600.0) * steps_per_revolution` (21600 arcmin = 360°)
+- `ARCSECONDS`: `steps = (value / 1296000.0) * steps_per_revolution` (1296000 arcsec = 360°)
 
 Lambdas → Pass to C++ for runtime conversion:
 
@@ -210,10 +260,12 @@ Lambdas → Pass to C++ for runtime conversion:
 
 ```cpp
 enum class PositionUnit : uint8_t {
-    STEPS,         // Default - ESPHome stepper compatibility
-    REVOLUTIONS,
-    DEGREES,
-    RADIANS
+    STEPS = 0,         // Default - ESPHome stepper compatibility
+    REVOLUTIONS = 1,
+    DEGREES = 2,
+    RADIANS = 3,
+    ARCMINUTES = 4,
+    ARCSECONDS = 5
 };
 ```
 
