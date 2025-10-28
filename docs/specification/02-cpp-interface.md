@@ -1,6 +1,6 @@
 # C++ Interface Specification
 
-Status: 🔵 SPECIFICATION – Defines the C++ architecture and public API for the servo42d_rs485 component implementation
+Status: 🔵 SPECIFICATION – Defines the C++ architecture and public API for the servoxxd_modbus component implementation
 
 Audience: This document is for developers implementing the ESPHome C++ component. It is binding to the user-facing API defined in [01-yaml-api.md](./01-yaml-api.md) and [README.md](../../README.md).
 
@@ -17,19 +17,19 @@ Purpose: Provide a clear, cohesive design for the C++ classes, methods, responsi
 
 ## High-level architecture
 
-- [Servo42dRs485](../../components/servo42d_rs485/stepper/servo42d.h): Main component class (Facade)
+- [ServoXxdModbus](../../components/servoxxd_modbus/stepper/servo42d.h): Main component class (Facade)
   - Inherits: [stepper::Stepper](https://esphome.io/components/stepper/), [modbus::ModbusDevice](https://esphome.io/components/modbus.html), esphome::Component
   - Responsibilities: lifecycle, configuration, API, Modbus callbacks, synchronization with ESPHome
   - Delegates all movement, homing, and stop APIs to StepperEngine
 
-- [StepperEngine](../../components/servo42d_rs485/stepper/stepper_engine.h): Core movement and state machine logic
+- [StepperEngine](../../components/servoxxd_modbus/stepper/stepper_engine.h): Core movement and state machine logic
   - Encapsulates all movement, homing, stop, and error states as state machine
   - Manages CommandQueue and processes Modbus callbacks
   - Executes all movement actions, homing, stop, run_continuous, error handling, etc.
-  - Communicates with Servo42dRs485 for configuration, status, helper functions
+  - Communicates with ServoXxdModbus for configuration, status, helper functions
 
-  - [CommandQueue](../../components/servo42d_rs485/stepper/servo42d_command_queue.h): Serializes Modbus commands (managed by StepperEngine)
-  - Modbus Commands: [ReadCommand, WriteCommand, MultiWriteCommand](../../components/servo42d_rs485/stepper/servo42d_modbus_commands.h) (function codes 0x04, 0x06, 0x10)
+  - [CommandQueue](../../components/servoxxd_modbus/stepper/servo42d_command_queue.h): Serializes Modbus commands (managed by StepperEngine)
+  - Modbus Commands: [ReadCommand, WriteCommand, MultiWriteCommand](../../components/servoxxd_modbus/stepper/servo42d_modbus_commands.h) (function codes 0x04, 0x06, 0x10)
 
 ### class StepperEngine
 
@@ -39,7 +39,7 @@ Purpose: Provide a clear, cohesive design for the C++ classes, methods, responsi
 - Processes all movement commands (move_to, stop, home, run_continuous)
 - Monitors and controls internal states (Idle, Moving, Homing, Error, Disabled...)
 - Manages CommandQueue and processes Modbus callbacks (response, error, timeout)
-- Communicates with Servo42dRs485 for configuration, status, helper functions
+- Communicates with ServoXxdModbus for configuration, status, helper functions
 - Manages and regularly updates values like encoder position (current_position) using hybrid strategy (polling + event)
 
 #### Update Strategy for Status Values
@@ -134,7 +134,7 @@ Optional callbacks can be registered for status change notifications:
 void move_to(Position target, std::optional<Speed> speed, std::optional<Acceleration> accel);
 void stop(std::optional<Acceleration> decel);
 void emergency_stop();
-void home();  // Uses homing configuration from Servo42dRs485 parent (mode, direction, speed, etc.)
+void home();  // Uses homing configuration from ServoXxdModbus parent (mode, direction, speed, etc.)
 void run_continuous(Speed speed, Acceleration accel);
 void update(); // called cyclically, processes state machine, CommandQueue, and polling
 Position get_current_position() const;
@@ -181,7 +181,7 @@ enum class State {
 
 **Events and Processing:**
 
-- **Commands from Servo42dRs485:** move_to(), home(), stop(), run_continuous(), enable(), disable(), emergency_stop()
+- **Commands from ServoXxdModbus:** move_to(), home(), stop(), run_continuous(), enable(), disable(), emergency_stop()
 - **Modbus Responses:** Position, speed, status, protection are processed and may trigger state transitions
 - **Polling Events:** Regular encoder queries, status checks trigger transitions (e.g. Moving → Idle when target reached)
 - **Error Events:** Protection, timeout, Modbus errors trigger Error state
@@ -297,19 +297,19 @@ The chosen implementation must satisfy the following requirements:
      - Hardware does not support: Command fails/ignored, or motor stops unexpectedly
    - Document test results in implementation comments
 
-#### Interface to Servo42dRs485
+#### Interface to ServoXxdModbus
 
-- Constructor: StepperEngine(Servo42dRs485* parent, ...);
+- Constructor: StepperEngine(ServoXxdModbus* parent, ...);
 - Access to configuration, status, helper functions via parent
 - Optional callbacks for status changes
 
 #### Example Flow
 
-- Servo42dRs485::set_target() → engine_->move_to(...)
-- Servo42dRs485::home() → engine_->home(...)
-- Servo42dRs485::stop() → engine_->stop(...)
-- Servo42dRs485::run_continuous() → engine_->run_continuous(...)
-- Servo42dRs485::loop() → engine_->update() (includes polling and state machine)
+- ServoXxdModbus::set_target() → engine_->move_to(...)
+- ServoXxdModbus::home() → engine_->home(...)
+- ServoXxdModbus::stop() → engine_->stop(...)
+- ServoXxdModbus::run_continuous() → engine_->run_continuous(...)
+- ServoXxdModbus::loop() → engine_->update() (includes polling and state machine)
 
 #### CommandQueue Integration
 
@@ -339,9 +339,8 @@ ESPHome's generated `main.cpp` calls these setters during component initializati
 ```cpp
 void set_steps_per_revolution(float steps);  // YAML: steps_per_revolution
 void set_microsteps(uint16_t subdivision);  // 1–256, YAML: microsteps
-void set_max_speed(Speed speed);  // YAML: max_speed
-void set_speed(Speed speed);  // initial_speed, YAML: initial_speed
-void set_acceleration(Acceleration acceleration);  // initial_acceleration, YAML: initial_acceleration (affects both accel and decel)
+void set_speed(Speed speed);  // YAML: speed (alias: max_speed)
+void set_acceleration(Acceleration acceleration);  // YAML: acceleration (affects both accel and decel)
 void set_sleep_when_done(uint32_t timeout_ms);  // UINT32_MAX = disabled, 0 = immediate, 1+ = delay in ms, YAML: sleep_when_done
 void set_servo_type(ServoType type);  // SERVO28D, SERVO35D, SERVO42D, SERVO57D, YAML: servo_type
 void set_control_mode(WorkMode mode);  // SR_OPEN, SR_CLOSE, SR_VFOC, YAML: control_mode
@@ -447,15 +446,15 @@ The component uses strongly-typed classes for values with units to enable compil
 
 ```cpp
 class Speed {
-  friend class Servo42dRs485;
+  friend class ServoXxdModbus;
  public:
   Speed(float value, SpeedUnit unit);
   Speed() = default;
   
   float rpm() const;
   int16_t rpm_as_i16() const;
-  int16_t rpm_for_hardware(const Servo42dRs485* parent) const;  // Apply microstepping scaling
-  float steps_per_sec(const Servo42dRs485* parent) const;
+  int16_t rpm_for_hardware(const ServoXxdModbus* parent) const;  // Apply microstepping scaling
+  float steps_per_sec(const ServoXxdModbus* parent) const;
  private:
   int16_t rpm_{0};
 };
@@ -486,14 +485,14 @@ enum class SpeedUnit : uint8_t {
 
 ```cpp
 class Acceleration {
-  friend class Servo42dRs485;
+  friend class ServoXxdModbus;
  public:
   Acceleration(float value, AccelerationUnit unit);
   Acceleration() = default;
   
   uint8_t acc_internal() const;  // Hardware value 0-255
   float rpm_per_sec() const;     // Approximate RPM/s (for display/logging)
-  float steps_per_sec2(const Servo42dRs485* parent) const;
+  float steps_per_sec2(const ServoXxdModbus* parent) const;
  private:
   uint8_t acc_{0};  // Hardware-native: 0-255 (inverse time mapping)
 };
@@ -554,7 +553,7 @@ enum class AccelerationUnit : uint8_t {
 
 ```cpp
 class Position {
-  friend class Servo42dRs485;
+  friend class ServoXxdModbus;
  public:
   Position(float value, PositionUnit unit);
   Position() = default;
@@ -565,10 +564,10 @@ class Position {
   int32_t revolutions() const;
   uint16_t angle_ticks() const;
   uint64_t ticks_total() const;
-  int32_t steps(const Servo42dRs485* parent) const;
+  int32_t steps(const ServoXxdModbus* parent) const;
   float degrees() const;
   float radians() const;
-  uint32_t steps_as_u32(const Servo42dRs485* parent) const;
+  uint32_t steps_as_u32(const ServoXxdModbus* parent) const;
   
   Position operator+(const Position& rhs) const;
   Position operator-(const Position& rhs) const;
@@ -704,12 +703,19 @@ The component follows ESPHome's standard architecture by inheriting from three b
 > - `void set_target(int32_t steps)` - Directly sets `target_position` member (base class)
 > - `void report_position(int32_t steps)` - Directly sets `current_position` member (base class)
 > - `bool has_reached_target()` - Compares `current_position == target_position`
+> - `void set_max_speed(float steps_per_second)` - Directly sets `max_speed_` member (base class, non-virtual)
 >
 > **Overloading Strategy:**
 > We define additional overloads with our custom types:
 >
 > - `void set_target(Position target)` - Our Position-based API (converts to steps internally)
 > - `void report_position(Position position)` - Our Position-based API (converts to steps internally)
+> - `void set_speed(Speed speed)` - Our Speed-based API (coexists with base class `set_max_speed()`)
+>
+> **Speed Handling:**
+> - ESPHome may call base class `set_max_speed(float steps_per_second)` → updates `max_speed_` directly
+> - Our YAML config calls our `set_speed(Speed)` → converts from units and updates internal state
+> - Component must monitor `max_speed_` in `loop()` for external changes and sync internal Speed representation if needed
 >
 > Both signatures coexist:
 >
@@ -744,11 +750,11 @@ The component follows ESPHome's standard architecture by inheriting from three b
 >
 > These overrides bridge ESPHome's standard interfaces to our motor-specific implementation.
 
-### class Servo42dRs485 : public stepper::Stepper, public modbus::ModbusDevice, public Component
+### class ServoXxdModbus : public stepper::Stepper, public modbus::ModbusDevice, public Component
 
 **Inheritance:** See [Overview](#overview) above.
 
-#### Servo42dRs485 Responsibilities
+#### ServoXxdModbus Responsibilities
 
 - Lifecycle: setup(), dump_config(), loop()
 - Periodic polling via set_interval("status_poll", ...): encoder, speed, motor status, protection status
@@ -818,7 +824,7 @@ Speed last_speed;                     // For speed mode single-parameter updates
 Acceleration last_accel;              // Shared accel/decel (includes unit)
 ```
 
-#### Servo42dRs485 Contracts
+#### ServoXxdModbus Contracts
 
 - All public methods must be non-blocking: they enqueue Modbus commands via CommandQueue and return immediately.
 - Each user-facing action validates inputs and clamps to hardware-safe ranges before enqueueing.
@@ -910,7 +916,7 @@ The CommandQueue shall ensure strictly serialized Modbus communication with the 
 4. **Timeout recovery**: `check_timeout()` shall detect stuck commands and clear execution guard
 5. **Tail recursion**: After completing/failing a command, `execute_next()` shall be called to process the next one
 
-**Integration Requirements with Servo42dRs485::loop():**
+**Integration Requirements with ServoXxdModbus::loop():**
 
 The CommandQueue shall integrate with the component's main loop as follows:
 

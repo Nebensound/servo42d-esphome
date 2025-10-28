@@ -1,12 +1,12 @@
-# Servo42D RS485 Stepper Component
+# ServoXXD Modbus Stepper Component
 
-The `servo42d_rs485` stepper platform allows you to control MKS ServoXXD closed-loop stepper motors with RS485 communication via Modbus RTU.
+The `servoxxd_modbus` stepper platform allows you to control MKS ServoXXD closed-loop stepper motors with RS485 communication via Modbus RTU.
 
 ```yaml
 # Base setup shared by both profiles
 
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     id: my_stepper
     address: 0x01
     steps_per_revolution: 3200
@@ -78,7 +78,7 @@ stepper:
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     id: my_stepper
     modbus_id: modbus1
     address: 0x01
@@ -99,7 +99,7 @@ In following actions are exclusively used in speed mode:
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     id: my_stepper
     modbus_id: modbus1
     address: 0x01
@@ -135,7 +135,7 @@ stepper:
     - `speed: "50 RPM"`
     - `speed: { value: 50, unit: RPM }`
   - **endstop_trigger** (*Optional*, enum): Endstop may be `LOW` or `HIGH` to be recognized as triggered. May only be used for `mode: ENDSTOP`. Default: `HIGH`.
-  - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Constant ccurrent used while Homing. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). May only be used for `mode: SENSORLESS`. Default depends on `servo_type`: `0.2A` (28D), `0.2A` (35D), `0.8A` (42D), `0.4A` (57D).
+  - **current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Current threshold for sensorless homing (stallguard detection). Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). May only be used for `mode: SENSORLESS`. Default depends on `servo_type`: `0.2A` (28D), `0.2A` (35D), `0.8A` (42D), `0.4A` (57D). Hardware manual recommends setting to a smaller current to avoid motor damage during homing collisions.
   - **at_startup** (*Optional*, boolean): Run homing at startup. Default: `false`.
 
 - All other from [Base Configuration](#base-configuration).

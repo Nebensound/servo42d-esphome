@@ -4,7 +4,7 @@
 
 **Audience:** This document is for **developers** implementing the component. For end-user documentation, see [README.md](../../README.md).
 
-**Purpose:** This document specifies the complete YAML configuration API for the `servo42d_rs485` component. It defines what users can configure, valid values, defaults, and validation rules. This serves as the authoritative reference for implementing the Python validation layer (`__init__.py`).
+**Purpose:** This document specifies the complete YAML configuration API for the `servoxxd_modbus` component. It defines what users can configure, valid values, defaults, and validation rules. This serves as the authoritative reference for implementing the Python validation layer (`__init__.py`).
 
 ## Type Definitions
 
@@ -470,13 +470,13 @@ Component instance identifier for referencing in actions and automations.
 
 - **Type:** `ID`
 - **Required:** ✅ Yes
-- **Validation:** [`cv.declare_id(Servo42dRs485)`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py)
+- **Validation:** [`cv.declare_id(ServoXxdModbus)`](https://github.com/esphome/esphome/blob/dev/esphome/config_validation.py)
 
 **Example:**
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     id: my_stepper
 ```
 
@@ -497,7 +497,7 @@ modbus:
     uart_id: uart_bus
 
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     id: motor1
     modbus_id: modbus1
 ```
@@ -515,7 +515,7 @@ Modbus RTU slave address of the motor.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     address: 0x10  # Decimal 16
 ```
 
@@ -547,7 +547,7 @@ Number of steps required for one complete 360° rotation.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     steps_per_revolution: 3200  # 200 * 16
     microsteps: 16
 ```
@@ -577,7 +577,7 @@ Microstepping subdivision value.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     microsteps: 32  # Calibrated value (no correction needed)
 ```
 
@@ -608,16 +608,16 @@ Target speed to drive the stepper at (ESPHome stepper compatibility).
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     speed: 100 RPM          # Recommended
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     max_speed: 100 RPM      # Backward compatible (exact same meaning)
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     speed: 6000 steps/s     # Steps per second
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     speed: 360k steps/min   # With metric prefix
 ```
 
@@ -644,13 +644,13 @@ Acceleration rate when the stepper starts and ends movement (ESPHome stepper com
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     acceleration: 100 RPM/s     # RPM per second
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     acceleration: 6k RPM/min    # With metric prefix
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     acceleration: 1000 steps/s² # Steps per second squared
 ```
 
@@ -666,13 +666,13 @@ Motor power-down behavior after movement completion.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     sleep_when_done: false      # Always hold position
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     sleep_when_done: true       # Power off immediately
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     sleep_when_done: 30s        # Power off after 30 seconds
 ```
 
@@ -705,7 +705,7 @@ Physical motor model type.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     servo_type: SERVO42D     # Required!
     working_current: 1.6A    # Optional: uses default if omitted
 ```
@@ -735,7 +735,7 @@ Motor control algorithm selection.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     control_mode: SR_VFOC  # FOC mode (recommended)
 ```
 
@@ -769,17 +769,17 @@ Motor current during movement.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     servo_type: SERVO42D
     control_mode: SR_OPEN
     working_current: 2.5A       # Fixed 2.5A during movement
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     servo_type: SERVO57D
     control_mode: SR_VFOC
     working_current: 4500mA     # Max 4.5A, may use less
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     servo_type: SERVO42D
     # working_current omitted - uses default 1.6A
 ```
@@ -804,12 +804,12 @@ Current applied when motor is stationary (as percentage of `working_current`).
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     control_mode: SR_CLOSE
     working_current: 2.5A
     holding_current_percent: 30%  # 0.75A when stopped
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     control_mode: SR_VFOC
     working_current: 2.5A
     holding_current_percent: 30%  # Ignored in FOC mode
@@ -831,10 +831,10 @@ Enable pin logic level polarity.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     en_pin_active: ALWAYS  # Ignore EN pin (default)
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     en_pin_active: LOW     # Enable when pin is LOW
 ```
 
@@ -850,10 +850,10 @@ Automatically turn off motor's built-in display after timeout.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     auto_screen_off: true   # Display turns off after 15 seconds (default)
     
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     auto_screen_off: false  # Display stays on
 ```
 
@@ -869,7 +869,7 @@ Lock physical buttons on the motor at power-up.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     lock_keys_at_startup: true  # Prevent manual control
 ```
 
@@ -904,7 +904,7 @@ Operating mode determines available actions and behavior.
 ```yaml
 # Position Mode - for applications requiring precise positioning
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     id: camera_slider
     mode: POSITION
     steps_per_revolution: 3200
@@ -916,7 +916,7 @@ stepper:
 
 # Speed Mode - for applications requiring continuous rotation
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     id: conveyor_motor
     mode: SPEED
     steps_per_revolution: 3200
@@ -965,7 +965,7 @@ Detailed behavior and guidance for each mode:
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     mode: POSITION
     homing:
       mode: ENDSTOP
@@ -983,7 +983,7 @@ Automatically perform homing sequence during component initialization.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     mode: POSITION
     homing:
       mode: ENDSTOP
@@ -1002,7 +1002,7 @@ Direction to move during homing sequence.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     mode: POSITION
     homing:
       direction: CCW  # Move toward endstop in negative direction
@@ -1030,7 +1030,7 @@ Speed used during homing movement. Accepted type depends on `homing.mode`:
 ```yaml
 # VIRTUAL mode - use discrete levels
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     mode: POSITION
     homing:
       mode: VIRTUAL
@@ -1038,7 +1038,7 @@ stepper:
 
 # ENDSTOP/SENSORLESS mode - use standard speed units
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     mode: POSITION
     homing:
       mode: ENDSTOP
@@ -1059,7 +1059,7 @@ Endstop switch trigger logic level.
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     mode: POSITION
     homing:
       mode: ENDSTOP
@@ -1073,15 +1073,19 @@ Current threshold for sensorless homing (stallguard detection).
 - **Type:** [`current`](#current-type)
 - **Required:** ❌ Optional
 - **Default:** Depends on `servo_type`:
-  - `SERVO28D`: `600mA` (0.6A)
-  - `SERVO35D`: `800mA` (0.8A)
-  - `SERVO42D`: `1600mA` (1.6A)
-  - `SERVO57D`: `3200mA` (3.2A)
+  - `SERVO28D`: `200mA` (0.2A)
+  - `SERVO35D`: `200mA` (0.2A)
+  - `SERVO42D`: `800mA` (0.8A)
+  - `SERVO57D`: `400mA` (0.4A)
 
 > [!NOTE]
 > **Only effective when `homing.mode: SENSORLESS`**
 >
-> Motor moves in `homing.direction` until current exceeds this threshold, indicating a physical obstruction (endstop/hard stop). Higher values = more force before detection, lower values = more sensitive but may trigger prematurely.
+> Motor moves in `homing.direction` until current exceeds this threshold, indicating a physical obstruction (endstop/hard stop). 
+>
+> **Hardware Manual Recommendation:** Set to a smaller current as much as possible to avoid damaging the motor during homing collisions.
+>
+> Higher values = more force before detection, lower values = more sensitive but may trigger prematurely.
 >
 > This setting is ignored in `ENDSTOP` and `VIRTUAL` modes.
 
@@ -1089,7 +1093,7 @@ Current threshold for sensorless homing (stallguard detection).
 
 ```yaml
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     servo_type: SERVO42D
     mode: POSITION
     homing:
@@ -1097,7 +1101,7 @@ stepper:
       current: 1.5A          # Trigger at 1.5A
       direction: CCW
       
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     servo_type: SERVO57D
     mode: POSITION
     homing:
