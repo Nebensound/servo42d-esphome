@@ -1,10 +1,61 @@
-# Servo42D RS485 Component Tests
+# ServoXxd Component Tests
 
-This directory contains test configurations for validating the component compilation.
+This directory contains both **ESPHome integration tests** and **C++ unit tests** for validating the component.
 
-## Setup
+## Directory Structure
 
-### WiFi Credentials (Required for hw_setup_test.yaml)
+```
+tests/
+├── unit/                       # C++ unit tests for type classes
+│   ├── test_speed.cpp         # Speed class with 7 units
+│   ├── test_acceleration.cpp  # Acceleration class with 5 units
+│   ├── test_position.cpp      # Position class with 6 units
+│   ├── Makefile               # Build system for unit tests
+│   └── README.md              # Unit test documentation
+│
+└── esphome/                   # ESPHome YAML integration tests
+    ├── test_compile.yaml      # Full ESP32 compilation test
+    ├── test_compile_host.yaml # Host platform test (no hardware)
+    ├── test_hardware.yaml     # Hardware validation
+    └── hw_setup_test.yaml     # Hardware setup sequence test
+```
+
+## Quick Start
+
+### Run C++ Unit Tests
+
+```bash
+cd tests/unit
+make test
+```
+
+### Run ESPHome Tests
+
+```bash
+# Compile test (no upload)
+esphome compile tests/esphome/test_compile.yaml
+
+# Hardware test (requires ESP32 + motor)
+esphome run tests/esphome/hw_setup_test.yaml
+```
+
+## Unit Tests (C++)
+
+Fast, lightweight tests that verify unit conversion logic for all type classes.
+
+**Advantages:**
+- ⚡ Fast execution (<1 second)
+- 🔧 No hardware required
+- 📊 Comprehensive coverage (18 units total)
+- 🐛 Easy debugging
+
+**See:** [unit/README.md](unit/README.md) for details
+
+## ESPHome Tests (YAML)
+
+Integration tests that validate the component within ESPHome's build system.
+
+**Setup (for hardware tests):**
 
 1. Copy the secrets template:
    ```bash
