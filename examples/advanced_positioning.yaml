@@ -65,7 +65,7 @@ stepper:
     id: my_stepper
     steps_per_revolution: 3200 # 200 steps × 16 microsteps
     # Select your motor model for proper current defaults/limits
-    servo_type: SERVO42D  # SERVO28D | SERVO35D | SERVO42D | SERVO57D
+    servo_type: SERVO42D # SERVO28D | SERVO35D | SERVO42D | SERVO57D
     max_speed: 3000 steps/s
     acceleration: 1000 steps/s^2
     deceleration: 1000 steps/s^2
@@ -78,7 +78,7 @@ stepper:
   # Optional: Configure motor parameters
   # These can override motor settings temporarily
   # working_current: 2000mA  # or 2A - Max: 3000mA (28D/35D/42D) or 5200mA (57D)
-    # microsteps: 16         # Microsteps (1-256)
+  # microsteps: 16         # Microsteps (1-256)
 
 # Example: Button to trigger homing sequence
 button:

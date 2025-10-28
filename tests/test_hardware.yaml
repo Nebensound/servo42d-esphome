@@ -55,7 +55,6 @@ stepper:
     max_speed: 1000 steps/s
     acceleration: 500 steps/s^2
     deceleration: 500 steps/s^2
-    update_interval: 500ms
 
 # Position sensor for monitoring
 sensor:

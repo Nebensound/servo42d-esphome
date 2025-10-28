@@ -42,7 +42,7 @@ stepper:
   - platform: servo42d_rs485
     id: motor_x
     steps_per_revolution: 3200 # 200 steps × 16 microsteps
-    servo_type: SERVO42D  # Set per motor if different models are used
+    servo_type: SERVO42D # Set per motor if different models are used
     max_speed: 2000 steps/s
     acceleration: 800 steps/s^2
     deceleration: 800 steps/s^2
@@ -54,7 +54,7 @@ stepper:
   - platform: servo42d_rs485
     id: motor_y
     steps_per_revolution: 3200 # 200 steps × 16 microsteps
-    servo_type: SERVO42D  # SERVO28D | SERVO35D | SERVO42D | SERVO57D
+    servo_type: SERVO42D # SERVO28D | SERVO35D | SERVO42D | SERVO57D
     max_speed: 2000 steps/s
     acceleration: 800 steps/s^2
     deceleration: 800 steps/s^2

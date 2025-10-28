@@ -1,0 +1,103 @@
+substitutions:
+  device_name: test-new-units
+
+esphome:
+  name: ${device_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Load component from local directory
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [servoxxd_modbus]
+
+logger:
+  level: DEBUG
+
+uart:
+  id: uart_bus
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 38400
+  stop_bits: 1
+
+modbus:
+  uart_id: uart_bus
+  id: modbus1
+
+stepper:
+  - platform: servoxxd_modbus
+    id: my_stepper
+    address: 0x01
+    servo_type: SERVO42D
+    steps_per_revolution: 3200
+    microsteps: 16
+
+    # Test new SPEED units
+    speed: 360 deg/min # DEGREES_PER_MIN
+    acceleration: 1000 steps/s²
+
+    mode: POSITION
+
+# Test Actions mit neuen Units
+script:
+  - id: test_new_speed_units
+    then:
+      # Test DEGREES_PER_MIN
+      - stepper.set_speed:
+          id: my_stepper
+          speed: 180 deg/min
+
+      # Test DEGREES_PER_HOUR
+      - stepper.set_speed:
+          id: my_stepper
+          speed: 15 deg/h
+
+      # Test alternative aliases
+      - stepper.set_speed:
+          id: my_stepper
+          speed: 90 deg/m # alias for deg/min
+
+      - stepper.set_speed:
+          id: my_stepper
+          speed: 7.5 deg/hr # alias for deg/h
+
+      - stepper.set_speed:
+          id: my_stepper
+          speed: 45 °/min # Unicode degree symbol
+
+  - id: test_new_position_units
+    then:
+      # Test ARCMINUTES
+      - stepper.set_target:
+          id: my_stepper
+          target: 60 arcmin # 1 degree
+
+      # Test ARCSECONDS
+      - stepper.set_target:
+          id: my_stepper
+          target: 3600 arcsec # 1 degree
+
+      # Test alternative aliases
+      - stepper.set_target:
+          id: my_stepper
+          target: 120 arcminute # plural form
+
+      - stepper.set_target:
+          id: my_stepper
+          target: 30 amin # short alias
+
+      # Single quote for arcminutes (astronomical notation)
+      - stepper.set_target:
+          id: my_stepper
+          target: 90 '
+
+      # Double quote for arcseconds (astronomical notation)
+      - stepper.set_target:
+          id: my_stepper
+          target: 1800 "
