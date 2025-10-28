@@ -543,81 +543,73 @@ stepper:
     microsteps: 32  # Calibrated value (no correction needed)
 ```
 
-#### `max_speed`
+#### `speed` (alias: `max_speed`)
 
-Maximum allowed motor speed (hard ceiling limit).
-
-- **Type:** [`speed`](#speed-type)
-- **Required:** ❌ Optional
-- **Default:** Depends on `control_mode`:
-  - `SR_OPEN`: `400 RPM`
-  - `SR_CLOSE`: `1500 RPM`
-  - `SR_VFOC`: `3000 RPM`
-
-> [!IMPORTANT]
-> **Semantic Difference from ESPHome Stepper**
-> 
-> - **ESPHome Stepper:** `max_speed` = target speed after acceleration
-> - **servo42d:** `max_speed` = absolute ceiling (hard limit), use `initial_speed` for target
-> 
-> The motor will **NEVER exceed** this speed, even if commanded higher.
-
-**Examples:**
-```yaml
-stepper:
-  - platform: servo42d_rs485
-    max_speed: 100 RPM          # RPM
-    
-  - platform: servo42d_rs485
-    max_speed: 6000 steps/s     # Steps per second
-    
-  - platform: servo42d_rs485
-    max_speed: 360k steps/min   # With metric prefix
-```
-
-#### `initial_speed`
-
-Default speed used when actions don't specify a speed parameter.
+Target speed to drive the stepper at (ESPHome stepper compatibility).
 
 - **Type:** [`speed`](#speed-type)
 - **Required:** ❌ Optional
 - **Default:** `1 RPM`
-- **Constraint:** Must be ≤ `max_speed`
+- **Alternative Name:** `max_speed` (for backward compatibility with older ESPHome stepper configurations)
+- **Constraint:** Must not exceed hardware limits based on `control_mode`:
+  - `SR_OPEN`: max `400 RPM`
+  - `SR_CLOSE`: max `1500 RPM`
+  - `SR_VFOC`: max `3000 RPM`
+
+> [!NOTE]
+> **Backward Compatibility**
+> 
+> This field can be written as either `speed` or `max_speed` - they are exact aliases:
+> - `speed`: Current ESPHome stepper field name (recommended)
+> - `max_speed`: Legacy name (for backward compatibility)
+> 
+> Validation must ensure that only one of these fields is specified. If both are present, a validation error must be raised.
 
 **Examples:**
 ```yaml
 stepper:
   - platform: servo42d_rs485
-    initial_speed: 50 RPM
-    max_speed: 100 RPM
+    speed: 100 RPM          # Recommended
     
   - platform: servo42d_rs485
-    initial_speed: 3000 steps/s
-    max_speed: 6000 steps/s
+    max_speed: 100 RPM      # Backward compatible (exact same meaning)
+    
+  - platform: servo42d_rs485
+    speed: 6000 steps/s     # Steps per second
+    
+  - platform: servo42d_rs485
+    speed: 360k steps/min   # With metric prefix
 ```
 
-  #### `initial_acceleration`
+#### `acceleration`
 
-Motor acceleration and deceleration rate.
+Acceleration rate when the stepper starts and ends movement (ESPHome stepper compatibility).
 
 - **Type:** [`acceleration`](#acceleration-type)
 - **Required:** ❌ Optional
 - **Default:** `inf` (infinite - instant acceleration)
 
-> [!NOTE]
-> Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. Both use the same internal value.
+> [!IMPORTANT]
+> **Hardware Limitation**
+> 
+> Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. The MKS ServoXXD motor controllers only support a single acceleration/deceleration rate.
+> 
+> **Validation Requirement:**
+> - If a `deceleration` field is specified in the configuration, a validation error must be generated
+> - Error message: `"deceleration is not supported. Use acceleration instead. Hardware only supports a single acceleration/deceleration value."`
+> - The `acceleration` value applies to both acceleration and deceleration
 
 **Examples:**
 ```yaml
 stepper:
   - platform: servo42d_rs485
-     initial_acceleration: 100 RPM/s     # RPM per second
+    acceleration: 100 RPM/s     # RPM per second
     
   - platform: servo42d_rs485
-     initial_acceleration: 6k RPM/min    # With metric prefix
+    acceleration: 6k RPM/min    # With metric prefix
     
   - platform: servo42d_rs485
-     initial_acceleration: 1000 steps/s² # Steps per second squared
+    acceleration: 1000 steps/s² # Steps per second squared
 ```
 
 #### `sleep_when_done`
@@ -1289,15 +1281,11 @@ Set the maximum speed of the stepper at runtime.
 
 **C++ API:**
 ```cpp
-struct Speed {
-    float value;
-    SpeedUnit unit;
-};
-
 void set_speed(Speed speed);
 ```
 
-**Examples:**
+> [!NOTE]
+> The `Speed` class has a constructor `Speed(float value, SpeedUnit unit, float steps_per_rev)` that ESPHome's code generator can use to construct instances directly from YAML parameters.**Examples:**
 ```yaml
 on_...:
   # Plain number with unit
@@ -1317,7 +1305,7 @@ on_...:
 
 #### `stepper.set_acceleration`
 
-Set the acceleration of the stepper at runtime.
+Set the acceleration of the stepper at runtime (ESPHome stepper compatibility).
 
 **Configuration:**
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
@@ -1325,16 +1313,21 @@ Set the acceleration of the stepper at runtime.
 
 **C++ API:**
 ```cpp
-struct Acceleration {
-    float value;
-    AccelerationUnit unit;
-};
-
 void set_acceleration(Acceleration acceleration);
 ```
 
 > [!NOTE]
-> Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. Both use the same internal value, so calling either action will affect both acceleration and deceleration.
+> The `Acceleration` class has a constructor `Acceleration(float value, AccelerationUnit unit, float steps_per_rev)` that ESPHome's code generator can use to construct instances directly from YAML parameters.
+
+> [!IMPORTANT]
+> **Hardware Limitation**
+> 
+> Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. The MKS ServoXXD motor controllers only support a single acceleration/deceleration rate.
+> 
+> **Validation Requirement:**
+> - If a `stepper.set_deceleration` action is used, a validation error must be generated
+> - Error message: `"set_deceleration is not supported. Use set_acceleration instead. Hardware only supports a single acceleration/deceleration value."`
+> - Calling this action affects both acceleration and deceleration rates
 
 **Examples:**
 ```yaml
@@ -1352,8 +1345,6 @@ on_...:
         unit: RPM/s
 ```
 
-
-
 #### `stepper.stop`
 
 Stop the current motor movement. Available in both Position and Speed modes.
@@ -1364,19 +1355,17 @@ Stop the current motor movement. Available in both Position and Speed modes.
 
 **C++ API:**
 ```cpp
-struct Acceleration {
-    float value;
-    AccelerationUnit unit;
-};
-
-void stop(optional<Acceleration> deceleration);
+void stop(optional<Acceleration> acceleration);
 ```
 
 > [!NOTE]
-> `acceleration` will be changed by `stepper.stop` and keeps its last-used value. If a value was never set before, the component default (from `initial_acceleration`) is used.
+> The `Acceleration` class has a constructor `Acceleration(float value, AccelerationUnit unit, float steps_per_rev)` that ESPHome's code generator can use to construct instances directly from YAML parameters.
+
+> [!NOTE]
+> The internal acceleration/deceleration value will be updated when calling this action with a `acceleration` parameter. If omitted, the current acceleration value is used. If a value was never set before, the component default (from `acceleration` config) is used.
 
 > [!WARNING]
-> At speeds above about 1000 RPM, avoid stopping too abruptly. Use a non-zero `acceleration` (deceleration) for smoother, safer stops to protect mechanics and couplings.
+> At speeds above about 1000 RPM, avoid stopping too abruptly. Use a non-zero `acceleration` for smoother, safer stops to protect mechanics and couplings.
 
 **Examples:**
 ```yaml
@@ -1432,13 +1421,11 @@ Set the target position of the motor. The stepper will move towards the target p
 
 **C++ API:**
 ```cpp
-struct Position {
-    float value;
-    PositionUnit unit;
-};
-
 void set_target(Position target);
 ```
+
+> [!NOTE]
+> The `Position` class has a constructor `Position(float value, PositionUnit unit, float steps_per_rev)` that ESPHome's code generator can use to construct instances directly from YAML parameters.
 
 **Examples:**
 ```yaml
@@ -1484,13 +1471,11 @@ Report the current position to a specific value. Sets an offset for future movem
 
 **C++ API:**
 ```cpp
-struct Position {
-    float value;
-    PositionUnit unit;
-};
-
 void report_position(Position position);
 ```
+
+> [!NOTE]
+> The `Position` class has a constructor `Position(float value, PositionUnit unit, float steps_per_rev)` that ESPHome's code generator can use to construct instances directly from YAML parameters.
 
 **Examples:**
 ```yaml
@@ -1573,19 +1558,12 @@ Run the motor continuously at specified speed. Used in speed mode and for contin
 
 **C++ API:**
 ```cpp
-struct Speed {
-    float value;
-    SpeedUnit unit;
-};
-
-struct Acceleration {
-    float value;
-    AccelerationUnit unit;
-};
-
 void run_continuous(optional<Speed> speed,
                     optional<Acceleration> acceleration);
 ```
+
+> [!NOTE]
+> The `Speed` and `Acceleration` classes have constructors that take `(float value, Unit unit, float steps_per_rev)` parameters, allowing ESPHome's code generator to construct instances directly from YAML parameters.
 
 > [!NOTE]
 > At least one of `speed` or `acceleration` must be provided per call. Omitted values keep their last-used value. If a value was never set before, the component default (e.g., from `initial_speed` or `initial_acceleration`) is used. The sign of `speed` determines direction (positive => clockwise, negative => counter-clockwise).

@@ -13,6 +13,8 @@ stepper:
     microsteps: 16
     control_mode: SR_VFOC
     servo_type: SERVO42D
+    speed: 1000 steps/s          # or max_speed (alias)
+    acceleration: 500 steps/s^2
     working_current: 1.6A
     holding_current_percent: 40%
     en_pin_active: ALWAYS
@@ -40,21 +42,21 @@ stepper:
   - `SR_OPEN`: Open-loop mode, stepper behaves like a regular stepper motor. Working current is `working_current`, holding current is `holding_current_percent` of working current.
   - `SR_CLOSE`: Closed-loop mode, same as `SR_OPEN` but with position feedback from encoder to prevent missed steps.
   - `SR_VFOC`: FOC mode (recommended), same as `SR_CLOSE` but current may be adaptet to the steppers needs up to the max `working_current`. `holding_current_percent` is ignored in this mode.
-- **initial_speed** (*Optional*): Initial/target speed for motor operations. Defaults to `1 RPM`. Must be ≤ `max_speed`.
-  - You can write it in any of these forms:
-    - `initial_speed: 1000`                    # steps/s (default unit)
-    - `initial_speed: "60 RPM"`
-    - `initial_speed: { value: 60, unit: RPM }`
-- **max_speed** (*Optional*): Maximum speed the controller will ask for. Defaults to control-mode hardware limits: `SR_OPEN`: 400 RPM, `SR_CLOSE`: 1500 RPM, `SR_VFOC`: 3000 RPM.
+- **speed** (*Optional*): Target speed in `steps/s` (ESPHome stepper compatibility). Can also be written as **max_speed** for backward compatibility. Defaults to `1 RPM`. Hardware limits based on `control_mode` are enforced: `SR_OPEN`: 400 RPM, `SR_CLOSE`: 1500 RPM, `SR_VFOC`: 3000 RPM.
   - Supported forms:
-    - `max_speed: 6000`                        # steps/s (default unit)
-    - `max_speed: "2000 RPM"`
-    - `max_speed: { value: 2000, unit: RPM }`
-- **initial_acceleration** (*Optional*): Acceleration when changing speed. Default: `inf` (instant).
+    - `speed: 6000`                        # steps/s (default unit)
+    - `speed: "2000 RPM"`
+    - `speed: { value: 2000, unit: RPM }`
+    - `max_speed: 2000 RPM`                # Alternative name (exact same meaning)
+  > [!NOTE]
+  > `speed` and `max_speed` are aliases - use one or the other, not both.
+- **acceleration** (*Optional*): Acceleration in `steps/s²` (ESPHome stepper compatibility). Default: `inf` (instant).
   - Supported forms:
-    - `initial_acceleration: 500`              # steps/s^2 (default unit)
-    - `initial_acceleration: "100 RPM/s"`
-    - `initial_acceleration: { value: 100, unit: RPM_PER_SEC }`
+    - `acceleration: 500`              # steps/s^2 (default unit)
+    - `acceleration: "100 RPM/s"`
+    - `acceleration: { value: 100, unit: RPM_PER_SEC }`
+  > [!IMPORTANT]
+  > **Hardware Limitation:** The motor controller does not support separate acceleration and deceleration values. Specifying a `deceleration` field will cause a **validation error**. Use `acceleration` only, which affects both acceleration and deceleration rates.
 - **working_current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Working current. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). Defaults and maximums depend on `servo_type`:
   - Defaults: `0.6A` (28D), `0.8A` (35D), `1.6A` (42D), `3.2A` (57D)
   - Max: up to `3.0A` (28D/35D/42D), up to `5.2A` (57D)
@@ -75,10 +77,7 @@ stepper:
     address: 0x01
     control_mode: SR_VFOC          # Hardware limit: 3000 RPM
     steps_per_revolution: 3200     # Needed for unit conversion
-    initial_speed: 600 RPM                 # Initial/target speed for actions
-    # max_speed is auto-set based on control_mode (3000 RPM for SR_VFOC)
-    # You can override it to a lower value if needed:
-    # max_speed: 2000 RPM
+    speed: 600 RPM                 # Target speed (validated against hardware limits)
 ```
 
 
@@ -100,9 +99,8 @@ stepper:
     address: 0x01
     control_mode: SR_VFOC           # Hardware limit: 3000 RPM
     steps_per_revolution: 3200
-    initial_speed: 1000 steps/s      # Initial/target speed
-    # max_speed: auto-set to 3000 RPM based on control_mode
-    initial_acceleration: 500 steps/s^2
+    speed: 1000 steps/s             # Target speed (ESPHome compatibility)
+    acceleration: 500 steps/s^2     # Optional: acceleration/deceleration rate
 
     # Homing / 0_Mode (nested configuration)
     homing:
@@ -463,8 +461,8 @@ on_...:
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
 - **acceleration** (**Required**, [templatable](https://esphome.io/guides/configuration-types.html#config-templatable)): The acceleration to use when starting to move. Accepts same formats as acceleration in [`run_continuous`](#stepperrun_continuous).
 
-> [!NOTE]
-> Unlike the [ESPHome Stepper Component](https://esphome.io/components/stepper/), this component does not support separate acceleration and deceleration values. Both use the same internal value, so calling either action will affect both acceleration and deceleration.
+> [!IMPORTANT]
+> **Hardware Limitation:** The motor controller does not support separate acceleration and deceleration values. Calling this action affects both acceleration and deceleration rates. Using a `stepper.set_deceleration` action will cause a **validation error**.
 
 ## `stepper.key_lock` / `stepper.key_unlock`
 
