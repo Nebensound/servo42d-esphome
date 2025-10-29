@@ -105,11 +105,9 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement
-        // float value = this->value_.value(x...);
-        // float steps_per_rev = parent_->get_steps_per_revolution();
-        // Position pos(value, unit_, steps_per_rev);
-        // parent_->move_to(pos);
+        float value = this->value_.value(x...);
+        Position pos(value, unit_, parent_);
+        parent_->move_to(pos);
       }
 
     protected:
@@ -136,11 +134,9 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement
-        // float value = this->value_.value(x...);
-        // float steps_per_rev = parent_->get_steps_per_revolution();
-        // Speed speed(value, unit_, steps_per_rev);
-        // parent_->run_continuous(speed);
+        float value = this->value_.value(x...);
+        Speed speed(value, unit_, parent_);
+        parent_->run_continuous(speed);
       }
 
     protected:
@@ -163,7 +159,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->stop();
+        parent_->stop();
       }
 
     protected:
@@ -185,7 +181,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->emergency_stop();
+        parent_->emergency_stop();
       }
 
     protected:
@@ -207,7 +203,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->home();
+        parent_->home();
       }
 
     protected:
@@ -237,10 +233,9 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement
+        // TODO: Implement report_position in ServoXxdModbus first
         // float value = this->value_.value(x...);
-        // float steps_per_rev = parent_->get_steps_per_revolution();
-        // Position pos(value, unit_, steps_per_rev);
+        // Position pos(value, unit_, parent_);
         // parent_->report_position(pos);
       }
 
@@ -264,7 +259,8 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->set_zero();
+        // TODO: Implement set_zero in ServoXxdModbus first
+        // parent_->set_zero();
       }
 
     protected:
@@ -290,7 +286,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->enable();
+        parent_->enable();
       }
 
     protected:
@@ -312,7 +308,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->disable();
+        parent_->disable();
       }
 
     protected:
@@ -342,10 +338,9 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement
+        // TODO: Implement set_speed in ServoXxdModbus first
         // float value = this->value_.value(x...);
-        // float steps_per_rev = parent_->get_steps_per_revolution();
-        // Speed speed(value, unit_, steps_per_rev);
+        // Speed speed(value, unit_, parent_);
         // parent_->set_speed(speed);
       }
 
@@ -373,10 +368,9 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement
+        // TODO: Implement set_acceleration in ServoXxdModbus first
         // float value = this->value_.value(x...);
-        // float steps_per_rev = parent_->get_steps_per_revolution();
-        // Acceleration acc(value, unit_, steps_per_rev);
+        // Acceleration acc(value, unit_, parent_);
         // parent_->set_acceleration(acc);
       }
 
@@ -408,7 +402,8 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->set_work_mode(mode_);
+        // TODO: Implement set_work_mode in ServoXxdModbus first
+        // parent_->set_work_mode(mode_);
       }
 
     protected:
@@ -433,7 +428,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement
+        // TODO: Implement set_working_current in ServoXxdModbus first
         // uint16_t current = this->current_.value(x...);
         // parent_->set_working_current(current);
       }
@@ -459,7 +454,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement
+        // TODO: Implement set_holding_current_percent in ServoXxdModbus first
         // uint8_t percent = this->percent_.value(x...);
         // parent_->set_holding_current_percent(percent);
       }
@@ -485,7 +480,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->set_microstepping(microsteps_);
+        parent_->set_microstepping(microsteps_);
       }
 
     protected:
@@ -512,7 +507,8 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->release_protection();
+        // TODO: Implement release_protection in ServoXxdModbus first
+        // parent_->release_protection();
       }
 
     protected:
@@ -534,7 +530,8 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->restart();
+        // TODO: Implement restart in ServoXxdModbus first
+        // parent_->restart();
       }
 
     protected:
@@ -556,7 +553,8 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: parent_->calibrate();
+        // TODO: Implement calibrate in ServoXxdModbus first
+        // parent_->calibrate();
       }
 
     protected:

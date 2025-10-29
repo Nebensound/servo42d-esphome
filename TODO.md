@@ -14,8 +14,10 @@
 ### 2. Core Infrastructure (Priority: HIGH) 🔵 SKELETON CREATED
 
 - [x] `ServoXxdModbus` main component class - skeleton mit TODO-Kommentaren
-- [x] `StepperEngine` state machine - skeleton mit TODO-Kommentaren
+- [x] `StepperEngine` state machine - skeleton mit TODO-Kommentaren ✅
+- [x] `StepperEngine` unit tests - 35 tests passing ✅
 - [x] `CommandQueue` für Modbus-Befehle - skeleton mit TODO-Kommentaren
+- [x] Step/Tick conversion - handled by Position class ✅
 - [ ] Base class integration implementieren (setup, loop, dump_config)
 - [ ] State machine logic implementieren
 - [ ] Command queue logic implementieren

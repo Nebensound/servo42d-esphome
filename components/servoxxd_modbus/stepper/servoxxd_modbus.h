@@ -51,6 +51,7 @@ namespace esphome
     {
     public:
       ServoXxdModbus() = default;
+      ~ServoXxdModbus(); // Implemented in .cpp to avoid incomplete type
 
       // ============================================================================
       // Component Lifecycle
@@ -65,7 +66,7 @@ namespace esphome
        * - Query initial motor state (enabled, position, speed, protection)
        * - Set default values to hardware if needed
        */
-      void setup() override { /* TODO */ }
+      void setup() override;
 
       /**
        * @brief Called repeatedly by ESPHome
@@ -75,7 +76,7 @@ namespace esphome
        * - Handle polling intervals
        * - Update base class position if changed
        */
-      void loop() override { /* TODO */ }
+      void loop() override;
 
       /**
        * @brief Log configuration to console
@@ -85,7 +86,7 @@ namespace esphome
        * - Log current motor state
        * - Log operating mode (Position vs Speed)
        */
-      void dump_config() override { /* TODO */ }
+      void dump_config() override;
 
       // ============================================================================
       // Configuration (called from Python/YAML)
@@ -96,34 +97,48 @@ namespace esphome
        *
        * This is the fundamental configuration that affects all unit conversions.
        * Must be set before any movement commands.
-       *
-       * TODO: Store and validate (must be > 0)
        */
-      void set_steps_per_revolution(float steps) { /* TODO */ }
+      void set_steps_per_revolution(float steps)
+      {
+        if (steps <= 0.0f)
+        {
+          ESP_LOGE("servoxxd_modbus", "Invalid steps_per_revolution: %.1f (must be > 0)", steps);
+          return;
+        }
+        steps_per_revolution_ = steps;
+      }
 
       /**
        * @brief Get steps per revolution
        *
        * Used by Speed, Acceleration, Position classes for unit conversions.
        */
-      virtual float get_steps_per_revolution() const { /* TODO: return steps_per_revolution_; */ return 200.0f; }
+      virtual float get_steps_per_revolution() const { return steps_per_revolution_; }
 
       /**
        * @brief Set microstepping mode
        *
-       * Valid values: 8, 16, 32, 64, 128, 256
+       * Valid values: 1-256 (per specification)
        * Affects Speed class hardware compensation (rpm_for_hardware).
-       *
-       * TODO: Store, validate, and send to hardware
        */
-      void set_microstepping(uint16_t microsteps) { /* TODO */ }
+      void set_microstepping(uint16_t microsteps)
+      {
+        // Validate microstepping value (1-256 per spec)
+        if (microsteps < 1 || microsteps > 256)
+        {
+          ESP_LOGE("servoxxd_modbus", "Invalid microstepping: %u (must be 1-256)", microsteps);
+          return;
+        }
+        microstepping_ = microsteps;
+        // TODO: Send to hardware via Modbus command
+      }
 
       /**
        * @brief Get current microstepping mode
        *
        * Used by Speed class for hardware compensation.
        */
-      virtual uint16_t get_microstepping() const { /* TODO: return microstepping_; */ return 16; }
+      virtual uint16_t get_microstepping() const { return microstepping_; }
 
       // TODO: Add more configuration setters:
       // - set_working_current(uint16_t ma)
@@ -142,70 +157,56 @@ namespace esphome
 
       /**
        * @brief Move to absolute position
-       *
-       * TODO:
-       * - Delegate to StepperEngine::move_to()
-       * - Validate: Position Mode only
-       * - Validate: Not in Error state
+       * 
+       * Minimal implementation: Simply delegates to StepperEngine.
+       * TODO later: Add Position Mode validation, error state check
        */
-      void move_to(const Position &position) { /* TODO */ }
+      void move_to(const Position &position);
 
       /**
        * @brief Start homing sequence
-       *
-       * TODO:
-       * - Delegate to StepperEngine::home()
-       * - Validate: Position Mode only
-       * - Validate: Not in Error state
+       * 
+       * Minimal implementation: Simply delegates to StepperEngine.
+       * TODO later: Add Position Mode validation, error state check
        */
-      void home() { /* TODO */ }
+      void home();
 
       /**
        * @brief Stop motor with deceleration
-       *
-       * TODO:
-       * - Delegate to StepperEngine::stop()
-       * - Works in both Position and Speed modes
+       * 
+       * Minimal implementation: Simply delegates to StepperEngine.
+       * Works in both Position and Speed modes.
        */
-      void stop() { /* TODO */ }
+      void stop();
 
       /**
        * @brief Run continuously at specified speed
-       *
-       * TODO:
-       * - Delegate to StepperEngine::run_continuous()
-       * - Validate: Speed Mode only
-       * - Validate: Not in Error state
+       * 
+       * Minimal implementation: Simply delegates to StepperEngine.
+       * TODO later: Add Speed Mode validation, error state check
        */
-      void run_continuous(const Speed &speed) { /* TODO */ }
+      void run_continuous(const Speed &speed);
 
       /**
        * @brief Emergency stop (immediate halt, no deceleration)
-       *
-       * TODO:
-       * - Delegate to StepperEngine::emergency_stop()
-       * - Disables motor immediately
-       * - Sets error flag
+       * 
+       * Minimal implementation: Simply delegates to StepperEngine.
        */
-      void emergency_stop() { /* TODO */ }
+      void emergency_stop();
 
       /**
        * @brief Enable motor
-       *
-       * TODO:
-       * - Delegate to StepperEngine::enable()
-       * - Sends enable command to hardware
+       * 
+       * Minimal implementation: Simply delegates to StepperEngine.
        */
-      void enable() { /* TODO */ }
+      void enable();
 
       /**
        * @brief Disable motor
-       *
-       * TODO:
-       * - Delegate to StepperEngine::disable()
-       * - Sends disable command to hardware
+       * 
+       * Minimal implementation: Simply delegates to StepperEngine.
        */
-      void disable() { /* TODO */ }
+      void disable();
 
       // TODO: Add more public API methods:
       // - set_zero() - Set current position as zero
@@ -229,7 +230,7 @@ namespace esphome
        * - Parse response data
        * - Delegate to StepperEngine for processing
        */
-      void on_modbus_data(const std::vector<uint8_t> &data) override { /* TODO */ }
+      void on_modbus_data(const std::vector<uint8_t> &data) override;
 
       /**
        * @brief Handle Modbus error
@@ -238,38 +239,77 @@ namespace esphome
        * - Log error
        * - Delegate to StepperEngine for error handling
        */
-      void on_modbus_error(uint8_t function_code, uint8_t exception_code) override { /* TODO */ }
+      void on_modbus_error(uint8_t function_code, uint8_t exception_code) override;
 
       // ============================================================================
       // Helper Methods (used by unit type classes and StepperEngine)
       // ============================================================================
 
       /**
-       * @brief Convert steps to encoder ticks
+       * @brief Step/Tick conversion is handled by the Position class
        *
-       * TODO: Implement conversion: ticks = (steps × 16384) / steps_per_rev
-       */
-      int64_t steps_to_ticks(int32_t steps) const { /* TODO */ return 0; }
-
-      /**
-       * @brief Convert encoder ticks to steps
+       * The Position class provides tested and validated conversion between
+       * steps and encoder ticks. Do not duplicate this logic here.
        *
-       * TODO: Implement conversion: steps = (ticks × steps_per_rev) / 16384
+       * Usage examples:
+       *
+       * Steps → Ticks:
+       *   Position pos(steps_value, PositionUnit::STEPS, this);
+       *   int64_t total_ticks = pos.ticks_total();
+       *   int32_t revs = pos.revolutions();
+       *   uint16_t angle = pos.angle_ticks();
+       *
+       * Ticks → Steps:
+       *   Position pos = Position::from_ticks_total(total_ticks);
+       *   int32_t steps = pos.steps();
+       *
+       * Split Format → Steps:
+       *   Position pos = Position::from_parts(revolutions, angle_ticks);
+       *   int32_t steps = pos.steps();
+       *
+       * Benefits of using Position class:
+       * - Handles split format (revolutions + angle_ticks)
+       * - Automatic carry/borrow normalization
+       * - All unit conversions in one place
+       * - Comprehensive unit tests
+       *
+       * @see Position for implementation details
        */
-      int32_t ticks_to_steps(int64_t ticks) const { /* TODO */ return 0; }
 
     private:
-      // TODO: Add member variables:
-      // - StepperEngine* engine_{nullptr};
-      // - float steps_per_revolution_{200.0f};
-      // - uint16_t microstepping_{16};
-      // - uint16_t working_current_{500};
-      // - uint8_t holding_current_percent_{50};
-      // - bool shaft_reversed_{false};
-      // - WorkMode work_mode_{WorkMode::CR_OPEN_LOOP};
-      // - Speed home_speed_;
-      // - Acceleration default_acceleration_;
-      // - etc.
+      // Core components
+      StepperEngine *engine_{nullptr};
+
+      // Motor configuration
+      float steps_per_revolution_{200.0f}; ///< Steps per revolution (typically 200 for 1.8° motors)
+      uint16_t microstepping_{16};         ///< Microstepping divisor (8, 16, 32, 64, 128, 256)
+
+      // Current settings
+      uint16_t working_current_{500};       ///< Working current in mA (0-2000mA typical)
+      uint8_t holding_current_percent_{50}; ///< Holding current as % of working current (0-100)
+
+      // Motor behavior
+      bool shaft_reversed_{false};     ///< Reverse shaft direction
+      bool en_pin_active_high_{false}; ///< EN pin polarity
+
+      // Homing configuration
+      bool home_direction_cw_{true};                   ///< Home in clockwise direction
+      Speed home_speed_{100.0f, SpeedUnit::RPM, this}; ///< Speed for homing operations
+
+      // Default motion parameters
+      Acceleration default_acceleration_{1000.0f, AccelerationUnit::RPM_PER_SEC, this};
+
+      // Operating mode (TODO: Define WorkMode enum)
+      // WorkMode work_mode_{WorkMode::SR_CLOSE_LOOP}; // Serial interface, closed loop
+
+      // Sleep configuration
+      bool sleep_when_done_{false}; ///< Enter sleep mode after motion complete
+
+      // TODO: Add more configuration as needed:
+      // - Protection thresholds
+      // - Calibration parameters
+      // - Polling intervals
+      // - Timeout values
 
       friend class Speed;
       friend class Acceleration;
