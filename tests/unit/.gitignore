@@ -8,7 +8,6 @@ test_debug
 test_epsilon
 test_acc_debug
 test_pos_debug
-test_stepper_engine_minimal
 
 # Object files
 *.o
