@@ -439,7 +439,7 @@ on_...:
 
 ## `stepper.set_microstepping`
 
-Change microstepping (step mode) at runtime. `stepper.steps_per_revolution` is automatically adjusted accordingly. Sof if `stepper.set_target` ist used with microstepping `16` to move to position `1600`, after changing microstepping to `32`, the command `stepper.set_target` to position `1600` will move tht Steper to half the angle compared to before.
+Change microstepping (step mode) at runtime. `stepper.steps_per_revolution` is automatically adjusted accordingly. So if `stepper.set_target` is used with microstepping `16` to move to position `1600`, after changing microstepping to `32`, the command `stepper.set_target` to position `1600` will move the Stepper to half the angle compared to before.
 
 ```yaml
 on_...:
