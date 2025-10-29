@@ -28,22 +28,36 @@ ServoXxdModbus = servoxxd_modbus_ns.class_(
     cg.Component
 )
 
-# Action classes - will be defined later when implementing actions
-# For now, just declare the core ones needed for basic functionality
-EnableMotorAction = servoxxd_modbus_ns.class_("EnableMotorAction", automation.Action)
-DisableMotorAction = servoxxd_modbus_ns.class_("DisableMotorAction", automation.Action)
-EmergencyStopAction = servoxxd_modbus_ns.class_("EmergencyStopAction", automation.Action)
+# Action classes - all 20 actions declared in servoxxd_modbus namespace
+# Movement actions
+SetTargetAction = servoxxd_modbus_ns.class_("SetTargetAction", automation.Action)
 RunContinuousAction = servoxxd_modbus_ns.class_("RunContinuousAction", automation.Action)
-StopMotorAction = servoxxd_modbus_ns.class_("StopMotorAction", automation.Action)
+StopAction = servoxxd_modbus_ns.class_("StopAction", automation.Action)
+EmergencyStopAction = servoxxd_modbus_ns.class_("EmergencyStopAction", automation.Action)
 HomeAction = servoxxd_modbus_ns.class_("HomeAction", automation.Action)
+
+# Position actions
+ReportPositionAction = servoxxd_modbus_ns.class_("ReportPositionAction", automation.Action)
 SetZeroAction = servoxxd_modbus_ns.class_("SetZeroAction", automation.Action)
-CalibrateMotorAction = servoxxd_modbus_ns.class_("CalibrateMotorAction", automation.Action)
-ReleaseProtectionAction = servoxxd_modbus_ns.class_("ReleaseProtectionAction", automation.Action)
-RestartMotorAction = servoxxd_modbus_ns.class_("RestartMotorAction", automation.Action)
+
+# Motor control actions
+EnableAction = servoxxd_modbus_ns.class_("EnableAction", automation.Action)
+DisableAction = servoxxd_modbus_ns.class_("DisableAction", automation.Action)
+
+# Configuration actions
+SetSpeedAction = servoxxd_modbus_ns.class_("SetSpeedAction", automation.Action)
+SetAccelerationAction = servoxxd_modbus_ns.class_("SetAccelerationAction", automation.Action)
 SetWorkModeAction = servoxxd_modbus_ns.class_("SetWorkModeAction", automation.Action)
 SetWorkingCurrentAction = servoxxd_modbus_ns.class_("SetWorkingCurrentAction", automation.Action)
 SetHoldingCurrentPercentAction = servoxxd_modbus_ns.class_("SetHoldingCurrentPercentAction", automation.Action)
 SetMicrosteppingAction = servoxxd_modbus_ns.class_("SetMicrosteppingAction", automation.Action)
+
+# System actions
+CalibrateAction = servoxxd_modbus_ns.class_("CalibrateAction", automation.Action)
+ReleaseProtectionAction = servoxxd_modbus_ns.class_("ReleaseProtectionAction", automation.Action)
+RestartAction = servoxxd_modbus_ns.class_("RestartAction", automation.Action)
+
+# Key lock actions
 KeyLockAction = servoxxd_modbus_ns.class_("KeyLockAction", automation.Action)
 KeyUnlockAction = servoxxd_modbus_ns.class_("KeyUnlockAction", automation.Action)
 
@@ -458,13 +472,42 @@ def validate_auto_sleep(value):
 def validate_current(value):
     """
     Validate current with unit support (A or mA).
-    Returns: float in milliamperes
+    Returns: int in milliamperes
+    
+    Accepts:
+    - Plain number: interpreted as milliamperes (e.g., 1600 = 1600mA)
+    - String with unit: "1.6A" or "1600mA"
     """
-    # Use ESPHome's built-in current validator which handles A, mA, and plain numbers
-    # cv.current returns amperes as float
-    amps = cv.current(value)
-    milliamps = amps * 1000.0
-    return int(milliamps)
+    # Handle string with unit
+    if isinstance(value, str):
+        value_str = value.strip().lower()
+        
+        # Check for mA unit
+        if value_str.endswith('ma'):
+            try:
+                val = float(value_str[:-2].strip())
+                return int(val)
+            except ValueError as e:
+                raise cv.Invalid(f"Invalid current value '{value_str}': {e}")
+        
+        # Check for A unit
+        if value_str.endswith('a') and not value_str.endswith('ma'):
+            try:
+                val = float(value_str[:-1].strip())
+                return int(val * 1000.0)  # Convert A to mA
+            except ValueError as e:
+                raise cv.Invalid(f"Invalid current value '{value_str}': {e}")
+        
+        # No unit - try parsing as plain number (interpret as mA)
+        try:
+            val = float(value_str)
+            return int(val)
+        except ValueError:
+            raise cv.Invalid(f"Could not parse current: {value}")
+    
+    # Handle plain number (interpret as mA)
+    val = cv.float_(value)
+    return int(val)
 
 
 def validate_homing_speed(value, homing_mode):
@@ -849,7 +892,7 @@ CONF_DECELERATION = "deceleration"
 
 @automation.register_action(
     "stepper.set_target",
-    stepper.SetTargetAction,
+    SetTargetAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
         cv.Required(CONF_TARGET): cv.templatable(validate_position_with_unit),
@@ -877,7 +920,7 @@ async def stepper_set_target_to_code(config, action_id, template_arg, args):
 
 @automation.register_action(
     "stepper.report_position",
-    stepper.ReportPositionAction,
+    ReportPositionAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
         cv.Required(CONF_POSITION): cv.templatable(validate_position_with_unit),
@@ -983,7 +1026,7 @@ async def stepper_run_continuous_to_code(config, action_id, template_arg, args):
 
 @automation.register_action(
     "stepper.stop",
-    StopMotorAction,
+    StopAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
         cv.Optional(CONF_ACCELERATION): cv.templatable(validate_acceleration_with_unit),
@@ -1030,7 +1073,7 @@ async def stepper_emergency_stop_to_code(config, action_id, template_arg, args):
 
 @automation.register_action(
     "stepper.enable",
-    EnableMotorAction,
+    EnableAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
@@ -1044,7 +1087,7 @@ async def stepper_enable_to_code(config, action_id, template_arg, args):
 
 @automation.register_action(
     "stepper.disable",
-    DisableMotorAction,
+    DisableAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
@@ -1058,7 +1101,7 @@ async def stepper_disable_to_code(config, action_id, template_arg, args):
 
 @automation.register_action(
     "stepper.calibrate",
-    CalibrateMotorAction,
+    CalibrateAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
@@ -1086,7 +1129,7 @@ async def stepper_release_protection_to_code(config, action_id, template_arg, ar
 
 @automation.register_action(
     "stepper.restart",
-    RestartMotorAction,
+    RestartAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
@@ -1172,7 +1215,7 @@ async def stepper_set_microstepping_to_code(config, action_id, template_arg, arg
 
 @automation.register_action(
     "stepper.set_speed",
-    stepper.SetSpeedAction,
+    SetSpeedAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
         cv.Required(CONF_SPEED): cv.templatable(validate_speed_with_unit),
@@ -1188,19 +1231,19 @@ async def stepper_set_speed_to_code(config, action_id, template_arg, args):
     if isinstance(speed_config, dict):
         # Value with unit - pass both to C++ for runtime conversion
         template_ = await cg.templatable(speed_config["value"], args, cg.float_)
-        cg.add(var.set_speed(template_))
+        cg.add(var.set_value(template_))
         cg.add(var.set_unit(SPEED_UNITS[speed_config["unit"]]))
     else:
         # Plain value
         template_ = await cg.templatable(speed_config, args, cg.float_)
-        cg.add(var.set_speed(template_))
+        cg.add(var.set_value(template_))
     
     return var
 
 
 @automation.register_action(
     "stepper.set_acceleration",
-    stepper.SetAccelerationAction,
+    SetAccelerationAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
         cv.Required(CONF_ACCELERATION): cv.templatable(validate_acceleration_with_unit),
@@ -1216,12 +1259,12 @@ async def stepper_set_acceleration_to_code(config, action_id, template_arg, args
     if isinstance(accel_config, dict):
         # Value with unit - pass both to C++ for runtime conversion
         template_ = await cg.templatable(accel_config["value"], args, cg.float_)
-        cg.add(var.set_acceleration(template_))
+        cg.add(var.set_value(template_))
         cg.add(var.set_unit(ACCELERATION_UNITS[accel_config["unit"]]))
     else:
         # Plain value
         template_ = await cg.templatable(accel_config, args, cg.float_)
-        cg.add(var.set_acceleration(template_))
+        cg.add(var.set_value(template_))
     
     return var
 

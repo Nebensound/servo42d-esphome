@@ -1,5 +1,13 @@
 #pragma once
 
+// Undefine Arduino macros that conflict with our method names
+#ifdef degrees
+#undef degrees
+#endif
+#ifdef radians
+#undef radians
+#endif
+
 #include "esphome/components/modbus/modbus.h"
 #include "esphome/components/stepper/stepper.h"
 #include "esphome/core/component.h"
@@ -140,16 +148,53 @@ namespace esphome
        */
       virtual uint16_t get_microstepping() const { return microstepping_; }
 
-      // TODO: Add more configuration setters:
-      // - set_working_current(uint16_t ma)
-      // - set_holding_current_percent(uint8_t percent)
-      // - set_shaft_direction(bool reverse)
-      // - set_en_pin_level(bool active_high)
-      // - set_work_mode(WorkMode mode)
-      // - set_home_direction(bool cw)
-      // - set_home_speed(Speed speed)
-      // - set_sleep_when_done(bool enable)
-      // - etc.
+      /**
+       * @brief Set speed from value and unit (called from Python/YAML)
+       * Creates a Speed object internally for configuration.
+       */
+      void set_speed(float value, SpeedUnit unit)
+      {
+        // Store as Speed object for later use
+        // This will be used as default/max speed for movements
+        default_speed_ = Speed(value, unit, this);
+      }
+
+      /**
+       * @brief Set acceleration from value and unit (called from Python/YAML)
+       * Creates an Acceleration object internally for configuration.
+       */
+      void set_acceleration(float value, AccelerationUnit unit)
+      {
+        default_acceleration_ = Acceleration(value, unit, this);
+      }
+
+      /**
+       * @brief Set homing speed from value and unit (called from Python/YAML)
+       */
+      void set_homing_speed(float value, SpeedUnit unit)
+      {
+        home_speed_ = Speed(value, unit, this);
+      }
+
+      // Configuration setters for motor parameters
+      void set_address(uint8_t addr) { this->address_ = addr; }
+      void set_servo_type(uint8_t type) { /* Store servo type */ }
+      void set_control_mode(uint8_t mode) { /* Store control mode */ }
+      void set_working_current(uint16_t ma) { working_current_ = ma; }
+      void set_holding_current_percent(float percent) { holding_current_percent_ = static_cast<uint8_t>(percent * 100.0f); }
+      void set_en_pin_active(uint8_t value) { /* Store EN pin setting */ }
+      void set_auto_screen_off(bool enable) { /* Store auto screen off */ }
+      void set_lock_keys_at_startup(bool lock) { /* Store key lock setting */ }
+      void set_mode(uint8_t mode) { /* Store operating mode (POSITION/SPEED) */ }
+      void set_sleep_when_done(uint32_t ms) { /* Store sleep delay */ }
+      
+      // Homing configuration setters
+      void set_homing_mode(uint8_t mode) { /* Store homing mode */ }
+      void set_homing_direction(uint8_t direction) { home_direction_cw_ = (direction == 0); }
+      void set_homing_zeroing_speed(uint8_t level) { /* Store zeroing speed level for VIRTUAL mode */ }
+      void set_endstop_trigger(uint8_t trigger) { /* Store endstop trigger level */ }
+      void set_homing_current(uint16_t ma) { /* Store homing current for SENSORLESS mode */ }
+      void set_homing_at_startup(bool enable) { /* Store homing at startup flag */ }
 
       // ============================================================================
       // Public API (called from Actions)
@@ -157,7 +202,7 @@ namespace esphome
 
       /**
        * @brief Move to absolute position
-       * 
+       *
        * Minimal implementation: Simply delegates to StepperEngine.
        * TODO later: Add Position Mode validation, error state check
        */
@@ -165,7 +210,7 @@ namespace esphome
 
       /**
        * @brief Start homing sequence
-       * 
+       *
        * Minimal implementation: Simply delegates to StepperEngine.
        * TODO later: Add Position Mode validation, error state check
        */
@@ -173,7 +218,7 @@ namespace esphome
 
       /**
        * @brief Stop motor with deceleration
-       * 
+       *
        * Minimal implementation: Simply delegates to StepperEngine.
        * Works in both Position and Speed modes.
        */
@@ -181,7 +226,7 @@ namespace esphome
 
       /**
        * @brief Run continuously at specified speed
-       * 
+       *
        * Minimal implementation: Simply delegates to StepperEngine.
        * TODO later: Add Speed Mode validation, error state check
        */
@@ -189,21 +234,21 @@ namespace esphome
 
       /**
        * @brief Emergency stop (immediate halt, no deceleration)
-       * 
+       *
        * Minimal implementation: Simply delegates to StepperEngine.
        */
       void emergency_stop();
 
       /**
        * @brief Enable motor
-       * 
+       *
        * Minimal implementation: Simply delegates to StepperEngine.
        */
       void enable();
 
       /**
        * @brief Disable motor
-       * 
+       *
        * Minimal implementation: Simply delegates to StepperEngine.
        */
       void disable();
@@ -297,7 +342,8 @@ namespace esphome
       Speed home_speed_{100.0f, SpeedUnit::RPM, this}; ///< Speed for homing operations
 
       // Default motion parameters
-      Acceleration default_acceleration_{1000.0f, AccelerationUnit::RPM_PER_SEC, this};
+      Speed default_speed_{100.0f, SpeedUnit::RPM, this};                            ///< Default/max speed for movements
+      Acceleration default_acceleration_{1000.0f, AccelerationUnit::RPM_PER_SEC, this}; ///< Default acceleration
 
       // Operating mode (TODO: Define WorkMode enum)
       // WorkMode work_mode_{WorkMode::SR_CLOSE_LOOP}; // Serial interface, closed loop

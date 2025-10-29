@@ -1,5 +1,19 @@
 #pragma once
 
+// Undefine Arduino macros that conflict with our method names
+#ifdef degrees
+#undef degrees
+#endif
+#ifdef radians
+#undef radians
+#endif
+#ifdef PI
+#undef PI
+#endif
+#ifdef TWO_PI
+#undef TWO_PI
+#endif
+
 #include "esphome/core/log.h"
 #include <cstdint>
 

@@ -161,11 +161,12 @@ namespace esphome
 
     void ServoXxdModbus::move_to(const Position &position)
     {
-      if (this->engine_ == nullptr) {
+      if (this->engine_ == nullptr)
+      {
         ESP_LOGE(TAG, "Cannot move_to: StepperEngine not initialized");
         return;
       }
-      
+
       // Minimal implementation: just delegate to engine
       // TODO later: Add Position Mode validation, error state check
       this->engine_->move_to(position, nullptr, nullptr);
@@ -173,11 +174,12 @@ namespace esphome
 
     void ServoXxdModbus::home()
     {
-      if (this->engine_ == nullptr) {
+      if (this->engine_ == nullptr)
+      {
         ESP_LOGE(TAG, "Cannot home: StepperEngine not initialized");
         return;
       }
-      
+
       // Minimal implementation: just delegate to engine
       // TODO later: Add Position Mode validation, error state check
       this->engine_->home();
@@ -185,22 +187,24 @@ namespace esphome
 
     void ServoXxdModbus::stop()
     {
-      if (this->engine_ == nullptr) {
+      if (this->engine_ == nullptr)
+      {
         ESP_LOGE(TAG, "Cannot stop: StepperEngine not initialized");
         return;
       }
-      
+
       // Minimal implementation: just delegate to engine
       this->engine_->stop(nullptr);
     }
 
     void ServoXxdModbus::run_continuous(const Speed &speed)
     {
-      if (this->engine_ == nullptr) {
+      if (this->engine_ == nullptr)
+      {
         ESP_LOGE(TAG, "Cannot run_continuous: StepperEngine not initialized");
         return;
       }
-      
+
       // Minimal implementation: just delegate to engine
       // TODO later: Add Speed Mode validation, error state check
       // Use default acceleration from configuration
@@ -209,33 +213,36 @@ namespace esphome
 
     void ServoXxdModbus::emergency_stop()
     {
-      if (this->engine_ == nullptr) {
+      if (this->engine_ == nullptr)
+      {
         ESP_LOGE(TAG, "Cannot emergency_stop: StepperEngine not initialized");
         return;
       }
-      
+
       // Minimal implementation: just delegate to engine
       this->engine_->emergency_stop();
     }
 
     void ServoXxdModbus::enable()
     {
-      if (this->engine_ == nullptr) {
+      if (this->engine_ == nullptr)
+      {
         ESP_LOGE(TAG, "Cannot enable: StepperEngine not initialized");
         return;
       }
-      
+
       // Minimal implementation: just delegate to engine
       this->engine_->enable();
     }
 
     void ServoXxdModbus::disable()
     {
-      if (this->engine_ == nullptr) {
+      if (this->engine_ == nullptr)
+      {
         ESP_LOGE(TAG, "Cannot disable: StepperEngine not initialized");
         return;
       }
-      
+
       // Minimal implementation: just delegate to engine
       this->engine_->disable();
     }
