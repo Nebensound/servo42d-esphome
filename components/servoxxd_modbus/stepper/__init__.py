@@ -254,8 +254,8 @@ def validate_speed_with_unit(value, allow_inf=True):
         # Parse unit suffixes
         unit_map = {
             ("steps/s", "steps/sec", "step/s", "step/sec"): "STEPS_PER_SEC",
-            ("rpm", "RPM"): "RPM",
-            ("rev/s", "rev/sec", "revolutions/s", "revolutions/sec"): "REV_PER_SEC",
+            ("rpm", "RPM", "rev/min", "revolutions/min"): "RPM",
+            ("rev/s", "rev/sec", "rps", "revolutions/s", "revolutions/sec"): "REV_PER_SEC",
             ("deg/s", "deg/sec", "degrees/s", "degrees/sec", "°/s", "°/sec"): "DEGREES_PER_SEC",
             ("rad/s", "rad/sec", "radians/s", "radians/sec"): "RADIANS_PER_SEC",
             ("deg/min", "deg/m", "°/min", "degrees/minute"): "DEGREES_PER_MIN",
@@ -334,7 +334,7 @@ def validate_acceleration_with_unit(value, allow_inf=True):
         # Parse unit suffixes (more complex for acceleration)
         unit_map = {
             ("steps/s²", "steps/s^2", "steps/s/s", "steps/ss", "step/s²", "step/s^2"): "STEPS_PER_SEC_SQ",
-            ("rpm/s", "rpm/sec", "RPM/s", "RPM/sec"): "RPM_PER_SEC",
+            ("rpm/s", "rpm/sec", "RPM/s", "RPM/sec", "rev/min/s", "rev/min/sec"): "RPM_PER_SEC",
             ("rev/s²", "rev/s^2", "rev/s/s", "revolutions/s²", "revolutions/s^2"): "REV_PER_SEC_SQ",
             ("deg/s²", "deg/s^2", "deg/s/s", "degrees/s²", "°/s²", "°/s^2"): "DEGREES_PER_SEC_SQ",
             ("rad/s²", "rad/s^2", "rad/s/s", "radians/s²", "radians/s^2"): "RADIANS_PER_SEC_SQ",
@@ -642,7 +642,7 @@ CONFIG_SCHEMA = cv.All(
         
         # Motor configuration
         cv.Optional(CONF_WORKING_CURRENT): validate_current,
-        cv.Optional(CONF_HOLDING_CURRENT_PERCENT, default=0.40): cv.percentage,
+        cv.Optional(CONF_HOLDING_CURRENT_PERCENT, default=0.50): cv.percentage,
         cv.Optional(CONF_EN_PIN_ACTIVE, default="ALWAYS"): cv.enum(EN_PIN_ACTIVE_VALUES, upper=True),
         cv.Optional(CONF_AUTO_SCREEN_OFF, default=True): cv.boolean,
         cv.Optional(CONF_LOCK_KEYS_AT_STARTUP, default=False): cv.boolean,
@@ -670,6 +670,13 @@ def validate_config_cross_fields(config):
     """
     Validate cross-field dependencies and constraints.
     """
+    # Check for unsupported deceleration field (hardware limitation)
+    if "deceleration" in config:
+        raise cv.Invalid(
+            "deceleration is not supported. Use acceleration instead. "
+            "Hardware only supports a single acceleration/deceleration value."
+        )
+    
     # Ensure only one of speed/max_speed is set
     if CONF_SPEED in config and CONF_MAX_SPEED in config:
         raise cv.Invalid(
@@ -949,7 +956,7 @@ async def stepper_report_position_to_code(config, action_id, template_arg, args)
 @automation.register_action(
     "stepper.home",
     HomeAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )
@@ -963,7 +970,7 @@ async def stepper_home_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.set_zero",
     SetZeroAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )
@@ -1056,7 +1063,7 @@ async def stepper_stop_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.emergency_stop",
     EmergencyStopAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )
@@ -1074,7 +1081,7 @@ async def stepper_emergency_stop_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.enable",
     EnableAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )
@@ -1088,7 +1095,7 @@ async def stepper_enable_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.disable",
     DisableAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )
@@ -1102,7 +1109,7 @@ async def stepper_disable_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.calibrate",
     CalibrateAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )
@@ -1116,7 +1123,7 @@ async def stepper_calibrate_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.release_protection",
     ReleaseProtectionAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )
@@ -1130,7 +1137,7 @@ async def stepper_release_protection_to_code(config, action_id, template_arg, ar
 @automation.register_action(
     "stepper.restart",
     RestartAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )
@@ -1276,7 +1283,7 @@ async def stepper_set_acceleration_to_code(config, action_id, template_arg, args
 @automation.register_action(
     "stepper.key_lock",
     KeyLockAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )
@@ -1290,7 +1297,7 @@ async def stepper_key_lock_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.key_unlock",
     KeyUnlockAction,
-    cv.Schema({
+    automation.maybe_conf(CONF_ID, {
         cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
     })
 )

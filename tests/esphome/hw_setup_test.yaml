@@ -114,12 +114,12 @@ modbus:
 external_components:
   - source:
       type: local
-      path: ../components
-    components: [servo42d_rs485]
+      path: ../../components
+    components: [servoxxd_modbus]
 
 # Servo42D Stepper Motor
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     id: test_motor
     modbus_id: modbus_rs485
     address: 0x02
@@ -127,9 +127,10 @@ stepper:
     # Basic configuration
     steps_per_revolution: ${ full_steps * microsteps } # 200 * 16 = 3200 steps/rev
     microsteps: ${ microsteps }
+    servo_type: SERVO42D # Required: Physical motor model
     max_speed: 100 steps/s
     acceleration: 100 steps/s^2
-    deceleration: 100 steps/s^2
+    # Note: deceleration not supported - hardware uses same value for accel/decel
 
     # Motor configuration (with defaults explicitly shown)
     control_mode: SR_VFOC # Serial FOC mode (recommended)

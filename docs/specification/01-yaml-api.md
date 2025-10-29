@@ -1171,6 +1171,26 @@ Additional fields available only when [mode](#mode) is `SPEED`.
 
 Actions are organized by their availability in different operating modes. Some actions work in all modes, while others are specific to Position Mode or Speed Mode.
 
+> [!NOTE]
+> **Action Syntax:** All actions that only require an `id` parameter should support both short and long syntax:
+>
+> ```yaml
+> # Short form (recommended for single-id actions)
+> - stepper.enable: my_stepper
+> - stepper.home: my_stepper
+> 
+> # Long form (use when adding optional parameters)
+> - stepper.enable:
+>     id: my_stepper
+> - stepper.stop:
+>     id: my_stepper
+>     acceleration: 50 RPM/s  # Optional parameter
+> ```
+>
+> **Applies to:** `enable`, `disable`, `emergency_stop`, `home`, `set_zero`, `calibrate`, `release_protection`, `restart`, `key_lock`, `key_unlock`
+>
+> **Implementation:** Uses `automation.maybe_conf(CONF_ID, cv.Schema({...}))` in Python validation.
+
 ### Basic Actions
 
 Actions available in both operating modes.
@@ -1182,6 +1202,17 @@ Enable or disable the motor. Same action is used for the `sleep_when_done` confi
 **Configuration:**
 
 - **id** (**Required**, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the stepper.
+
+> [!TIP]
+> **Syntax Options:** Both short and long form are supported:
+> ```yaml
+> # Short form (recommended for single-id actions)
+> - stepper.enable: my_stepper
+> 
+> # Long form (required when adding other parameters)
+> - stepper.enable:
+>     id: my_stepper
+> ```
 
 **C++ API:**
 
