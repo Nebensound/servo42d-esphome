@@ -39,33 +39,33 @@ stepper:
     id: test_motor
     modbus_id: modbus_bus
     address: 0x01
-    
+
     # Required basic config
     steps_per_revolution: 200
     microsteps: 16
     servo_type: SERVO42D
-    
+
     # Speed and acceleration with units
     speed: 100 RPM
     acceleration: 500 steps/s^2
-    
+
     # Motor configuration
-    working_current: 1600  # mA
+    working_current: 1600 # mA
     holding_current_percent: 40%
     control_mode: SR_VFOC
-    
+
     # Operating mode
     mode: POSITION
-    
+
     # Position mode settings
     sleep_when_done: 30s
-    
+
     # Homing configuration
     homing:
       mode: SENSORLESS
       direction: CW
       speed: 10 RPM
-      current: 800  # mA
+      current: 800 # mA
       at_startup: false
 
 # Test actions
@@ -76,32 +76,32 @@ button:
       - stepper.set_target:
           id: test_motor
           target: 360 deg
-  
+
   - platform: template
     name: "Home motor"
     on_press:
       - stepper.home:
           id: test_motor
-  
+
   - platform: template
     name: "Enable motor"
     on_press:
       - stepper.enable:
           id: test_motor
-  
+
   - platform: template
     name: "Run continuous 60 RPM"
     on_press:
       - stepper.run_continuous:
           id: test_motor
           speed: 60 RPM
-  
+
   - platform: template
     name: "Stop motor"
     on_press:
       - stepper.stop:
           id: test_motor
-  
+
   - platform: template
     name: "Set speed to 200 RPM"
     on_press:

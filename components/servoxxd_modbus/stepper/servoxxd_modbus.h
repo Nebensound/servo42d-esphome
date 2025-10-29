@@ -187,7 +187,7 @@ namespace esphome
       void set_lock_keys_at_startup(bool lock) { /* Store key lock setting */ }
       void set_mode(uint8_t mode) { /* Store operating mode (POSITION/SPEED) */ }
       void set_sleep_when_done(uint32_t ms) { /* Store sleep delay */ }
-      
+
       // Homing configuration setters
       void set_homing_mode(uint8_t mode) { /* Store homing mode */ }
       void set_homing_direction(uint8_t direction) { home_direction_cw_ = (direction == 0); }
@@ -342,7 +342,7 @@ namespace esphome
       Speed home_speed_{100.0f, SpeedUnit::RPM, this}; ///< Speed for homing operations
 
       // Default motion parameters
-      Speed default_speed_{100.0f, SpeedUnit::RPM, this};                            ///< Default/max speed for movements
+      Speed default_speed_{100.0f, SpeedUnit::RPM, this};                               ///< Default/max speed for movements
       Acceleration default_acceleration_{1000.0f, AccelerationUnit::RPM_PER_SEC, this}; ///< Default acceleration
 
       // Operating mode (TODO: Define WorkMode enum)
