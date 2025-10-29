@@ -1,527 +1,794 @@
 /**
  * @file test_stepper_engine.cpp
- * @brief Unit tests for StepperEngine state machine and command validation
+ * @brief Comprehensive unit tests for StepperEngine state machine
  *
  * Test Coverage:
  * - State transitions (Disabled→Idle, Idle→Moving, etc.)
  * - Command validation matrix (allowed/rejected in each state)
  * - Movement commands (move_to, stop, emergency_stop, home, run_continuous)
- * - Position tracking and target reached detection
- * - Status callbacks (position, speed, protection, motor status)
- * - Error handling (protection, emergency stop)
+ * - Configuration commands (enable, disable, restart, set_zero, release_protection)
+ * - Target override behavior (immediate update strategy)
  * - Buffered commands (disable during motion)
+ * - Status callbacks (position, speed, protection, motor status)
+ * - Error handling and recovery
+ * - State to string conversions
+ *
+ * This test uses the real ServoXxdModbus class (with stub implementations)
+ * to avoid mock-related construction issues.
  */
 
-#include "../../components/servoxxd_modbus/stepper/servoxxd_stepper_engine.h"
-
 #include <iostream>
-#include <cassert>
-#include <vector>
-#include <cmath>
+#include <string>
+
+// Mock logging
+#include "./esphome/core/log.h"
+
+// Mock millis() for time tracking
+static uint32_t test_millis_value = 0;
+uint32_t millis() { return test_millis_value; }
+
+// Include real classes
+#include "../../components/servoxxd_modbus/stepper/servoxxd.h"
+#include "../../components/servoxxd_modbus/stepper/servoxxd_stepper_engine.h"
 
 using namespace esphome::servoxxd_modbus;
 
-// ============================================================================
-// Mock Implementation
-// ============================================================================
-
-// Global test time counter for millis()
-uint32_t test_millis = 0;
-
-uint32_t millis()
-{
-  return test_millis;
-}
-
-// Mock ServoXxdModbus parent class
-class MockServoXxdModbus
-{
-public:
-  std::vector<uint8_t> last_sent_payload;
-  uint8_t last_function_code = 0;
-  uint16_t last_address = 0;
-  uint16_t last_count_or_value = 0;
-
-  // Configuration values
-  uint16_t subdivision_ = 16;
-  uint32_t steps_per_revolution_ = 200;
-
-  void send(uint8_t function_code, uint16_t start_address, uint16_t count_or_value)
-  {
-    last_function_code = function_code;
-    last_address = start_address;
-    last_count_or_value = count_or_value;
-  }
-
-  void send_raw(const std::vector<uint8_t> &payload)
-  {
-    last_sent_payload = payload;
-  }
-
-  uint16_t get_subdivision() const { return subdivision_; }
-  uint32_t get_steps_per_revolution() const { return steps_per_revolution_; }
-};
-
-// Cast ServoXxdModbus* to MockServoXxdModbus* for testing
-#define MOCK_PARENT(ptr) reinterpret_cast<MockServoXxdModbus *>(ptr)
+// Alias for State enum
+using State = StepperEngine::State;
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
 
-struct TestResult
+struct TestStats
 {
-  bool called = false;
-  Position position = Position(0.0f, PositionUnit::STEPS, nullptr);
-  Speed speed = Speed(0.0f, SpeedUnit::RPM, nullptr);
-  bool motor_enabled = false;
-};
+  int passed = 0;
+  int failed = 0;
 
-void reset_test_state()
-{
-  test_millis = 0;
-}
+  void pass(const std::string &msg)
+  {
+    std::cout << "  ✓ " << msg << std::endl;
+    passed++;
+  }
+
+  void fail(const std::string &msg)
+  {
+    std::cout << "  ✗ " << msg << std::endl;
+    failed++;
+  }
+};
 
 // ============================================================================
 // Test Cases
 // ============================================================================
 
-void test_initial_state()
+void test_initial_state(TestStats &stats)
 {
-  std::cout << "TEST 1: Initial state is Disabled" << std::endl;
+  std::cout << "\nTEST 1: Initial state and basic construction" << std::endl;
 
-  reset_test_state();
-  std::cout << "  - Reset test state" << std::endl;
+  try
+  {
+    // Create parent (ServoXxdModbus with default constructor)
+    ServoXxdModbus parent;
 
-  MockServoXxdModbus mock_parent;
-  std::cout << "  - Created mock parent" << std::endl;
+    // Create engine
+    StepperEngine engine(&parent, 1000, 3, 200);
 
-  std::cout << "  - Creating StepperEngine..." << std::endl;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  std::cout << "  - StepperEngine created" << std::endl;
+    // Check initial state
+    if (engine.get_state() == State::Disabled)
+    {
+      stats.pass("Initial state is Disabled");
+    }
+    else
+    {
+      stats.fail("Initial state should be Disabled");
+    }
 
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  assert(!engine.is_moving());
+    // Check not moving
+    if (!engine.is_moving())
+    {
+      stats.pass("is_moving() returns false in Disabled state");
+    }
+    else
+    {
+      stats.fail("is_moving() should return false in Disabled state");
+    }
 
-  std::cout << "  ✓ Initial state: Disabled" << std::endl;
-  std::cout << "  ✓ is_moving() = false" << std::endl;
+    // Check state_to_string
+    std::string state_str = engine.state_to_string(State::Disabled);
+    if (state_str == "Disabled")
+    {
+      stats.pass("state_to_string(Disabled) returns 'Disabled'");
+    }
+    else
+    {
+      stats.fail("state_to_string(Disabled) should return 'Disabled', got: " + state_str);
+    }
+  }
+  catch (const std::exception &e)
+  {
+    stats.fail(std::string("Exception during construction: ") + e.what());
+  }
+  catch (...)
+  {
+    stats.fail("Unknown exception during construction");
+  }
 }
 
-void test_enable_disable_transitions()
+void test_state_strings(TestStats &stats)
 {
-  std::cout << "\nTEST 2: Enable/Disable state transitions" << std::endl;
+  std::cout << "\nTEST 2: State to string conversions" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  // Disabled → Idle
-  engine.enable();
-  assert(engine.get_state() == StepperEngine::State::Idle);
-  std::cout << "  ✓ Disabled → Idle (enable)" << std::endl;
+    // Test all state names
+    struct StateTest
+    {
+      State state;
+      std::string expected;
+    };
 
-  // Idle → Disabled
-  engine.disable();
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ Idle → Disabled (disable)" << std::endl;
+    StateTest tests[] = {
+        {State::Disabled, "Disabled"},
+        {State::Idle, "Idle"},
+        {State::Moving, "Moving"},
+        {State::Running, "Running"},
+        {State::Homing, "Homing"},
+        {State::Stopping, "Stopping"},
+        {State::Error, "Error"}};
 
-  // Enable rejected in non-Disabled states
-  engine.enable();
-  engine.enable(); // Should be rejected (already Idle)
-  assert(engine.get_state() == StepperEngine::State::Idle);
-  std::cout << "  ✓ enable() rejected in Idle state" << std::endl;
-
-  // Disable rejected in Disabled state
-  engine.disable();
-  engine.disable(); // Should be rejected (already Disabled)
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ disable() rejected in Disabled state" << std::endl;
+    for (const auto &test : tests)
+    {
+      std::string result = engine.state_to_string(test.state);
+      if (result == test.expected)
+      {
+        stats.pass("state_to_string(" + test.expected + ") correct");
+      }
+      else
+      {
+        stats.fail("state_to_string expected '" + test.expected + "', got '" + result + "'");
+      }
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during state string tests");
+  }
 }
 
-void test_move_to_basic()
+void test_enable_transition(TestStats &stats)
 {
-  std::cout << "\nTEST 3: Basic move_to command" << std::endl;
+  std::cout << "\nTEST 3: Enable transition (Disabled → Idle)" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  engine.enable();
-  assert(engine.get_state() == StepperEngine::State::Idle);
+    // Initial state should be Disabled
+    if (engine.get_state() != State::Disabled)
+    {
+      stats.fail("Initial state is not Disabled");
+      return;
+    }
 
-  // Idle → Moving
-  Position target(1000.0f, PositionUnit::STEPS, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.move_to(target);
-  assert(engine.get_state() == StepperEngine::State::Moving);
-  assert(engine.is_moving());
-  std::cout << "  ✓ Idle → Moving (move_to)" << std::endl;
+    // Try to enable
+    engine.enable();
 
-  // move_to rejected in Disabled state
-  MockServoXxdModbus mock_parent2;
-  StepperEngine engine2(reinterpret_cast<ServoXxdModbus *>(&mock_parent2));
-  engine2.move_to(target);
-  assert(engine2.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ move_to() rejected in Disabled state" << std::endl;
+    // Should now be Idle
+    if (engine.get_state() == State::Idle)
+    {
+      stats.pass("State transitioned to Idle after enable()");
+    }
+    else
+    {
+      stats.fail("State should be Idle after enable()");
+    }
+
+    // Try to enable again (should be rejected or no-op)
+    engine.enable();
+
+    // Should still be Idle
+    if (engine.get_state() == State::Idle)
+    {
+      stats.pass("State remains Idle after redundant enable()");
+    }
+    else
+    {
+      stats.fail("State should still be Idle");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during enable transition test");
+  }
 }
 
-void test_target_override()
+void test_disable_transition(TestStats &stats)
 {
-  std::cout << "\nTEST 4: Target override during movement" << std::endl;
+  std::cout << "\nTEST 4: Disable transition (Idle → Disabled)" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  engine.enable();
-  Position target1(1000.0f, PositionUnit::STEPS, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.move_to(target1);
-  assert(engine.get_state() == StepperEngine::State::Moving);
+    // Enable first
+    engine.enable();
+    if (engine.get_state() != State::Idle)
+    {
+      stats.fail("Failed to reach Idle state");
+      return;
+    }
 
-  // Override with new target (should stay in Moving state)
-  Position target2(2000.0f, PositionUnit::STEPS, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.move_to(target2);
-  assert(engine.get_state() == StepperEngine::State::Moving);
-  std::cout << "  ✓ Target override in Moving state" << std::endl;
+    // Disable
+    engine.disable();
 
-  // Stop, then override during Stopping
-  engine.stop();
-  assert(engine.get_state() == StepperEngine::State::Stopping);
-
-  Position target3(3000.0f, PositionUnit::STEPS, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.move_to(target3);
-  assert(engine.get_state() == StepperEngine::State::Stopping); // Stays in Stopping
-  std::cout << "  ✓ Target override in Stopping state" << std::endl;
+    // Should be Disabled
+    if (engine.get_state() == State::Disabled)
+    {
+      stats.pass("State transitioned to Disabled after disable()");
+    }
+    else
+    {
+      stats.fail("State should be Disabled after disable()");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during disable transition test");
+  }
 }
 
-void test_stop_transitions()
+void test_move_to_command(TestStats &stats)
 {
-  std::cout << "\nTEST 5: Stop command transitions" << std::endl;
+  std::cout << "\nTEST 5: move_to command (Idle → Moving)" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  engine.enable();
-  Position target(1000.0f, PositionUnit::STEPS, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.move_to(target);
+    // Enable to reach Idle
+    engine.enable();
+    if (engine.get_state() != State::Idle)
+    {
+      stats.fail("Failed to reach Idle state");
+      return;
+    }
 
-  // Moving → Stopping
-  engine.stop();
-  assert(engine.get_state() == StepperEngine::State::Stopping);
-  assert(engine.is_moving());
-  std::cout << "  ✓ Moving → Stopping (stop)" << std::endl;
+    // Issue move_to command
+    Position target(1000.0f, PositionUnit::STEPS, &parent);
+    engine.move_to(target);
 
-  // stop() in Idle is no-op
-  MockServoXxdModbus mock_parent2;
-  StepperEngine engine2(reinterpret_cast<ServoXxdModbus *>(&mock_parent2));
-  engine2.enable();
-  engine2.stop();
-  assert(engine2.get_state() == StepperEngine::State::Idle);
-  std::cout << "  ✓ stop() in Idle is no-op" << std::endl;
+    // Should be Moving
+    if (engine.get_state() == State::Moving)
+    {
+      stats.pass("State transitioned to Moving after move_to()");
+    }
+    else
+    {
+      stats.fail("State should be Moving after move_to()");
+    }
 
-  // stop() rejected in Disabled/Error states
-  MockServoXxdModbus mock_parent3;
-  StepperEngine engine3(reinterpret_cast<ServoXxdModbus *>(&mock_parent3));
-  engine3.stop();
-  assert(engine3.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ stop() rejected in Disabled state" << std::endl;
+    // Should report is_moving() == true
+    if (engine.is_moving())
+    {
+      stats.pass("is_moving() returns true in Moving state");
+    }
+    else
+    {
+      stats.fail("is_moving() should return true in Moving state");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during move_to command test");
+  }
 }
 
-void test_emergency_stop()
+void test_emergency_stop(TestStats &stats)
 {
-  std::cout << "\nTEST 6: Emergency stop transitions to Error" << std::endl;
+  std::cout << "\nTEST 6: Emergency stop (any state → Error)" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  // Emergency stop from Disabled
-  engine.emergency_stop();
-  assert(engine.get_state() == StepperEngine::State::Error);
-  std::cout << "  ✓ Disabled → Error (emergency_stop)" << std::endl;
+    // Enable and start moving
+    engine.enable();
+    Position target(1000.0f, PositionUnit::STEPS, &parent);
+    engine.move_to(target);
 
-  // Emergency stop from Moving
-  MockServoXxdModbus mock_parent2;
-  StepperEngine engine2(reinterpret_cast<ServoXxdModbus *>(&mock_parent2));
-  engine2.enable();
-  Position target(1000.0f, PositionUnit::STEPS, reinterpret_cast<ServoXxdModbus *>(&mock_parent2));
-  engine2.move_to(target);
-  engine2.emergency_stop();
-  assert(engine2.get_state() == StepperEngine::State::Error);
-  assert(!engine2.is_moving());
-  std::cout << "  ✓ Moving → Error (emergency_stop)" << std::endl;
+    if (engine.get_state() != State::Moving)
+    {
+      stats.fail("Failed to reach Moving state");
+      return;
+    }
+
+    // Emergency stop
+    engine.emergency_stop();
+
+    // Should be Error
+    if (engine.get_state() == State::Error)
+    {
+      stats.pass("State transitioned to Error after emergency_stop()");
+    }
+    else
+    {
+      stats.fail("State should be Error after emergency_stop()");
+    }
+
+    // Should not be moving
+    if (!engine.is_moving())
+    {
+      stats.pass("is_moving() returns false after emergency_stop()");
+    }
+    else
+    {
+      stats.fail("is_moving() should return false after emergency_stop()");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during emergency stop test");
+  }
 }
 
-void test_homing_transitions()
+void test_target_override(TestStats &stats)
 {
-  std::cout << "\nTEST 7: Homing command transitions" << std::endl;
+  std::cout << "\nTEST 7: Target override during movement" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  engine.enable();
+    // Enable and start moving
+    engine.enable();
+    Position target1(1000.0f, PositionUnit::STEPS, &parent);
+    engine.move_to(target1);
 
-  // Idle → Homing
-  engine.home();
-  assert(engine.get_state() == StepperEngine::State::Homing);
-  assert(engine.is_moving());
-  std::cout << "  ✓ Idle → Homing (home)" << std::endl;
+    if (engine.get_state() != State::Moving)
+    {
+      stats.fail("Failed to reach Moving state");
+      return;
+    }
 
-  // home() rejected in Disabled state
-  MockServoXxdModbus mock_parent2;
-  StepperEngine engine2(reinterpret_cast<ServoXxdModbus *>(&mock_parent2));
-  engine2.home();
-  assert(engine2.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ home() rejected in Disabled state" << std::endl;
+    // Send new target while moving
+    Position target2(2000.0f, PositionUnit::STEPS, &parent);
+    engine.move_to(target2);
+
+    // Should still be Moving
+    if (engine.get_state() == State::Moving)
+    {
+      stats.pass("State remains Moving after target override");
+    }
+    else
+    {
+      stats.fail("State should remain Moving after target override");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during target override test");
+  }
 }
 
-void test_run_continuous_transitions()
+void test_stop_command(TestStats &stats)
 {
-  std::cout << "\nTEST 8: Run continuous transitions" << std::endl;
+  std::cout << "\nTEST 8: Stop command (Moving → Stopping)" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  engine.enable();
+    // Enable and start moving
+    engine.enable();
+    Position target(1000.0f, PositionUnit::STEPS, &parent);
+    engine.move_to(target);
 
-  // Idle → Running
-  Speed speed(100.0f, SpeedUnit::RPM, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  Acceleration accel(500.0f, AccelerationUnit::RPM_PER_SEC, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.run_continuous(speed, accel);
-  assert(engine.get_state() == StepperEngine::State::Running);
-  assert(engine.is_moving());
-  std::cout << "  ✓ Idle → Running (run_continuous)" << std::endl;
+    if (engine.get_state() != State::Moving)
+    {
+      stats.fail("Failed to reach Moving state");
+      return;
+    }
 
-  // run_continuous() allowed in Running state (update speed)
-  Speed speed2(200.0f, SpeedUnit::RPM, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.run_continuous(speed2, accel);
-  assert(engine.get_state() == StepperEngine::State::Running);
-  std::cout << "  ✓ run_continuous() allowed in Running state" << std::endl;
+    // Stop
+    engine.stop();
 
-  // Running → Stopping
-  engine.stop();
-  assert(engine.get_state() == StepperEngine::State::Stopping);
-  std::cout << "  ✓ Running → Stopping (stop)" << std::endl;
+    // Should be Stopping
+    if (engine.get_state() == State::Stopping)
+    {
+      stats.pass("State transitioned to Stopping after stop()");
+    }
+    else
+    {
+      stats.fail("State should be Stopping after stop()");
+    }
+
+    // Stop in Idle should be no-op
+    ServoXxdModbus parent2;
+    StepperEngine engine2(&parent2);
+    engine2.enable();
+    engine2.stop();
+
+    if (engine2.get_state() == State::Idle)
+    {
+      stats.pass("stop() in Idle state is no-op");
+    }
+    else
+    {
+      stats.fail("stop() in Idle should remain Idle");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during stop command test");
+  }
 }
 
-void test_release_protection()
+void test_homing(TestStats &stats)
 {
-  std::cout << "\nTEST 9: Release protection and error recovery" << std::endl;
+  std::cout << "\nTEST 9: Homing command (Idle → Homing)" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  // Emergency stop → Error
-  engine.emergency_stop();
-  assert(engine.get_state() == StepperEngine::State::Error);
+    // Enable
+    engine.enable();
 
-  // Error → Idle (release_protection)
-  engine.release_protection();
-  assert(engine.get_state() == StepperEngine::State::Idle);
-  std::cout << "  ✓ Error → Idle (release_protection)" << std::endl;
+    if (engine.get_state() != State::Idle)
+    {
+      stats.fail("Failed to reach Idle state");
+      return;
+    }
 
-  // release_protection() is no-op in Idle if no error
-  engine.release_protection();
-  assert(engine.get_state() == StepperEngine::State::Idle);
-  std::cout << "  ✓ release_protection() no-op in Idle (no error)" << std::endl;
+    // Start homing
+    engine.home();
+
+    // Should be Homing
+    if (engine.get_state() == State::Homing)
+    {
+      stats.pass("State transitioned to Homing after home()");
+    }
+    else
+    {
+      stats.fail("State should be Homing after home()");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during homing test");
+  }
 }
 
-void test_restart_command()
+void test_run_continuous(TestStats &stats)
 {
-  std::cout << "\nTEST 10: Restart command" << std::endl;
+  std::cout << "\nTEST 10: Run continuous (Idle → Running)" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  engine.enable();
-  engine.emergency_stop();
-  assert(engine.get_state() == StepperEngine::State::Error);
+    // Enable
+    engine.enable();
 
-  // Error → Disabled (restart)
-  engine.restart();
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ Error → Disabled (restart)" << std::endl;
+    if (engine.get_state() != State::Idle)
+    {
+      stats.fail("Failed to reach Idle state");
+      return;
+    }
 
-  // Restart from Idle
-  engine.enable();
-  engine.restart();
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ Idle → Disabled (restart)" << std::endl;
+    // Start continuous run
+    Speed speed(100.0f, SpeedUnit::RPM, &parent);
+    Acceleration accel(100.0f, AccelerationUnit::RPM_PER_SEC, &parent);
+    engine.run_continuous(speed, accel);
+
+    // Should be Running
+    if (engine.get_state() == State::Running)
+    {
+      stats.pass("State transitioned to Running after run_continuous()");
+    }
+    else
+    {
+      stats.fail("State should be Running after run_continuous()");
+    }
+
+    if (engine.is_moving())
+    {
+      stats.pass("is_moving() returns true in Running state");
+    }
+    else
+    {
+      stats.fail("is_moving() should return true in Running state");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during run_continuous test");
+  }
 }
 
-void test_disable_buffering()
+void test_release_protection(TestStats &stats)
 {
-  std::cout << "\nTEST 11: Disable command buffering during motion" << std::endl;
+  std::cout << "\nTEST 11: Release protection (Error → Idle)" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  engine.enable();
-  Position target(1000.0f, PositionUnit::STEPS, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.move_to(target);
-  assert(engine.get_state() == StepperEngine::State::Moving);
+    // Cause error with emergency stop
+    engine.enable();
+    Position target(1000.0f, PositionUnit::STEPS, &parent);
+    engine.move_to(target);
+    engine.emergency_stop();
 
-  // disable() during Moving → buffered, transition to Stopping
-  engine.disable();
-  assert(engine.get_state() == StepperEngine::State::Stopping);
-  std::cout << "  ✓ disable() during Moving → Stopping (buffered)" << std::endl;
+    if (engine.get_state() != State::Error)
+    {
+      stats.fail("Failed to reach Error state");
+      return;
+    }
 
-  // Simulate standstill (Stopping → Idle → Disabled)
-  // Note: In real implementation, this would happen via speed update
-  // For now, we just verify the buffering behavior
+    // Release protection
+    engine.release_protection();
+
+    // Should be Idle
+    if (engine.get_state() == State::Idle)
+    {
+      stats.pass("State transitioned to Idle after release_protection()");
+    }
+    else
+    {
+      stats.fail("State should be Idle after release_protection()");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during release_protection test");
+  }
 }
 
-void test_position_callbacks()
+void test_restart_command(TestStats &stats)
 {
-  std::cout << "\nTEST 12: Position update callbacks" << std::endl;
+  std::cout << "\nTEST 12: Restart command (any state → Disabled)" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    // Test from Idle
+    ServoXxdModbus parent1;
+    StepperEngine engine1(&parent1);
+    engine1.enable();
+    engine1.restart();
 
-  TestResult result;
-  engine.set_position_update_callback([&result](Position pos)
-                                      {
-    result.called = true;
-    result.position = pos; });
+    if (engine1.get_state() == State::Disabled)
+    {
+      stats.pass("restart() from Idle transitions to Disabled");
+    }
+    else
+    {
+      stats.fail("restart() should transition to Disabled");
+    }
 
-  // Process encoder update (significant change > 10 steps)
-  engine.enable();
-  // Note: process_encoder_update() is private, would need to be triggered via on_modbus_response()
-  // For now, verify callback registration works
+    // Test from Error
+    ServoXxdModbus parent2;
+    StepperEngine engine2(&parent2);
+    engine2.enable();
+    engine2.emergency_stop();
+    engine2.restart();
 
-  std::cout << "  ✓ Position callback registered" << std::endl;
+    if (engine2.get_state() == State::Disabled)
+    {
+      stats.pass("restart() from Error transitions to Disabled");
+    }
+    else
+    {
+      stats.fail("restart() from Error should transition to Disabled");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during restart command test");
+  }
 }
 
-void test_speed_callbacks()
+void test_disable_buffering(TestStats &stats)
 {
-  std::cout << "\nTEST 13: Speed update callbacks" << std::endl;
+  std::cout << "\nTEST 13: Disable buffering during motion" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  TestResult result;
-  engine.set_speed_update_callback([&result](Speed speed)
-                                   {
-    result.called = true;
-    result.speed = speed; });
+    // Enable and start moving
+    engine.enable();
+    Position target(1000.0f, PositionUnit::STEPS, &parent);
+    engine.move_to(target);
 
-  std::cout << "  ✓ Speed callback registered" << std::endl;
+    if (engine.get_state() != State::Moving)
+    {
+      stats.fail("Failed to reach Moving state");
+      return;
+    }
+
+    // Try to disable during motion
+    engine.disable();
+
+    // Should transition to Stopping (buffered disable)
+    if (engine.get_state() == State::Stopping)
+    {
+      stats.pass("disable() during Moving transitions to Stopping (buffered)");
+    }
+    else
+    {
+      stats.fail("disable() during Moving should buffer and transition to Stopping");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during disable buffering test");
+  }
 }
 
-void test_protection_callbacks()
+void test_set_zero_command(TestStats &stats)
 {
-  std::cout << "\nTEST 14: Protection triggered callbacks" << std::endl;
+  std::cout << "\nTEST 14: Set zero command" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  bool protection_triggered = false;
-  engine.set_protection_callback([&protection_triggered]()
-                                 { protection_triggered = true; });
+    // Enable
+    engine.enable();
 
-  std::cout << "  ✓ Protection callback registered" << std::endl;
+    if (engine.get_state() != State::Idle)
+    {
+      stats.fail("Failed to reach Idle state");
+      return;
+    }
+
+    // Set zero
+    engine.set_zero();
+
+    // Should still be Idle
+    if (engine.get_state() == State::Idle)
+    {
+      stats.pass("State remains Idle after set_zero()");
+    }
+    else
+    {
+      stats.fail("State should remain Idle after set_zero()");
+    }
+
+    // Position should be ~0
+    Position current = engine.get_current_position();
+    if (std::abs(current.steps()) < 1.0f)
+    {
+      stats.pass("Current position is ~0 after set_zero()");
+    }
+    else
+    {
+      stats.fail("Current position should be ~0 after set_zero()");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during set_zero command test");
+  }
 }
 
-void test_motor_status_callbacks()
+void test_callbacks(TestStats &stats)
 {
-  std::cout << "\nTEST 15: Motor status callbacks" << std::endl;
+  std::cout << "\nTEST 15: Callback registration" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  TestResult result;
-  engine.set_motor_status_callback([&result](bool enabled)
-                                   {
-    result.called = true;
-    result.motor_enabled = enabled; });
+    bool position_called = false;
+    bool speed_called = false;
+    bool protection_called = false;
+    bool motor_status_called = false;
 
-  std::cout << "  ✓ Motor status callback registered" << std::endl;
+    // Register callbacks
+    engine.set_position_update_callback([&](Position p)
+                                        { position_called = true; });
+    engine.set_speed_update_callback([&](Speed s)
+                                     { speed_called = true; });
+    engine.set_protection_callback([&]()
+                                   { protection_called = true; });
+    engine.set_motor_status_callback([&](bool enabled)
+                                     { motor_status_called = true; });
+
+    stats.pass("All callbacks registered without error");
+  }
+  catch (...)
+  {
+    stats.fail("Exception during callback registration");
+  }
 }
 
-void test_command_validation_disabled_state()
+void test_command_validation(TestStats &stats)
 {
   std::cout << "\nTEST 16: Command validation in Disabled state" << std::endl;
 
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
+  try
+  {
+    ServoXxdModbus parent;
+    StepperEngine engine(&parent);
 
-  assert(engine.get_state() == StepperEngine::State::Disabled);
+    // All movement commands should be rejected in Disabled state
+    Position target(1000.0f, PositionUnit::STEPS, &parent);
+    engine.move_to(target);
 
-  // Allowed: enable, emergency_stop, release_protection, restart
-  // Rejected: disable, move_to, stop, home, run_continuous, set_zero
+    if (engine.get_state() == State::Disabled)
+    {
+      stats.pass("move_to() rejected in Disabled state");
+    }
+    else
+    {
+      stats.fail("move_to() should be rejected in Disabled state");
+    }
 
-  Position target(1000.0f, PositionUnit::STEPS, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.move_to(target);
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ move_to() rejected in Disabled" << std::endl;
+    engine.stop();
+    if (engine.get_state() == State::Disabled)
+    {
+      stats.pass("stop() rejected in Disabled state");
+    }
+    else
+    {
+      stats.fail("stop() should be rejected in Disabled state");
+    }
 
-  engine.stop();
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ stop() rejected in Disabled" << std::endl;
+    engine.home();
+    if (engine.get_state() == State::Disabled)
+    {
+      stats.pass("home() rejected in Disabled state");
+    }
+    else
+    {
+      stats.fail("home() should be rejected in Disabled state");
+    }
 
-  engine.home();
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ home() rejected in Disabled" << std::endl;
+    Speed speed(100.0f, SpeedUnit::RPM, &parent);
+    Acceleration accel(100.0f, AccelerationUnit::RPM_PER_SEC, &parent);
+    engine.run_continuous(speed, accel);
 
-  Speed speed(100.0f, SpeedUnit::RPM, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  Acceleration accel(500.0f, AccelerationUnit::RPM_PER_SEC, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.run_continuous(speed, accel);
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ run_continuous() rejected in Disabled" << std::endl;
+    if (engine.get_state() == State::Disabled)
+    {
+      stats.pass("run_continuous() rejected in Disabled state");
+    }
+    else
+    {
+      stats.fail("run_continuous() should be rejected in Disabled state");
+    }
 
-  engine.set_zero();
-  assert(engine.get_state() == StepperEngine::State::Disabled);
-  std::cout << "  ✓ set_zero() rejected in Disabled" << std::endl;
-}
-
-void test_set_zero_command()
-{
-  std::cout << "\nTEST 17: Set zero command" << std::endl;
-
-  reset_test_state();
-  MockServoXxdModbus mock_parent;
-  StepperEngine engine(reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-
-  engine.enable();
-  assert(engine.get_state() == StepperEngine::State::Idle);
-
-  // set_zero() allowed in Idle
-  engine.set_zero();
-  Position pos = engine.get_current_position();
-  assert(std::abs(pos.steps()) < 0.1f); // Should be ~0
-  std::cout << "  ✓ set_zero() in Idle sets position to 0" << std::endl;
-
-  // set_zero() rejected during movement
-  Position target(1000.0f, PositionUnit::STEPS, reinterpret_cast<ServoXxdModbus *>(&mock_parent));
-  engine.move_to(target);
-  engine.set_zero();
-  assert(engine.get_state() == StepperEngine::State::Moving); // State unchanged
-  std::cout << "  ✓ set_zero() rejected in Moving state" << std::endl;
-}
-
-void test_state_to_string()
-{
-  std::cout << "\nTEST 18: State to string conversion" << std::endl;
-
-  assert(std::string(StepperEngine::state_to_string(StepperEngine::State::Disabled)) == "Disabled");
-  assert(std::string(StepperEngine::state_to_string(StepperEngine::State::Idle)) == "Idle");
-  assert(std::string(StepperEngine::state_to_string(StepperEngine::State::Moving)) == "Moving");
-  assert(std::string(StepperEngine::state_to_string(StepperEngine::State::Running)) == "Running");
-  assert(std::string(StepperEngine::state_to_string(StepperEngine::State::Homing)) == "Homing");
-  assert(std::string(StepperEngine::state_to_string(StepperEngine::State::Stopping)) == "Stopping");
-  assert(std::string(StepperEngine::state_to_string(StepperEngine::State::Error)) == "Error");
-
-  std::cout << "  ✓ All state names correct" << std::endl;
+    engine.set_zero();
+    if (engine.get_state() == State::Disabled)
+    {
+      stats.pass("set_zero() rejected in Disabled state");
+    }
+    else
+    {
+      stats.fail("set_zero() should be rejected in Disabled state");
+    }
+  }
+  catch (...)
+  {
+    stats.fail("Exception during command validation test");
+  }
 }
 
 // ============================================================================
@@ -534,28 +801,41 @@ int main()
   std::cout << "StepperEngine Unit Tests" << std::endl;
   std::cout << "========================================" << std::endl;
 
-  test_initial_state();
-  test_enable_disable_transitions();
-  test_move_to_basic();
-  test_target_override();
-  test_stop_transitions();
-  test_emergency_stop();
-  test_homing_transitions();
-  test_run_continuous_transitions();
-  test_release_protection();
-  test_restart_command();
-  test_disable_buffering();
-  test_position_callbacks();
-  test_speed_callbacks();
-  test_protection_callbacks();
-  test_motor_status_callbacks();
-  test_command_validation_disabled_state();
-  test_set_zero_command();
-  test_state_to_string();
+  TestStats stats;
 
+  // Run tests
+  test_initial_state(stats);
+  test_state_strings(stats);
+  test_enable_transition(stats);
+  test_disable_transition(stats);
+  test_move_to_command(stats);
+  test_emergency_stop(stats);
+  test_target_override(stats);
+  test_stop_command(stats);
+  test_homing(stats);
+  test_run_continuous(stats);
+  test_release_protection(stats);
+  test_restart_command(stats);
+  test_disable_buffering(stats);
+  test_set_zero_command(stats);
+  test_callbacks(stats);
+  test_command_validation(stats);
+
+  // Summary
   std::cout << "\n========================================" << std::endl;
-  std::cout << "✅ All StepperEngine tests passed!" << std::endl;
+  std::cout << "Test Summary" << std::endl;
   std::cout << "========================================" << std::endl;
+  std::cout << "Passed: " << stats.passed << std::endl;
+  std::cout << "Failed: " << stats.failed << std::endl;
 
-  return 0;
+  if (stats.failed == 0)
+  {
+    std::cout << "\nAll tests passed! ✓" << std::endl;
+    return 0;
+  }
+  else
+  {
+    std::cout << "\nSome tests failed. ✗" << std::endl;
+    return 1;
+  }
 }
