@@ -9,13 +9,13 @@
  * - Steps/s conversion for ESPHome base class
  */
 
-#include "components/servoxxd_modbus/stepper/servoxxd_speed.h"
-#include "components/servoxxd_modbus/stepper/servoxxd_modbus.h"
+#include "servoxxd_speed.h"
+#include "servoxxd.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
 
-using namespace esphome::servoxxd_modbus;
+using namespace esphome::servoxxd;
 
 // Tolerance for float comparisons
 constexpr float EPSILON = 0.01f;
@@ -25,11 +25,11 @@ bool float_eq(float a, float b)
   return std::abs(a - b) < EPSILON;
 }
 
-// Mock ServoXxdModbus for testing
-class MockServoXxdModbus : public ServoXxdModbus
+// Mock ServoXxd for testing
+class MockServoXxd : public ServoXxd
 {
 public:
-  MockServoXxdModbus(float steps_per_rev, uint16_t microsteps = 16)
+  MockServoXxd(float steps_per_rev, uint16_t microsteps = 16)
       : steps_per_rev_(steps_per_rev), microsteps_(microsteps) {}
 
   float get_steps_per_revolution() const override { return steps_per_rev_; }
@@ -45,7 +45,7 @@ void test_speed_steps_per_sec()
   std::cout << "Testing STEPS_PER_SEC conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f; // 200 * 16 microsteps
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 1000 steps/s should be (1000 * 60) / 3200 = 18.75 RPM → rounds to 19
   Speed speed(1000.0f, SpeedUnit::STEPS_PER_SEC, &mock);
@@ -59,7 +59,7 @@ void test_speed_rpm()
   std::cout << "Testing RPM conversion (direct)..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 100 RPM should remain 100 RPM (motor native unit)
   Speed speed(100.0f, SpeedUnit::RPM, &mock);
@@ -73,7 +73,7 @@ void test_speed_rev_per_sec()
   std::cout << "Testing REV_PER_SEC conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 1.5 rev/s should be 1.5 * 60 = 90 RPM
   Speed speed(1.5f, SpeedUnit::REV_PER_SEC, &mock);
@@ -87,7 +87,7 @@ void test_speed_degrees_per_sec()
   std::cout << "Testing DEGREES_PER_SEC conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 360 deg/s should be (360 * 60) / 360 = 60 RPM
   Speed speed(360.0f, SpeedUnit::DEGREES_PER_SEC, &mock);
@@ -101,7 +101,7 @@ void test_speed_radians_per_sec()
   std::cout << "Testing RADIANS_PER_SEC conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
   const float pi_value = static_cast<float>(PI);
   const float two_pi = 2.0f * pi_value;
 
@@ -117,7 +117,7 @@ void test_speed_degrees_per_min()
   std::cout << "Testing DEGREES_PER_MIN conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 360 deg/min should be 360 / 6 = 60 RPM
   Speed speed(360.0f, SpeedUnit::DEGREES_PER_MIN, &mock);
@@ -131,7 +131,7 @@ void test_speed_degrees_per_hour()
   std::cout << "Testing DEGREES_PER_HOUR conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 21600 deg/h should be 21600 / 360 = 60 RPM
   Speed speed(21600.0f, SpeedUnit::DEGREES_PER_HOUR, &mock);
@@ -147,11 +147,11 @@ void test_speed_microstepping_compensation()
   float steps_per_rev = 3200.0f;
 
   // Test different microstepping values - need separate Speed objects for each
-  MockServoXxdModbus mock_8(steps_per_rev, 8);
-  MockServoXxdModbus mock_16(steps_per_rev, 16);
-  MockServoXxdModbus mock_64(steps_per_rev, 64);
-  MockServoXxdModbus mock_128(steps_per_rev, 128);
-  MockServoXxdModbus mock_256(steps_per_rev, 256);
+  MockServoXxd mock_8(steps_per_rev, 8);
+  MockServoXxd mock_16(steps_per_rev, 16);
+  MockServoXxd mock_64(steps_per_rev, 64);
+  MockServoXxd mock_128(steps_per_rev, 128);
+  MockServoXxd mock_256(steps_per_rev, 256);
 
   // Reference: 16/32/64 should return unchanged
   Speed speed_16(100.0f, SpeedUnit::RPM, &mock_16);
@@ -188,7 +188,7 @@ void test_speed_steps_per_sec_conversion()
   std::cout << "Testing steps_per_sec() for ESPHome..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev, 16);
+  MockServoXxd mock(steps_per_rev, 16);
   Speed speed(60.0f, SpeedUnit::RPM, &mock);
 
   // 60 RPM = 1 rev/s = 3200 steps/s
@@ -203,7 +203,7 @@ void test_speed_negative_values()
   std::cout << "Testing negative speed values..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: -100 RPM should work (reverse direction)
   Speed speed(-100.0f, SpeedUnit::RPM, &mock);
@@ -218,7 +218,7 @@ void test_speed_range_clamping()
   std::cout << "Testing range clamping..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: Very high speed should clamp to hardware max (3000 RPM)
   Speed speed_high(40000.0f, SpeedUnit::RPM, &mock);
@@ -251,7 +251,7 @@ void test_speed_zero_value()
   std::cout << "Testing zero speed value..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   Speed speed_zero(0.0f, SpeedUnit::RPM, &mock);
   assert(speed_zero.rpm() == 0.0f);
@@ -264,7 +264,7 @@ void test_speed_invalid_steps_per_revolution()
   std::cout << "Testing invalid steps_per_revolution..." << std::endl;
 
   // Mock with invalid (negative) steps_per_rev
-  MockServoXxdModbus mock_invalid(-100.0f);
+  MockServoXxd mock_invalid(-100.0f);
 
   // Should handle invalid steps_per_rev gracefully
   Speed speed(1000.0f, SpeedUnit::STEPS_PER_SEC, &mock_invalid);
@@ -272,7 +272,7 @@ void test_speed_invalid_steps_per_revolution()
   std::cout << "  ✓ STEPS_PER_SEC with negative steps_per_rev → 0 RPM (error handling)" << std::endl;
 
   // Mock with zero steps_per_rev
-  MockServoXxdModbus mock_zero(0.0f);
+  MockServoXxd mock_zero(0.0f);
   Speed speed_zero(1000.0f, SpeedUnit::STEPS_PER_SEC, &mock_zero);
   assert(speed_zero.rpm() == 0.0f);
   std::cout << "  ✓ STEPS_PER_SEC with zero steps_per_rev → 0 RPM (error handling)" << std::endl;
@@ -283,7 +283,7 @@ void test_speed_factory_methods()
   std::cout << "Testing factory methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test from_rpm
   Speed speed1 = Speed::from_rpm(100.0f, &mock);
@@ -328,7 +328,7 @@ void test_speed_unit_conversions()
   std::cout << "Testing all unit accessor methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Create 60 RPM speed (1 rev/s)
   Speed speed(60.0f, SpeedUnit::RPM, &mock);
@@ -358,7 +358,7 @@ void test_speed_setters()
   std::cout << "Testing setter methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   Speed speed(&mock);
   assert(speed.rpm_internal() == 0);
@@ -405,7 +405,7 @@ void test_speed_int_overloads()
   std::cout << "Testing int constructor/setter overloads..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test int64_t constructor
   Speed speed1(static_cast<int64_t>(100), SpeedUnit::RPM, &mock);
@@ -434,7 +434,7 @@ void test_speed_comparison_operators()
   std::cout << "Testing comparison operators..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   Speed speed1(100.0f, SpeedUnit::RPM, &mock);
   Speed speed2(100.0f, SpeedUnit::RPM, &mock);

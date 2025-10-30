@@ -1,6 +1,6 @@
 # TODO - Implementation Tasks
 
-> **Spec:** [docs/specification/](docs/specification/) - 02-cpp-interface.md + Layer-Dateien (02a/02b/02c/02d)
+> **Spec:** [docs/specification/](docs/specification/)
 
 ## Status
 
@@ -14,12 +14,14 @@
 
 ### Phase 1: Foundation ⚠️ BLOCKIERT ALLES
 
-#### 1.1 Position Factory Methods 🔵 (1-2h)
-**File:** `servoxxd_position.cpp`
+#### 1.1 Position Class ✅ (ERLEDIGT)
+**File:** `servoxxd_position.cpp` + `test_position.cpp`
 
-- [ ] `from_steps()` - verify parent handling funktioniert korrekt
-- [ ] Operators `+ - * /` - propagate parent pointer
-- [ ] Tests mit verschiedenen steps_per_rev/microsteps
+- [x] `from_steps()` - parent pointer korrekt propagiert
+- [x] Operators `+ - * /` - parent pointer propagation + parent compatibility checks
+- [x] Split-Format-Logik: Alle Getter arbeiten direkt ohne int64_t Umweg
+- [x] Tests erweitert: operator*, operator/, parent handling, compatibility warnings
+- [ ] Tests zum addiren und subtrahiern (und andere operatoren)
 
 #### 1.2 Modbus Command Classes ❌ (6-8h) ⚠️ BLOCKIERT ALLES
 **Spec:** [02d-layer4-transport.md](docs/specification/02d-layer4-transport.md)  

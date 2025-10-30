@@ -10,13 +10,13 @@
  * - Steps/s² conversion for ESPHome base class
  */
 
-#include "components/servoxxd_modbus/stepper/servoxxd_acceleration.h"
-#include "components/servoxxd_modbus/stepper/servoxxd_modbus.h"
+#include "servoxxd_acceleration.h"
+#include "servoxxd.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
 
-using namespace esphome::servoxxd_modbus;
+using namespace esphome::servoxxd;
 
 // Tolerance for float comparisons
 constexpr float EPSILON = 1.0f; // Larger tolerance for non-linear mapping
@@ -26,11 +26,11 @@ bool float_eq(float a, float b, float epsilon = EPSILON)
   return std::abs(a - b) < epsilon;
 }
 
-// Mock ServoXxdModbus for testing
-class MockServoXxdModbus : public ServoXxdModbus
+// Mock ServoXxd for testing
+class MockServoXxd : public ServoXxd
 {
 public:
-  explicit MockServoXxdModbus(float steps_per_rev) : steps_per_rev_(steps_per_rev) {}
+  explicit MockServoXxd(float steps_per_rev) : steps_per_rev_(steps_per_rev) {}
 
   float get_steps_per_revolution() const override { return steps_per_rev_; }
 
@@ -43,7 +43,7 @@ void test_acceleration_steps_per_sec_sq()
   std::cout << "Testing STEPS_PER_SEC_SQ conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 1000 steps/s² should be (1000 * 60) / 3200 = 18.75 RPM/s
   // acc = 256 - (20000 / 18.75) = 256 - 1066.67 = -810.67 → clamped to 1
@@ -58,7 +58,7 @@ void test_acceleration_rpm_per_sec()
   std::cout << "Testing RPM_PER_SEC conversion (motor native)..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 1000 RPM/s should be acc = 256 - (20000 / 1000) = 256 - 20 = 236
   Acceleration acc(1000.0f, AccelerationUnit::RPM_PER_SEC, &mock);
@@ -77,7 +77,7 @@ void test_acceleration_rev_per_sec_sq()
   std::cout << "Testing REV_PER_SEC_SQ conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 10 rev/s² should be 10 * 60 = 600 RPM/s
   // acc = 256 - (20000 / 600) = 256 - 33.33 = 222.67 → 223
@@ -92,7 +92,7 @@ void test_acceleration_degrees_per_sec_sq()
   std::cout << "Testing DEGREES_PER_SEC_SQ conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 360 deg/s² should be (360 * 60) / 360 = 60 RPM/s
   // acc = 256 - (20000 / 60) = 256 - 333.33 = -77.33 → clamped to 1
@@ -107,7 +107,7 @@ void test_acceleration_radians_per_sec_sq()
   std::cout << "Testing RADIANS_PER_SEC_SQ conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
   constexpr float two_pi = 2.0f * static_cast<float>(PI);
 
   // Test: 2π rad/s² (1 rev/s²) should be 60 RPM/s
@@ -122,7 +122,7 @@ void test_acceleration_instant()
   std::cout << "Testing instant acceleration (acc=0)..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 0 RPM/s should result in acc=0 (instant, no ramping)
   Acceleration acc_zero(0.0f, AccelerationUnit::RPM_PER_SEC, &mock);
@@ -145,7 +145,7 @@ void test_acceleration_max_value()
   std::cout << "Testing maximum acceleration (acc=255)..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: acc=255 is the FASTEST ramping (not instant)
   // To get acc=255: 256 - (20000 / rpm_per_s) = 255 → rpm_per_s = 20000
@@ -175,7 +175,7 @@ void test_acceleration_non_linear_mapping()
   std::cout << "Testing non-linear inverse time mapping..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test several points to verify non-linear relationship
   struct TestCase
@@ -208,7 +208,7 @@ void test_acceleration_steps_per_sec2_conversion()
   std::cout << "Testing get_steps_per_sec2() for ESPHome..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: 1000 RPM/s = (1000 / 60) * 3200 = 53333.33 steps/s²
   Acceleration acc(1000.0f, AccelerationUnit::RPM_PER_SEC, &mock);
@@ -229,7 +229,7 @@ void test_acceleration_boundary_values()
   std::cout << "Testing boundary clamping..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test: Very low acceleration should clamp to 1 (slowest)
   Acceleration acc_low(10.0f, AccelerationUnit::RPM_PER_SEC, &mock);
@@ -262,7 +262,7 @@ void test_acceleration_invalid_steps_per_revolution()
   std::cout << "Testing invalid steps_per_revolution..." << std::endl;
 
   // Mock with invalid (negative) steps_per_rev
-  MockServoXxdModbus mock_invalid(-100.0f);
+  MockServoXxd mock_invalid(-100.0f);
 
   // Should handle invalid steps_per_rev gracefully
   Acceleration acc(1000.0f, AccelerationUnit::STEPS_PER_SEC_SQ, &mock_invalid);
@@ -270,7 +270,7 @@ void test_acceleration_invalid_steps_per_revolution()
   std::cout << "  ✓ STEPS_PER_SEC_SQ with negative steps_per_rev → acc=0 (error handling)" << std::endl;
 
   // Mock with zero steps_per_rev
-  MockServoXxdModbus mock_zero(0.0f);
+  MockServoXxd mock_zero(0.0f);
   Acceleration acc_zero(1000.0f, AccelerationUnit::STEPS_PER_SEC_SQ, &mock_zero);
   assert(acc_zero.acc_internal() == 0);
   std::cout << "  ✓ STEPS_PER_SEC_SQ with zero steps_per_rev → acc=0 (error handling)" << std::endl;
@@ -281,7 +281,7 @@ void test_acceleration_factory_methods()
   std::cout << "Testing factory methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test from_rpm_per_sec
   Acceleration acc1 = Acceleration::from_rpm_per_sec(1000.0f, &mock);
@@ -317,7 +317,7 @@ void test_acceleration_unit_conversions()
   std::cout << "Testing all unit accessor methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Create 1000 RPM/s acceleration
   Acceleration acc(1000.0f, AccelerationUnit::RPM_PER_SEC, &mock);
@@ -349,7 +349,7 @@ void test_acceleration_setters()
   std::cout << "Testing setter methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   Acceleration acc(&mock);
   assert(acc.acc_internal() == 0); // Default is instant
@@ -390,7 +390,7 @@ void test_acceleration_int_overloads()
   std::cout << "Testing int constructor/setter overloads..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   // Test int64_t constructor
   Acceleration acc1(static_cast<int64_t>(1000), AccelerationUnit::RPM_PER_SEC, &mock);
@@ -419,7 +419,7 @@ void test_acceleration_comparison_operators()
   std::cout << "Testing comparison operators..." << std::endl;
 
   float steps_per_rev = 3200.0f;
-  MockServoXxdModbus mock(steps_per_rev);
+  MockServoXxd mock(steps_per_rev);
 
   Acceleration acc1(1000.0f, AccelerationUnit::RPM_PER_SEC, &mock);
   Acceleration acc2(1000.0f, AccelerationUnit::RPM_PER_SEC, &mock);

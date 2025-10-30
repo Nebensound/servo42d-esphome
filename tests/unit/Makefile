@@ -1,14 +1,15 @@
 # Makefile for ServoXxd Unit Tests
 
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -Wextra -I../.. -I.
+CXXFLAGS = -std=c++11 -Wall -Wextra -I../.. -I. -I../../components/servoxxd/stepper
 LDFLAGS =
 
 # Source files
-COMPONENT_DIR = ../../components/servoxxd_modbus/stepper
+COMPONENT_DIR = ../../components/servoxxd/stepper
 MOCK_DIR = esphome/core
 
 SOURCES = \
+	$(COMPONENT_DIR)/servoxxd.cpp \
 	$(COMPONENT_DIR)/servoxxd_modbus.cpp \
 	$(COMPONENT_DIR)/servoxxd_stepper_engine.cpp \
 	$(COMPONENT_DIR)/servoxxd_command_queue.cpp \
@@ -21,6 +22,7 @@ QUEUE_SOURCES = \
 	$(COMPONENT_DIR)/servoxxd_command_queue.cpp
 
 ENGINE_SOURCES = \
+	$(COMPONENT_DIR)/servoxxd.cpp \
 	$(COMPONENT_DIR)/servoxxd_stepper_engine.cpp \
 	$(COMPONENT_DIR)/servoxxd_command_queue.cpp \
 	$(COMPONENT_DIR)/servoxxd_modbus.cpp \
