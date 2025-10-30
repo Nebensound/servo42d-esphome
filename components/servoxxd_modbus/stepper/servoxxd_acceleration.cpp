@@ -13,7 +13,7 @@ namespace esphome
     // Hardware acceleration constants
     static constexpr float MAX_RPM_PER_SEC = 20000.0f; // acc=255 → Δt=50μs → 20000 RPM/s
 
-    // Constructor: Convert value from any unit to hardware encoding (0-255)
+    // Primary constructor: float value
     Acceleration::Acceleration(float value, AccelerationUnit unit, const ServoXxdModbus *parent) : parent_(parent)
     {
       // Step 1: Convert to RPM/s
@@ -92,50 +92,115 @@ namespace esphome
       }
     }
 
-    // Convert hardware encoding back to effective RPM/s
-    float Acceleration::rpm_per_sec() const
-    {
-      if (acc_ == 0)
-      {
-        // Special case: instant speed change (∞ RPM/s)
-        // Return -1.0f as sentinel value for "instant"
-        return -1.0f;
-      }
+    // Constructor overload: double → float
+    Acceleration::Acceleration(double value, AccelerationUnit unit, const ServoXxdModbus *parent)
+        : Acceleration(static_cast<float>(value), unit, parent) {}
 
-      // Calculate effective acceleration from hardware value
-      // a_eff = 20000 / (256 - acc)
-      return MAX_RPM_PER_SEC / static_cast<float>(256 - acc_);
+    // Constructor overload: int64_t → float
+    Acceleration::Acceleration(int64_t value, AccelerationUnit unit, const ServoXxdModbus *parent)
+        : Acceleration(static_cast<float>(value), unit, parent) {}
+
+    // Constructor overload: int32_t → float
+    Acceleration::Acceleration(int32_t value, AccelerationUnit unit, const ServoXxdModbus *parent)
+        : Acceleration(static_cast<float>(value), unit, parent) {}
+
+    // Factory methods
+    Acceleration Acceleration::from_steps_per_sec2(float value, const ServoXxdModbus *parent)
+    {
+      return Acceleration(value, AccelerationUnit::STEPS_PER_SEC_SQ, parent);
     }
 
-    // Get acceleration as steps per second squared
-    float Acceleration::steps_per_sec2() const
+    Acceleration Acceleration::from_rpm_per_sec(float value, const ServoXxdModbus *parent)
     {
-      if (parent_ == nullptr)
-      {
-        ESP_LOGE(TAG, "steps_per_sec2: parent is null, returning -1.0f");
-        return -1.0f;
-      }
+      return Acceleration(value, AccelerationUnit::RPM_PER_SEC, parent);
+    }
 
+    Acceleration Acceleration::from_rev_per_sec2(float value, const ServoXxdModbus *parent)
+    {
+      return Acceleration(value, AccelerationUnit::REV_PER_SEC_SQ, parent);
+    }
+
+    Acceleration Acceleration::from_degrees_per_sec2(float value, const ServoXxdModbus *parent)
+    {
+      return Acceleration(value, AccelerationUnit::DEGREES_PER_SEC_SQ, parent);
+    }
+
+    Acceleration Acceleration::from_radians_per_sec2(float value, const ServoXxdModbus *parent)
+    {
+      return Acceleration(value, AccelerationUnit::RADIANS_PER_SEC_SQ, parent);
+    }
+
+    // Generic getter with unit parameter
+    float Acceleration::get(AccelerationUnit unit) const
+    {
+      // Special case: instant acceleration
       if (acc_ == 0)
       {
-        // Special case: instant speed change
-        return -1.0f;
+        return -1.0f; // Sentinel for instant
       }
 
-      // Get effective acceleration in RPM/s
-      float rpm_per_s = this->rpm_per_sec();
+      // Calculate effective RPM/s from hardware value
+      // a_eff = 20000 / (256 - acc)
+      float rpm_per_s = MAX_RPM_PER_SEC / static_cast<float>(256 - acc_);
 
-      // Get steps per revolution from parent
-      float steps_per_rev = parent_->get_steps_per_revolution();
-      if (steps_per_rev <= 0)
+      // Convert to requested unit
+      switch (unit)
       {
-        ESP_LOGE(TAG, "Invalid steps_per_revolution from parent: %.1f", steps_per_rev);
+      case AccelerationUnit::RPM_PER_SEC:
+        return rpm_per_s;
+
+      case AccelerationUnit::REV_PER_SEC_SQ:
+        return rpm_per_s / 60.0f;
+
+      case AccelerationUnit::DEGREES_PER_SEC_SQ:
+        return rpm_per_s * 6.0f; // rpm/s * 360/60 = rpm/s * 6
+
+      case AccelerationUnit::RADIANS_PER_SEC_SQ:
+        return rpm_per_s * (2.0f * M_PI / 60.0f);
+
+      case AccelerationUnit::STEPS_PER_SEC_SQ:
+        if (parent_ == nullptr)
+        {
+          ESP_LOGE(TAG, "get(STEPS_PER_SEC_SQ): parent is null");
+          return -1.0f;
+        }
+        else
+        {
+          float steps_per_rev = parent_->get_steps_per_revolution();
+          if (steps_per_rev <= 0)
+          {
+            ESP_LOGE(TAG, "get(STEPS_PER_SEC_SQ): invalid steps_per_rev=%.1f", steps_per_rev);
+            return -1.0f;
+          }
+          // Convert RPM/s to steps/s²
+          return (rpm_per_s / 60.0f) * steps_per_rev;
+        }
+
+      default:
+        ESP_LOGE(TAG, "Unknown acceleration unit in get(): %d", static_cast<int>(unit));
         return -1.0f;
       }
+    }
 
-      // Convert RPM/s to steps/s²
-      // steps/s² = (rpm_per_s / 60) * steps_per_rev
-      return (rpm_per_s / 60.0f) * steps_per_rev;
+    // Generic setter with unit parameter
+    void Acceleration::set(float value, AccelerationUnit unit)
+    {
+      *this = Acceleration(value, unit, parent_);
+    }
+
+    void Acceleration::set(double value, AccelerationUnit unit)
+    {
+      *this = Acceleration(static_cast<float>(value), unit, parent_);
+    }
+
+    void Acceleration::set(int64_t value, AccelerationUnit unit)
+    {
+      *this = Acceleration(static_cast<float>(value), unit, parent_);
+    }
+
+    void Acceleration::set(int32_t value, AccelerationUnit unit)
+    {
+      *this = Acceleration(static_cast<float>(value), unit, parent_);
     }
 
   } // namespace servoxxd_modbus

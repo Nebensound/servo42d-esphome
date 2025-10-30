@@ -26,92 +26,77 @@ namespace esphome
     };
 
     /**
-     * @brief Acceleration value with unit conversion and hardware encoding
+     * @brief Acceleration with hardware encoding (non-linear inverse time mapping)
      *
-     * This class handles acceleration values with automatic unit conversion to the
-     * hardware-native format (inverse time mapping, 0-255).
-     *
-     * **Hardware Encoding (Non-linear Inverse Time Mapping):**
-     *
-     * The motor controller uses a special encoding where the acceleration value controls
-     * the time interval between successive ±1 RPM speed changes:
-     *
-     * - `acc = 0`: Special case - no ramp, instant speed change (∞ RPM/s)
-     * - `acc = 1-255`: Δt = (256 - acc) × 50 μs
-     *   - `acc = 1`: Slowest (Δt = 12.75 ms → ~78 RPM/s)
-     *   - `acc = 255`: Fastest (Δt = 50 μs → 20000 RPM/s)
-     *
-     * **Conversion Formula (User → Hardware):**
-     *
-     * Given desired acceleration `a_user` in RPM/s:
-     * ```
-     * If a_user = 0 or ∞:  acc = 0  (no ramp)
-     * If a_user > 0:       acc = 256 - (20000 / a_user)
-     *                      acc = clamp(acc, 1, 255)
-     * ```
-     *
-     * **Conversion Formula (Hardware → Effective Rate):**
-     * ```
-     * If acc = 0:       a_eff = ∞  (instant)
-     * If acc = 1-255:   a_eff = 20000 / (256 - acc)  [RPM/s]
-     * ```
-     *
-     * **Important Notes:**
-     * - acc=0 is special: user value taken directly, no ramping
-     * - Non-linear relationship: small changes at high acc values = large effect differences
-     * - Not microstepping-calibrated (unlike Speed class)
-     * - Applies to already-scaled RPM values
-     *
-     * @see ServoXxdModbus for parent class that provides steps_per_revolution
+     * Hardware format: acc = 0-255 (inverse time control)
+     * - acc = 0: Instant (no ramp)
+     * - acc = 1-255: Δt = (256 - acc) × 50μs per ±1 RPM change
+     * - Conversion: acc = 256 - (20000 / rpm_per_sec), clamped [1, 255]
      */
     class Acceleration
     {
       friend class ServoXxdModbus;
 
     public:
-      /**
-       * @brief Construct an Acceleration from a value and unit
-       *
-       * Converts the input value to RPM/s, then maps to hardware value (0-255)
-       * using the inverse time formula.
-       *
-       * @param value Acceleration magnitude in the specified unit
-       * @param unit The unit of the acceleration value
-       * @param parent Pointer to parent ServoXxdModbus (required for unit conversion)
-       */
+      // Constructors - float primary, double/int overloads
       Acceleration(float value, AccelerationUnit unit, const ServoXxdModbus *parent);
-
-      /**
-       * @brief Construct Acceleration with parent only - initializes to instant (acc=0)
-       * @param parent Pointer to parent ServoXxdModbus (required)
-       */
+      Acceleration(double value, AccelerationUnit unit, const ServoXxdModbus *parent);
+      Acceleration(int64_t value, AccelerationUnit unit, const ServoXxdModbus *parent);
+      Acceleration(int32_t value, AccelerationUnit unit, const ServoXxdModbus *parent);
       explicit Acceleration(const ServoXxdModbus *parent) : acc_(0), parent_(parent) {}
 
-      /**
-       * @brief Get the hardware-native acceleration value
-       * @return Hardware value (0-255) for direct transmission to motor
-       */
+      // Factory methods for direct unit conversion
+      static Acceleration from_steps_per_sec2(float value, const ServoXxdModbus *parent);
+      static Acceleration from_rpm_per_sec(float value, const ServoXxdModbus *parent);
+      static Acceleration from_rev_per_sec2(float value, const ServoXxdModbus *parent);
+      static Acceleration from_degrees_per_sec2(float value, const ServoXxdModbus *parent);
+      static Acceleration from_radians_per_sec2(float value, const ServoXxdModbus *parent);
+
+      // Direct accessor to internal representation
       uint8_t acc_internal() const { return acc_; }
 
-      /**
-       * @brief Get approximate acceleration in RPM/s (for display/logging)
-       *
-       * Note: This is an approximation due to non-linear hardware encoding.
-       * Returns ∞ for acc_=0 (represented as -1.0f).
-       *
-       * @return Effective acceleration in RPM/s, or -1.0f for instant (acc_=0)
-       */
-      float rpm_per_sec() const;
+      // Unit conversions (getters) - all return float
+      float get(AccelerationUnit unit) const;
+      float get_steps_per_sec2() const { return get(AccelerationUnit::STEPS_PER_SEC_SQ); }
+      float get_rpm_per_sec() const { return get(AccelerationUnit::RPM_PER_SEC); }
+      float get_rev_per_sec2() const { return get(AccelerationUnit::REV_PER_SEC_SQ); }
+      float get_degrees_per_sec2() const { return get(AccelerationUnit::DEGREES_PER_SEC_SQ); }
+      float get_radians_per_sec2() const { return get(AccelerationUnit::RADIANS_PER_SEC_SQ); }
 
-      /**
-       * @brief Get acceleration in steps/s² for ESPHome base class
-       *
-       * Converts the hardware acceleration back to steps/s² for compatibility
-       * with ESPHome's stepper base class.
-       *
-       * @return Acceleration in steps/s², or -1.0f for instant (acc_=0)
-       */
-      float steps_per_sec2() const;
+      // Unit conversions (setters) - float/double/int overloads
+      void set(float value, AccelerationUnit unit);
+      void set(double value, AccelerationUnit unit);
+      void set(int64_t value, AccelerationUnit unit);
+      void set(int32_t value, AccelerationUnit unit);
+
+      void set_steps_per_sec2(float value) { set(value, AccelerationUnit::STEPS_PER_SEC_SQ); }
+      void set_steps_per_sec2(double value) { set(value, AccelerationUnit::STEPS_PER_SEC_SQ); }
+      void set_steps_per_sec2(int64_t value) { set(value, AccelerationUnit::STEPS_PER_SEC_SQ); }
+      void set_steps_per_sec2(int32_t value) { set(value, AccelerationUnit::STEPS_PER_SEC_SQ); }
+
+      void set_rpm_per_sec(float value) { set(value, AccelerationUnit::RPM_PER_SEC); }
+      void set_rpm_per_sec(double value) { set(value, AccelerationUnit::RPM_PER_SEC); }
+      void set_rpm_per_sec(int64_t value) { set(value, AccelerationUnit::RPM_PER_SEC); }
+      void set_rpm_per_sec(int32_t value) { set(value, AccelerationUnit::RPM_PER_SEC); }
+
+      void set_rev_per_sec2(float value) { set(value, AccelerationUnit::REV_PER_SEC_SQ); }
+      void set_rev_per_sec2(double value) { set(value, AccelerationUnit::REV_PER_SEC_SQ); }
+      void set_rev_per_sec2(int64_t value) { set(value, AccelerationUnit::REV_PER_SEC_SQ); }
+      void set_rev_per_sec2(int32_t value) { set(value, AccelerationUnit::REV_PER_SEC_SQ); }
+
+      void set_degrees_per_sec2(float value) { set(value, AccelerationUnit::DEGREES_PER_SEC_SQ); }
+      void set_degrees_per_sec2(double value) { set(value, AccelerationUnit::DEGREES_PER_SEC_SQ); }
+      void set_degrees_per_sec2(int64_t value) { set(value, AccelerationUnit::DEGREES_PER_SEC_SQ); }
+      void set_degrees_per_sec2(int32_t value) { set(value, AccelerationUnit::DEGREES_PER_SEC_SQ); }
+
+      void set_radians_per_sec2(float value) { set(value, AccelerationUnit::RADIANS_PER_SEC_SQ); }
+      void set_radians_per_sec2(double value) { set(value, AccelerationUnit::RADIANS_PER_SEC_SQ); }
+      void set_radians_per_sec2(int64_t value) { set(value, AccelerationUnit::RADIANS_PER_SEC_SQ); }
+      void set_radians_per_sec2(int32_t value) { set(value, AccelerationUnit::RADIANS_PER_SEC_SQ); }
+
+      // Operators for comparison (matching Position pattern)
+      bool operator==(const Acceleration &rhs) const { return acc_ == rhs.acc_; }
+      bool operator!=(const Acceleration &rhs) const { return !(*this == rhs); }
 
     private:
       uint8_t acc_{0};                        ///< Hardware value 0-255 (inverse time mapping)
