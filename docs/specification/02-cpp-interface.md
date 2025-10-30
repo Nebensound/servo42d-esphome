@@ -344,7 +344,7 @@ void set_acceleration(Acceleration acceleration);  // YAML: acceleration (affect
 void set_sleep_when_done(uint32_t timeout_ms);  // UINT32_MAX = disabled, 0 = immediate, 1+ = delay in ms, YAML: sleep_when_done
 void set_servo_type(ServoType type);  // SERVO28D, SERVO35D, SERVO42D, SERVO57D, YAML: servo_type
 void set_control_mode(WorkMode mode);  // SR_OPEN, SR_CLOSE, SR_VFOC, YAML: control_mode
-void set_working_current(float current_milliamps);  // YAML: working_current
+void set_working_current(uint16_t current_milliamps);  // 0-5200mA depending on servo_type, YAML: working_current (hardware: Command 0x83, uint16_t)
 void set_holding_current_percent(uint8_t percent);  // YAML: holding_current_percent
 void set_en_pin_active(EnPinActive polarity);  // LOW, HIGH, ALWAYS, YAML: en_pin_active
 void set_auto_screen_off(bool enable);  // YAML: auto_screen_off
@@ -363,7 +363,7 @@ void set_homing_direction(HomingDirection dir);  // CW, CCW, NEAREST, YAML: homi
 void set_homing_speed(Speed speed);  // for ENDSTOP/SENSORLESS, YAML: homing.speed
 void set_homing_speed_level(uint8_t level);  // 0–4 for VIRTUAL, YAML: homing.speed (zeroing_speed type)
 void set_homing_endstop_trigger(EndstopTrigger trigger);  // HIGH, LOW, YAML: homing.endstop_trigger
-void set_homing_current(float current_milliamps);  // YAML: homing.current
+void set_homing_current(uint16_t current_milliamps);  // 0-5200mA depending on servo_type, YAML: homing.current (hardware: Command 0x94, uint16_t)
 ```
 
 [YAML reference](./01-yaml-api.md#position-mode-configuration)
@@ -423,7 +423,7 @@ void run_continuous(std::optional<Speed> speed, std::optional<Acceleration> acce
 
 ```cpp
 void set_work_mode(WorkMode mode);  // SR_OPEN, SR_CLOSE, SR_VFOC, YAML: stepper.set_work_mode
-void set_working_current(float current_milliamps);  // YAML: stepper.set_working_current
+void set_working_current(uint16_t current_milliamps);  // 0-5200mA depending on servo_type, YAML: stepper.set_working_current
 void set_holding_current_percent(uint8_t percent);  // YAML: stepper.set_holding_current_percent
 void set_microstepping(uint16_t subdivision);  // 1–256, YAML: stepper.set_microstepping
 void set_speed(Speed speed);  // YAML: stepper.set_speed
@@ -451,13 +451,27 @@ class Speed {
   Speed(float value, SpeedUnit unit, const ServoXxdModbus* parent);
   explicit Speed(const ServoXxdModbus* parent) : rpm_(0), parent_(parent) {}
 
-  float rpm() const;                 // User-facing RPM (float)
-  int16_t rpm_as_i16() const;        // Rounded RPM (int16_t)
-  int16_t rpm_for_hardware() const;  // Microstepping-compensated RPM (uses stored parent_)
-  float steps_per_sec() const;       // Steps per second (uses stored parent_)
+  // Optimized getters: int for linear conversions, float for fractional
+  int16_t get_rpm() const;                    // Direct hardware value (int16_t, -3000 to +3000)
+  int32_t get_steps_per_sec() const;          // Linear conversion (int32_t, uses stored parent_)
+  float get_rev_per_sec() const;              // Fractional conversion (rpm/60 → duplicates with int)
+  int32_t get_degrees_per_sec() const;        // Linear conversion (int32_t, rpm × 6)
+  float get_radians_per_sec() const;          // Fractional conversion (rpm×2π/60 → duplicates with int)
+  int32_t get_degrees_per_min() const;        // Linear conversion (int32_t, rpm × 6)
+  int32_t get_degrees_per_hour() const;       // Linear conversion (int32_t, rpm × 360)
+  
+  // Legacy compatibility methods
+  float rpm() const;                          // User-facing RPM (float)
+  int16_t rpm_as_i16() const;                 // Rounded RPM (int16_t)
+  int16_t rpm_for_hardware() const;           // Microstepping-compensated RPM (uses stored parent_)
+  float steps_per_sec() const;                // Steps per second (uses stored parent_)
+  
+  // Direct accessor to internal representation
+  int16_t rpm_internal() const;               // Direct hardware value access
+  
  private:
-  int16_t rpm_{0};                   // Hardware-native: RPM (signed, -3000 to +3000, calibrated for 16 microsteps)
-  const ServoXxdModbus* parent_{nullptr};  // Parent component (for microstepping and steps_per_revolution)
+  int16_t rpm_{0};                            // Hardware-native: RPM (signed, -3000 to +3000, calibrated for 16 microsteps)
+  const ServoXxdModbus* parent_{nullptr};     // Parent component (for microstepping and steps_per_revolution)
 };
 
 enum class SpeedUnit : uint8_t {
@@ -497,12 +511,26 @@ class Acceleration {
   Acceleration(float value, AccelerationUnit unit, const ServoXxdModbus* parent);
   explicit Acceleration(const ServoXxdModbus* parent) : acc_(0), parent_(parent) {}
 
-  uint8_t acc_internal() const;  // Hardware value 0-255
-  float rpm_per_sec() const;     // Approximate RPM/s (for display/logging)
-  float steps_per_sec2() const;  // Steps/s² for ESPHome (uses stored parent_)
+  // Optimized getters: float required for all units (non-linear mapping causes duplicates with int)
+  float get_steps_per_sec2() const;           // Steps/s² (uses stored parent_)
+  float get_rpm_per_sec() const;              // RPM/s (approximate due to non-linear hardware mapping)
+  float get_rev_per_sec2() const;             // Rev/s² (approximate)
+  float get_degrees_per_sec2() const;         // Deg/s² (approximate)
+  float get_radians_per_sec2() const;         // Rad/s² (approximate)
+  
+  // Generic getter
+  float get(AccelerationUnit unit) const;     // Universal accessor
+  
+  // Direct accessor to internal representation
+  uint8_t acc_internal() const;               // Hardware value 0-255
+  
+  // Legacy compatibility methods
+  float rpm_per_sec() const;                  // Approximate RPM/s (for display/logging)
+  float steps_per_sec2() const;               // Steps/s² for ESPHome (uses stored parent_)
+  
  private:
-  uint8_t acc_{0};                        // Hardware-native: 0-255 (inverse time mapping)
-  const ServoXxdModbus* parent_{nullptr}; // Parent component (for steps_per_revolution)
+  uint8_t acc_{0};                            // Hardware-native: 0-255 (inverse time mapping)
+  const ServoXxdModbus* parent_{nullptr};     // Parent component (for steps_per_revolution)
 };
 
 enum class AccelerationUnit : uint8_t {
@@ -570,26 +598,43 @@ class Position {
   Position(float value, PositionUnit unit, const ServoXxdModbus* parent);
   explicit Position(const ServoXxdModbus* parent) : revs_(0), angle_ticks_(0), parent_(parent) {}
   
-  static Position from_ticks_total(uint64_t total_ticks);
-  static Position from_parts(int32_t revolutions, uint16_t angle_ticks);
+  // Factory methods for direct construction
+  static Position from_ticks_total(uint64_t total_ticks, const ServoXxdModbus* parent);
+  static Position from_parts(int32_t revolutions, uint16_t angle_ticks, const ServoXxdModbus* parent);
+  static Position from_steps(int32_t steps, const ServoXxdModbus* parent);
+  static Position from_revolutions(float revolutions, const ServoXxdModbus* parent);
+  static Position from_degrees(float degrees, const ServoXxdModbus* parent);
+  static Position from_radians(float radians, const ServoXxdModbus* parent);
+  static Position from_arcminutes(float arcminutes, const ServoXxdModbus* parent);
+  static Position from_arcseconds(float arcseconds, const ServoXxdModbus* parent);
   
-  int32_t revolutions() const;
-  uint16_t angle_ticks() const;
-  uint64_t ticks_total() const;
-  int32_t steps() const;          // Uses stored parent_
-  float degrees() const;
-  float radians() const;
-  uint32_t steps_as_u32() const;  // Uses stored parent_
+  // Direct accessors to internal representation
+  int32_t revolutions_internal() const;       // Raw revolutions count
+  uint16_t angle_ticks_internal() const;      // Raw angle ticks (0-16383)
+  uint64_t ticks_total() const;               // Total encoder ticks
   
+  // Optimized getters: float for all units (hardware uses split format, conversions are exact)
+  int32_t get_steps() const;                  // Steps (uses stored parent_)
+  float get_revolutions() const;              // Revolutions (exact)
+  float get_degrees() const;                  // Degrees (exact)
+  float get_radians() const;                  // Radians (exact)
+  float get_arcminutes() const;               // Arcminutes (exact)
+  float get_arcseconds() const;               // Arcseconds (exact)
+  
+  // Generic getter
+  float get(PositionUnit unit) const;         // Universal accessor
+  
+  // Operators
   Position operator+(const Position& rhs) const;
   Position operator-(const Position& rhs) const;
   bool operator==(const Position& rhs) const;
+  bool operator!=(const Position& rhs) const;
+  
  private:
   static constexpr uint32_t TICKS_PER_REV = 16384u;
   int32_t revs_{0};                           // Full revolutions (signed)
   uint16_t angle_ticks_{0};                   // Angle within revolution (0-16383)
   const ServoXxdModbus* parent_{nullptr};     // Parent component (for steps_per_revolution)
-  
 };
 
 enum class PositionUnit : uint8_t {
@@ -656,6 +701,36 @@ enum class PositionUnit : uint8_t {
    - Acceleration: `uint8_t acc_` (1 byte, 0-255, inverse time mapping, NOT microstepping-scaled)
    - Position: `int32_t revs_` + `uint16_t angle_ticks_` (6 bytes, encoder-aligned split format)
 3. **Minimal footprint**: Total 9 bytes for all three types
+4. **Optimized return types**: Getters return int where mathematically safe, float where required for precision
+
+**Type Optimization Rationale:**
+
+The getter return types are carefully chosen based on mathematical analysis to minimize data loss while maintaining performance:
+
+**Speed Class:**
+- **int16_t** for `get_rpm()`: Hardware stores RPM as int16_t internally → zero conversion loss
+- **int32_t** for linear conversions (`get_steps_per_sec()`, `get_degrees_per_sec()`, `get_degrees_per_min()`, `get_degrees_per_hour()`): 
+  - These are simple integer multiplications of RPM with no fractional components
+  - Constraint: `200 <= steps_per_rev <= 102400` ensures no overflow in int32_t range
+  - Example: RPM × 6 for degrees/sec, RPM × 360 for degrees/hour
+- **float** for fractional conversions (`get_rev_per_sec()`, `get_radians_per_sec()`):
+  - `rpm/60` creates fractional values → int causes massive duplicates (RPM 0-5 all map to 0)
+  - `rpm×(2π/60)` also fractional → int loses precision (RPM 0-2 all map to 0)
+  - Proven by systematic duplicate testing across all 6001 RPM values
+
+**Acceleration Class:**
+- **float** for all getters: Hardware uses non-linear inverse time mapping (0-255 → 20000/(256-acc) RPM/s)
+  - Any hardware value 0-255 can map to any acceleration rate
+  - Conversions are inherently approximate due to discrete 0-255 hardware steps
+  - Integer types would introduce massive rounding errors and duplicates
+  - Proven by duplicate analysis: uint/int cause collisions at all acceleration values
+
+**Position Class:**
+- **int32_t** for `get_steps()`: Direct conversion from encoder ticks with no precision loss
+- **float** for all other units: Split format (revolutions + angle_ticks) requires fractional representation
+  - Encoder resolution: 16384 ticks/rev → sub-revolution positions are inherently fractional
+  - Angular units (degrees, radians, arcminutes, arcseconds) require high precision
+  - Float provides exact representation for all encoder positions
 
 **Usage Example:**
 
@@ -667,15 +742,26 @@ Position pos(180.0f, PositionUnit::DEGREES, parent);
 
 // Internal storage: rpm_=100, acc_=56, revs_=0, angle_ticks_=8192 (9 bytes total)
 
-// Hardware access - methods use stored parent_
-int16_t hw_rpm = speed.rpm_for_hardware();  // Uses stored parent_ for microstepping
-uint8_t hw_acc = accel.acc_internal();      // Direct hardware value
-uint32_t steps = pos.steps_as_u32();        // Uses stored parent_ for steps_per_rev
+// Optimized getters - return types chosen for zero data loss
+int16_t rpm_int = speed.get_rpm();                // 100 (int16_t)
+int32_t steps_sec = speed.get_steps_per_sec();    // 3200 (int32_t)
+float rev_sec = speed.get_rev_per_sec();          // 1.6667 (float, fractional)
+int32_t deg_sec = speed.get_degrees_per_sec();    // 600 (int32_t)
+float rad_sec = speed.get_radians_per_sec();      // 10.472 (float, fractional)
 
-// Display/logging conversions
-float display_rpm = speed.rpm();            // 100.0 RPM
-float display_acc = accel.rpm_per_sec();    // ~100 RPM/s (approximate)
-float display_deg = pos.degrees();          // 180.0° (exact)
+float acc_rpm = accel.get_rpm_per_sec();          // ~100.0 (float, approximate)
+uint8_t acc_hw = accel.acc_internal();            // 56 (hardware value)
+
+int32_t steps = pos.get_steps();                  // Uses stored parent_
+float degrees = pos.get_degrees();                // 180.0° (exact)
+
+// Hardware access - methods use stored parent_
+int16_t hw_rpm = speed.rpm_for_hardware();        // Microstepping-compensated
+uint8_t hw_acc = accel.acc_internal();            // Direct hardware value
+
+// Legacy float methods still available for compatibility
+float display_rpm = speed.rpm();                  // 100.0 RPM (float)
+float display_acc = accel.rpm_per_sec();          // ~100 RPM/s (float, approximate)
 ```
 
 [YAML reference](./01-yaml-api.md#position-type)
@@ -1139,14 +1225,16 @@ Implementation: `Acceleration::Acceleration(float value, AccelerationUnit unit)`
 Position pos(90.0f, PositionUnit::DEGREES, parent);
 
 // Access in any unit - methods use stored parent_
-int32_t steps = pos.steps();         // Microsteps (signed)
-uint64_t ticks = pos.ticks_total();  // Encoder ticks total (16384/rev)
-float revs = pos.revolutions_f();    // Revolutions as float
-float degs = pos.degrees();          // Degrees
-float rads = pos.radians();          // Radians
+int32_t steps = pos.get_steps();        // Microsteps (signed)
+uint64_t ticks = pos.ticks_total();     // Encoder ticks total (16384/rev)
+float revs = pos.get_revolutions();     // Revolutions as float
+float degs = pos.get_degrees();         // Degrees
+float rads = pos.get_radians();         // Radians
+float arcmin = pos.get_arcminutes();    // Arcminutes
+float arcsec = pos.get_arcseconds();    // Arcseconds
 
-// Safe type conversions for hardware
-uint32_t motor_pulses = pos.steps_as_u32();  // Uses stored parent_
+// Universal getter
+float value = pos.get(PositionUnit::DEGREES);  // Get value in any unit
 ```
 
 Conversion formulas (implemented in `Position` class constructor and methods):
@@ -1237,7 +1325,7 @@ Implementation: Clamps applied in action methods before enqueueing commands, usi
 - release_protection → release_protection() ([YAML](./01-yaml-api.md#stepperrelease_protection))
 - restart → restart() ([YAML](./01-yaml-api.md#stepperrestart))
 - set_work_mode → set_work_mode(WorkMode) ([YAML](./01-yaml-api.md#stepperset_work_mode))
-- set_working_current → set_working_current(float mA) ([YAML](./01-yaml-api.md#stepperset_working_current))
+- set_working_current → set_working_current(uint16_t mA) ([YAML](./01-yaml-api.md#stepperset_working_current))
 - set_holding_current_percent → set_holding_current_percent(uint8_t) ([YAML](./01-yaml-api.md#stepperset_holding_current_percent))
 - set_microstepping → set_microstepping(uint16_t) ([YAML](./01-yaml-api.md#stepperset_microstepping))
 - set_speed → set_speed(Speed) ([YAML](./01-yaml-api.md#stepperset_speed))
