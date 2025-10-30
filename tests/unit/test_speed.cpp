@@ -339,7 +339,7 @@ void test_speed_unit_conversions()
   assert(speed.get_degrees_per_sec() == 360);
   assert(speed.get_degrees_per_min() == 360);
   assert(speed.get_degrees_per_hour() == 21600);
-  
+
   // Test float return types
   assert(float_eq(speed.get_rev_per_sec(), 1.0f));
   assert(float_eq(speed.get_radians_per_sec(), 2.0f * static_cast<float>(PI)));
