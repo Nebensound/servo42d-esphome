@@ -17,7 +17,7 @@
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
     // Forward declarations
@@ -119,11 +119,11 @@ namespace esphome
      * - [ ] Synchronization with base class (update current_position, target_position)
      * - [ ] Operating mode management (Position Mode vs Speed Mode)
      */
-    class ServoXxdModbus : public stepper::Stepper, public modbus::ModbusDevice, public Component
+    class ServoXxd : public stepper::Stepper, public modbus::ModbusDevice, public Component
     {
     public:
-      ServoXxdModbus();  // Implemented in .cpp to initialize homing_.speed with valid parent pointer
-      ~ServoXxdModbus(); // Implemented in .cpp to avoid incomplete type
+      ServoXxd();  // Implemented in .cpp to initialize homing_.speed with valid parent pointer
+      ~ServoXxd(); // Implemented in .cpp to avoid incomplete type
 
       // ============================================================================
       // Component Lifecycle
@@ -438,7 +438,7 @@ namespace esphome
         EndstopTrigger endstop_trigger{EndstopTrigger::TRIGGER_LOW};  ///< For ENDSTOP mode
         uint16_t current_ma{0};  ///< For SENSORLESS mode (0 = use defaults)
         
-        // Constructor - don't initialize union member yet (will be done in ServoXxdModbus constructor)
+        // Constructor - don't initialize union member yet (will be done in ServoXxd constructor)
         HomingConfig() : level(2) {}  // Default to MEDIUM for VIRTUAL, will be overwritten for ENDSTOP/SENSORLESS
         
         // Destructor - clean up Speed if that's the active member
@@ -496,5 +496,5 @@ namespace esphome
       friend class StepperEngine;
     };
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

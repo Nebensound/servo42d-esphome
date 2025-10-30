@@ -1,17 +1,17 @@
 #include "servoxxd_speed.h"
-#include "servoxxd_modbus.h"
+#include "servoxxd.h"
 #include "esphome/core/log.h"
 #include <cmath>
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
-    static const char *const TAG = "servoxxd_modbus.speed";
+    static const char *const TAG = "servoxxd.speed";
 
     // Primary constructor: float value
-    Speed::Speed(float value, SpeedUnit unit, const ServoXxdModbus *parent) : parent_(parent)
+    Speed::Speed(float value, SpeedUnit unit, const ServoXxd *parent) : parent_(parent)
     {
       float rpm_float = 0.0f; // Temporary float for conversion
 
@@ -86,49 +86,49 @@ namespace esphome
     }
 
     // Constructor overload: double → float
-    Speed::Speed(double value, SpeedUnit unit, const ServoXxdModbus *parent)
+    Speed::Speed(double value, SpeedUnit unit, const ServoXxd *parent)
         : Speed(static_cast<float>(value), unit, parent) {}
 
     // Constructor overload: int64_t → float
-    Speed::Speed(int64_t value, SpeedUnit unit, const ServoXxdModbus *parent)
+    Speed::Speed(int64_t value, SpeedUnit unit, const ServoXxd *parent)
         : Speed(static_cast<float>(value), unit, parent) {}
 
     // Constructor overload: int32_t → float
-    Speed::Speed(int32_t value, SpeedUnit unit, const ServoXxdModbus *parent)
+    Speed::Speed(int32_t value, SpeedUnit unit, const ServoXxd *parent)
         : Speed(static_cast<float>(value), unit, parent) {}
 
     // Factory methods
-    Speed Speed::from_steps_per_sec(float value, const ServoXxdModbus *parent)
+    Speed Speed::from_steps_per_sec(float value, const ServoXxd *parent)
     {
       return Speed(value, SpeedUnit::STEPS_PER_SEC, parent);
     }
 
-    Speed Speed::from_rpm(float value, const ServoXxdModbus *parent)
+    Speed Speed::from_rpm(float value, const ServoXxd *parent)
     {
       return Speed(value, SpeedUnit::RPM, parent);
     }
 
-    Speed Speed::from_rev_per_sec(float value, const ServoXxdModbus *parent)
+    Speed Speed::from_rev_per_sec(float value, const ServoXxd *parent)
     {
       return Speed(value, SpeedUnit::REV_PER_SEC, parent);
     }
 
-    Speed Speed::from_degrees_per_sec(float value, const ServoXxdModbus *parent)
+    Speed Speed::from_degrees_per_sec(float value, const ServoXxd *parent)
     {
       return Speed(value, SpeedUnit::DEGREES_PER_SEC, parent);
     }
 
-    Speed Speed::from_radians_per_sec(float value, const ServoXxdModbus *parent)
+    Speed Speed::from_radians_per_sec(float value, const ServoXxd *parent)
     {
       return Speed(value, SpeedUnit::RADIANS_PER_SEC, parent);
     }
 
-    Speed Speed::from_degrees_per_min(float value, const ServoXxdModbus *parent)
+    Speed Speed::from_degrees_per_min(float value, const ServoXxd *parent)
     {
       return Speed(value, SpeedUnit::DEGREES_PER_MIN, parent);
     }
 
-    Speed Speed::from_degrees_per_hour(float value, const ServoXxdModbus *parent)
+    Speed Speed::from_degrees_per_hour(float value, const ServoXxd *parent)
     {
       return Speed(value, SpeedUnit::DEGREES_PER_HOUR, parent);
     }
@@ -238,5 +238,5 @@ namespace esphome
       return scaled_rpm;
     }
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

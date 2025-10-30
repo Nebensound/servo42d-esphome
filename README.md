@@ -1,12 +1,15 @@
-# ServoXXD Modbus Stepper Component
+# ServoXXD Stepper Component
 
-The `servoxxd_modbus` stepper platform allows you to control MKS ServoXXD closed-loop stepper motors with RS485 communication via Modbus RTU.
+The `servoxxd` stepper platform allows you to control MKS ServoXXD closed-loop stepper motors with RS485 communication via Modbus RTU.
+
+> [!NOTE]
+> Support for direct Serial communication may be added in the future.
 
 ```yaml
 # Base setup shared by both profiles
 
 stepper:
-  - platform: servoxxd_modbus
+  - platform: servoxxd
     id: my_stepper
     address: 0x01
     steps_per_revolution: 3200
@@ -91,7 +94,7 @@ stepper:
 
 ```yaml
 stepper:
-  - platform: servoxxd_modbus
+  - platform: servoxxd
     id: my_stepper
     modbus_id: modbus1
     address: 0x01
@@ -112,7 +115,7 @@ In following actions are exclusively used in speed mode:
 
 ```yaml
 stepper:
-  - platform: servoxxd_modbus
+  - platform: servoxxd
     id: my_stepper
     modbus_id: modbus1
     address: 0x01
@@ -554,7 +557,7 @@ Use `deg/h` for sidereal tracking and `arcmin`/`arcsec` for precise positioning:
 
 ```yaml
 stepper:
-  - platform: servoxxd_modbus
+  - platform: servoxxd
     id: telescope_ra
     address: 0x01
     servo_type: SERVO42D
@@ -593,7 +596,7 @@ Slow continuous rotation with `deg/min`:
 
 ```yaml
 stepper:
-  - platform: servoxxd_modbus
+  - platform: servoxxd
     id: turntable
     address: 0x02
     servo_type: SERVO35D
@@ -618,7 +621,7 @@ Use `arcmin` for sub-degree positioning:
 
 ```yaml
 stepper:
-  - platform: servoxxd_modbus
+  - platform: servoxxd
     id: laser_gimbal
     address: 0x03
     servo_type: SERVO28D

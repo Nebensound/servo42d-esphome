@@ -10,20 +10,20 @@
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
     // Forward declaration
-    class ServoXxdModbus;
+    class ServoXxd;
 
     // Import types from servoxxd_modbus
-    using servoxxd_modbus::Acceleration;
-    using servoxxd_modbus::AccelerationUnit;
-    using servoxxd_modbus::CommandQueue;
-    using servoxxd_modbus::Position;
-    using servoxxd_modbus::PositionUnit;
-    using servoxxd_modbus::Speed;
-    using servoxxd_modbus::SpeedUnit;
+    using servoxxd::Acceleration;
+    using servoxxd::AccelerationUnit;
+    using servoxxd::CommandQueue;
+    using servoxxd::Position;
+    using servoxxd::PositionUnit;
+    using servoxxd::Speed;
+    using servoxxd::SpeedUnit;
 
     /**
      * @brief Core movement and state machine logic for Servo42D motor
@@ -38,7 +38,7 @@ namespace esphome
      * - Regularly updates status values (encoder position, speed, protection) using hybrid strategy
      * - Validates commands based on current state using command validation matrix
      *
-     * Design: Strict separation of concerns with ServoXxdModbus parent (configuration, status, helpers)
+     * Design: Strict separation of concerns with ServoXxd parent (configuration, status, helpers)
      */
     class StepperEngine
     {
@@ -63,12 +63,12 @@ namespace esphome
       /**
        * @brief Constructor
        *
-       * @param parent Pointer to parent ServoXxdModbus component (configuration, helpers)
+       * @param parent Pointer to parent ServoXxd component (configuration, helpers)
        * @param command_timeout_ms Timeout for Modbus commands (default: 1000ms)
        * @param max_retries Maximum retry count for failed commands (default: 3)
        * @param poll_interval_ms Polling interval for status updates (default: 200ms)
        */
-      StepperEngine(ServoXxdModbus *parent, uint32_t command_timeout_ms = 1000,
+      StepperEngine(ServoXxd *parent, uint32_t command_timeout_ms = 1000,
                     uint8_t max_retries = 3, uint32_t poll_interval_ms = 200);
 
       ~StepperEngine();
@@ -316,7 +316,7 @@ namespace esphome
       // Private Members
       // ============================================================================
 
-      ServoXxdModbus *parent_; ///< Parent component (configuration, helpers)
+      ServoXxd *parent_; ///< Parent component (configuration, helpers)
       CommandQueue *queue_;    ///< Command queue for serial Modbus execution
       State state_;            ///< Current state machine state
       bool emergency_flag_;    ///< Emergency stop flag (requires restart)
@@ -476,5 +476,5 @@ namespace esphome
       void handle_error(const char *error_message);
     };
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

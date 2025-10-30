@@ -1,13 +1,13 @@
 #include "servoxxd_position.h"
-#include "servoxxd_modbus.h"
+#include "servoxxd.h"
 #include <cmath>
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
-    static const char *const TAG = "servoxxd_modbus.position";
+    static const char *const TAG = "servoxxd.position";
 
     /**
      * @brief Convert position unit to string for logging
@@ -39,7 +39,7 @@ namespace esphome
     // Constructors
     // ============================================================================
 
-    Position::Position(double value, PositionUnit unit, const ServoXxdModbus *parent) : parent_(parent)
+    Position::Position(double value, PositionUnit unit, const ServoXxd *parent) : parent_(parent)
     {
       ESP_LOGV(TAG, "Creating Position: value=%.3f %s, parent=%p", value, unit_to_string(unit),
                static_cast<const void *>(parent_));
@@ -85,13 +85,13 @@ namespace esphome
                value, unit_to_string(unit), revs_, angle_ticks_);
     }
 
-    Position::Position(float value, PositionUnit unit, const ServoXxdModbus *parent)
+    Position::Position(float value, PositionUnit unit, const ServoXxd *parent)
         : Position(static_cast<double>(value), unit, parent) {}
 
-    Position::Position(int64_t value, PositionUnit unit, const ServoXxdModbus *parent)
+    Position::Position(int64_t value, PositionUnit unit, const ServoXxd *parent)
         : Position(static_cast<double>(value), unit, parent) {}
 
-    Position::Position(int32_t value, PositionUnit unit, const ServoXxdModbus *parent)
+    Position::Position(int32_t value, PositionUnit unit, const ServoXxd *parent)
         : Position(static_cast<double>(value), unit, parent) {}
 
     // ============================================================================
@@ -120,7 +120,7 @@ namespace esphome
       return pos;
     }
 
-    Position Position::from_steps(int64_t steps, const ServoXxdModbus *parent)
+    Position Position::from_steps(int64_t steps, const ServoXxd *parent)
     {
       if (parent == nullptr)
       {
@@ -355,5 +355,5 @@ namespace esphome
       // This is handled in the constructor when converting from int64_t
     }
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

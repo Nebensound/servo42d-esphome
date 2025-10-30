@@ -8,11 +8,11 @@
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
     // Forward declaration
-    class ServoXxdModbus;
+    class ServoXxd;
 
     /**
      * @brief Command state for state machine
@@ -71,11 +71,11 @@ namespace esphome
       /**
        * @brief Construct a new Command Queue object
        *
-       * @param parent Parent ServoXxdModbus instance for sending Modbus commands
+       * @param parent Parent ServoXxd instance for sending Modbus commands
        * @param timeout_ms Default timeout for commands in milliseconds (default: 1000ms)
        * @param max_retries Maximum retry count for failed commands (default: 3)
        */
-      CommandQueue(ServoXxdModbus *parent, uint32_t timeout_ms = 1000, uint8_t max_retries = 3);
+      CommandQueue(ServoXxd *parent, uint32_t timeout_ms = 1000, uint8_t max_retries = 3);
 
       /**
        * @brief Update the command queue (called from loop())
@@ -120,7 +120,7 @@ namespace esphome
                                bool priority = false);
 
       /**
-       * @brief Handle command response (called from ServoXxdModbus::on_modbus_data)
+       * @brief Handle command response (called from ServoXxd::on_modbus_data)
        *
        * From spec: "Completes command, clears guard, calls execute_next()"
        *
@@ -129,7 +129,7 @@ namespace esphome
       void on_response(const std::vector<uint8_t> &data);
 
       /**
-       * @brief Handle command error (called from ServoXxdModbus::on_modbus_error)
+       * @brief Handle command error (called from ServoXxd::on_modbus_error)
        *
        * From spec: "Fails command, clears guard, continues"
        *
@@ -202,7 +202,7 @@ namespace esphome
       // Queue and execution state
       std::deque<Command> queue_;       // FIFO queue (deque for front insertion)
       bool is_executing_{false};        // Single-flight execution guard
-      ServoXxdModbus *parent_{nullptr}; // Parent for sending Modbus commands
+      ServoXxd *parent_{nullptr}; // Parent for sending Modbus commands
 
       // Configuration
       uint32_t timeout_ms_{1000}; // Default timeout (1 second)
@@ -255,5 +255,5 @@ namespace esphome
       std::deque<Command>::iterator find_duplicate_read(uint16_t address, uint16_t count);
     };
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

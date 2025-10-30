@@ -3,7 +3,7 @@
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
     static const char *TAG_ENGINE = "servoxxd.stepper_engine";
@@ -12,7 +12,7 @@ namespace esphome
     // Constructor / Destructor
     // ============================================================================
 
-    StepperEngine::StepperEngine(ServoXxdModbus *parent, uint32_t command_timeout_ms,
+    StepperEngine::StepperEngine(ServoXxd *parent, uint32_t command_timeout_ms,
                                  uint8_t max_retries, uint32_t poll_interval_ms)
         : parent_(parent),
           queue_(nullptr),
@@ -30,7 +30,7 @@ namespace esphome
           disable_pending_(false)
     {
 
-      // Create CommandQueue (parent will be cast to ServoXxdModbus in actual usage)
+      // Create CommandQueue (parent will be cast to ServoXxd in actual usage)
       queue_ = new CommandQueue(parent, command_timeout_ms, max_retries);
 
       ESP_LOGD(TAG_ENGINE, "StepperEngine initialized: timeout=%ums, retries=%u, poll=%ums",
@@ -593,5 +593,5 @@ namespace esphome
       transition_to(State::Error);
     }
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

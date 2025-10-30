@@ -13,11 +13,11 @@
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
     // Forward declaration
-    class ServoXxdModbus;
+    class ServoXxd;
 
     /**
      * @brief Unit options for position values
@@ -43,19 +43,19 @@ namespace esphome
      */
     class Position
     {
-      friend class ServoXxdModbus;
+      friend class ServoXxd;
 
     public:
       // Constructors
-      Position(double value, PositionUnit unit, const ServoXxdModbus *parent);
-      Position(float value, PositionUnit unit, const ServoXxdModbus *parent);
-      Position(int64_t value, PositionUnit unit, const ServoXxdModbus *parent);
-      Position(int32_t value, PositionUnit unit, const ServoXxdModbus *parent);
-      explicit Position(const ServoXxdModbus *parent) : revs_(0), angle_ticks_(0), parent_(parent) {}
+      Position(double value, PositionUnit unit, const ServoXxd *parent);
+      Position(float value, PositionUnit unit, const ServoXxd *parent);
+      Position(int64_t value, PositionUnit unit, const ServoXxd *parent);
+      Position(int32_t value, PositionUnit unit, const ServoXxd *parent);
+      explicit Position(const ServoXxd *parent) : revs_(0), angle_ticks_(0), parent_(parent) {}
 
       // Factory methods - direct unit conversion
       static Position from_ticks(int64_t ticks);
-      static Position from_steps(int64_t steps, const ServoXxdModbus *parent);
+      static Position from_steps(int64_t steps, const ServoXxd *parent);
       static Position from_revolutions(double revolutions);
       static Position from_degrees(double deg);
       static Position from_radians(double rad);
@@ -129,11 +129,11 @@ namespace esphome
       static constexpr uint16_t TICKS_PER_REV = 16384u; // 2^14
       int32_t revs_{0};
       uint16_t angle_ticks_{0}; // 0-16383
-      const ServoXxdModbus *parent_{nullptr};
+      const ServoXxd *parent_{nullptr};
 
       Position() = default; // For factory methods
       void normalize();     // Ensure angle_ticks in [0, 16383]
     };
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

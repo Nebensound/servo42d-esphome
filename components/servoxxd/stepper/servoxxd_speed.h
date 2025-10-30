@@ -6,11 +6,11 @@
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
     // Forward declaration
-    class ServoXxdModbus;
+    class ServoXxd;
 
     /// Speed unit enumeration - maps to YAML SpeedUnit
     enum class SpeedUnit : uint8_t
@@ -32,24 +32,24 @@ namespace esphome
      */
     class Speed
     {
-      friend class ServoXxdModbus;
+      friend class ServoXxd;
 
     public:
       // Constructors - float primary, double/int overloads
-      Speed(float value, SpeedUnit unit, const ServoXxdModbus *parent);
-      Speed(double value, SpeedUnit unit, const ServoXxdModbus *parent);
-      Speed(int64_t value, SpeedUnit unit, const ServoXxdModbus *parent);
-      Speed(int32_t value, SpeedUnit unit, const ServoXxdModbus *parent);
-      explicit Speed(const ServoXxdModbus *parent) : rpm_(0), parent_(parent) {}
+      Speed(float value, SpeedUnit unit, const ServoXxd *parent);
+      Speed(double value, SpeedUnit unit, const ServoXxd *parent);
+      Speed(int64_t value, SpeedUnit unit, const ServoXxd *parent);
+      Speed(int32_t value, SpeedUnit unit, const ServoXxd *parent);
+      explicit Speed(const ServoXxd *parent) : rpm_(0), parent_(parent) {}
 
       // Factory methods for direct unit conversion
-      static Speed from_steps_per_sec(float value, const ServoXxdModbus *parent);
-      static Speed from_rpm(float value, const ServoXxdModbus *parent);
-      static Speed from_rev_per_sec(float value, const ServoXxdModbus *parent);
-      static Speed from_degrees_per_sec(float value, const ServoXxdModbus *parent);
-      static Speed from_radians_per_sec(float value, const ServoXxdModbus *parent);
-      static Speed from_degrees_per_min(float value, const ServoXxdModbus *parent);
-      static Speed from_degrees_per_hour(float value, const ServoXxdModbus *parent);
+      static Speed from_steps_per_sec(float value, const ServoXxd *parent);
+      static Speed from_rpm(float value, const ServoXxd *parent);
+      static Speed from_rev_per_sec(float value, const ServoXxd *parent);
+      static Speed from_degrees_per_sec(float value, const ServoXxd *parent);
+      static Speed from_radians_per_sec(float value, const ServoXxd *parent);
+      static Speed from_degrees_per_min(float value, const ServoXxd *parent);
+      static Speed from_degrees_per_hour(float value, const ServoXxd *parent);
 
       // Direct accessor to internal representation
       int16_t rpm_internal() const { return rpm_; }
@@ -117,8 +117,8 @@ namespace esphome
 
     private:
       int16_t rpm_{0};                        ///< Internal storage: RPM (signed, -32768 to +32767)
-      const ServoXxdModbus *parent_{nullptr}; ///< Parent component (for microstepping and steps_per_revolution)
+      const ServoXxd *parent_{nullptr}; ///< Parent component (for microstepping and steps_per_revolution)
     };
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

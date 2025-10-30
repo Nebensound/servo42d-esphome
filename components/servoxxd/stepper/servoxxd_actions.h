@@ -8,14 +8,14 @@
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
     /**
      * @brief Action templates for ServoXxd stepper motor control
      *
      * This file defines all 18 action classes that can be used in YAML automations.
-     * Each action corresponds to a public method on ServoXxdModbus.
+     * Each action corresponds to a public method on ServoXxd.
      *
      * **Action Categories:**
      *
@@ -51,7 +51,7 @@ namespace esphome
      *
      * **Implementation Pattern:**
      * Each action class inherits from Action<> and implements:
-     * - play() method that calls the corresponding ServoXxdModbus method
+     * - play() method that calls the corresponding ServoXxd method
      * - Template setters for unit-based values (position, speed, acceleration)
      * - ESPHome automation system integration
      *
@@ -75,7 +75,7 @@ namespace esphome
      * - [ ] RestartAction
      * - [ ] CalibrateAction
      *
-     * @see ServoXxdModbus for component API
+     * @see ServoXxd for component API
      * @see README.md for user-facing documentation
      * @see 01-yaml-api.md for YAML configuration details
      */
@@ -97,7 +97,7 @@ namespace esphome
     class SetTargetAction : public Action<Ts...>
     {
     public:
-      explicit SetTargetAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit SetTargetAction(ServoXxd *parent) : parent_(parent) {}
 
       TEMPLATABLE_VALUE(float, value)
 
@@ -111,7 +111,7 @@ namespace esphome
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
       PositionUnit unit_{PositionUnit::STEPS};
     };
 
@@ -126,7 +126,7 @@ namespace esphome
     class RunContinuousAction : public Action<Ts...>
     {
     public:
-      explicit RunContinuousAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit RunContinuousAction(ServoXxd *parent) : parent_(parent) {}
 
       TEMPLATABLE_VALUE(float, value)
 
@@ -140,7 +140,7 @@ namespace esphome
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
       SpeedUnit unit_{SpeedUnit::STEPS_PER_SEC};
     };
 
@@ -155,7 +155,7 @@ namespace esphome
     class StopAction : public Action<Ts...>
     {
     public:
-      explicit StopAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit StopAction(ServoXxd *parent) : parent_(parent) {}
 
       void play(Ts... x) override
       {
@@ -163,7 +163,7 @@ namespace esphome
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     /**
@@ -177,7 +177,7 @@ namespace esphome
     class EmergencyStopAction : public Action<Ts...>
     {
     public:
-      explicit EmergencyStopAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit EmergencyStopAction(ServoXxd *parent) : parent_(parent) {}
 
       void play(Ts... x) override
       {
@@ -185,7 +185,7 @@ namespace esphome
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     /**
@@ -199,7 +199,7 @@ namespace esphome
     class HomeAction : public Action<Ts...>
     {
     public:
-      explicit HomeAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit HomeAction(ServoXxd *parent) : parent_(parent) {}
 
       void play(Ts... x) override
       {
@@ -207,7 +207,7 @@ namespace esphome
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     // ============================================================================
@@ -225,7 +225,7 @@ namespace esphome
     class ReportPositionAction : public Action<Ts...>
     {
     public:
-      explicit ReportPositionAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit ReportPositionAction(ServoXxd *parent) : parent_(parent) {}
 
       TEMPLATABLE_VALUE(float, value)
 
@@ -233,14 +233,14 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement report_position in ServoXxdModbus first
+        // TODO: Implement report_position in ServoXxd first
         // float value = this->value_.value(x...);
         // Position pos(value, unit_, parent_);
         // parent_->report_position(pos);
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
       PositionUnit unit_{PositionUnit::STEPS};
     };
 
@@ -255,16 +255,16 @@ namespace esphome
     class SetZeroAction : public Action<Ts...>
     {
     public:
-      explicit SetZeroAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit SetZeroAction(ServoXxd *parent) : parent_(parent) {}
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_zero in ServoXxdModbus first
+        // TODO: Implement set_zero in ServoXxd first
         // parent_->set_zero();
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     // ============================================================================
@@ -282,7 +282,7 @@ namespace esphome
     class EnableAction : public Action<Ts...>
     {
     public:
-      explicit EnableAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit EnableAction(ServoXxd *parent) : parent_(parent) {}
 
       void play(Ts... x) override
       {
@@ -290,7 +290,7 @@ namespace esphome
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     /**
@@ -304,7 +304,7 @@ namespace esphome
     class DisableAction : public Action<Ts...>
     {
     public:
-      explicit DisableAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit DisableAction(ServoXxd *parent) : parent_(parent) {}
 
       void play(Ts... x) override
       {
@@ -312,7 +312,7 @@ namespace esphome
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     // ============================================================================
@@ -330,7 +330,7 @@ namespace esphome
     class SetSpeedAction : public Action<Ts...>
     {
     public:
-      explicit SetSpeedAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit SetSpeedAction(ServoXxd *parent) : parent_(parent) {}
 
       TEMPLATABLE_VALUE(float, value)
 
@@ -338,14 +338,14 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_speed in ServoXxdModbus first
+        // TODO: Implement set_speed in ServoXxd first
         // float value = this->value_.value(x...);
         // Speed speed(value, unit_, parent_);
         // parent_->set_speed(speed);
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
       SpeedUnit unit_{SpeedUnit::STEPS_PER_SEC};
     };
 
@@ -360,7 +360,7 @@ namespace esphome
     class SetAccelerationAction : public Action<Ts...>
     {
     public:
-      explicit SetAccelerationAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit SetAccelerationAction(ServoXxd *parent) : parent_(parent) {}
 
       TEMPLATABLE_VALUE(float, value)
 
@@ -368,14 +368,14 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_acceleration in ServoXxdModbus first
+        // TODO: Implement set_acceleration in ServoXxd first
         // float value = this->value_.value(x...);
         // Acceleration acc(value, unit_, parent_);
         // parent_->set_acceleration(acc);
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
       AccelerationUnit unit_{AccelerationUnit::STEPS_PER_SEC_SQ};
     };
 
@@ -395,19 +395,19 @@ namespace esphome
     class SetWorkModeAction : public Action<Ts...>
     {
     public:
-      explicit SetWorkModeAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit SetWorkModeAction(ServoXxd *parent) : parent_(parent) {}
 
       // TODO: Add WorkMode parameter
       // void set_work_mode(WorkMode mode) { mode_ = mode; }
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_work_mode in ServoXxdModbus first
+        // TODO: Implement set_work_mode in ServoXxd first
         // parent_->set_work_mode(mode_);
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
       // TODO: WorkMode mode_;
     };
 
@@ -422,19 +422,19 @@ namespace esphome
     class SetWorkingCurrentAction : public Action<Ts...>
     {
     public:
-      explicit SetWorkingCurrentAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit SetWorkingCurrentAction(ServoXxd *parent) : parent_(parent) {}
 
       TEMPLATABLE_VALUE(uint16_t, current)
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_working_current in ServoXxdModbus first
+        // TODO: Implement set_working_current in ServoXxd first
         // uint16_t current = this->current_.value(x...);
         // parent_->set_working_current(current);
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     /**
@@ -448,19 +448,19 @@ namespace esphome
     class SetHoldingCurrentPercentAction : public Action<Ts...>
     {
     public:
-      explicit SetHoldingCurrentPercentAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit SetHoldingCurrentPercentAction(ServoXxd *parent) : parent_(parent) {}
 
       TEMPLATABLE_VALUE(uint8_t, percent)
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_holding_current_percent in ServoXxdModbus first
+        // TODO: Implement set_holding_current_percent in ServoXxd first
         // uint8_t percent = this->percent_.value(x...);
         // parent_->set_holding_current_percent(percent);
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     /**
@@ -474,7 +474,7 @@ namespace esphome
     class SetMicrosteppingAction : public Action<Ts...>
     {
     public:
-      explicit SetMicrosteppingAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit SetMicrosteppingAction(ServoXxd *parent) : parent_(parent) {}
 
       void set_microstepping(uint16_t microsteps) { microsteps_ = microsteps; }
 
@@ -484,7 +484,7 @@ namespace esphome
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
       uint16_t microsteps_{16};
     };
 
@@ -503,16 +503,16 @@ namespace esphome
     class ReleaseProtectionAction : public Action<Ts...>
     {
     public:
-      explicit ReleaseProtectionAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit ReleaseProtectionAction(ServoXxd *parent) : parent_(parent) {}
 
       void play(Ts... x) override
       {
-        // TODO: Implement release_protection in ServoXxdModbus first
+        // TODO: Implement release_protection in ServoXxd first
         // parent_->release_protection();
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     /**
@@ -526,16 +526,16 @@ namespace esphome
     class RestartAction : public Action<Ts...>
     {
     public:
-      explicit RestartAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit RestartAction(ServoXxd *parent) : parent_(parent) {}
 
       void play(Ts... x) override
       {
-        // TODO: Implement restart in ServoXxdModbus first
+        // TODO: Implement restart in ServoXxd first
         // parent_->restart();
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
     /**
@@ -549,17 +549,17 @@ namespace esphome
     class CalibrateAction : public Action<Ts...>
     {
     public:
-      explicit CalibrateAction(ServoXxdModbus *parent) : parent_(parent) {}
+      explicit CalibrateAction(ServoXxd *parent) : parent_(parent) {}
 
       void play(Ts... x) override
       {
-        // TODO: Implement calibrate in ServoXxdModbus first
+        // TODO: Implement calibrate in ServoXxd first
         // parent_->calibrate();
       }
 
     protected:
-      ServoXxdModbus *parent_;
+      ServoXxd *parent_;
     };
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

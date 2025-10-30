@@ -5,12 +5,12 @@
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
-    static const char *const TAG = "servoxxd_modbus.queue";
+    static const char *const TAG = "servoxxd.queue";
 
-    CommandQueue::CommandQueue(ServoXxdModbus *parent, uint32_t timeout_ms, uint8_t max_retries)
+    CommandQueue::CommandQueue(ServoXxd *parent, uint32_t timeout_ms, uint8_t max_retries)
         : parent_(parent), timeout_ms_(timeout_ms), max_retries_(max_retries)
     {
       ESP_LOGCONFIG(TAG, "CommandQueue initialized: timeout=%ums, max_retries=%u", timeout_ms_, max_retries_);
@@ -457,5 +457,5 @@ namespace esphome
       return queue_.end(); // No duplicate found
     }
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

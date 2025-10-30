@@ -1,20 +1,20 @@
 #include "servoxxd_acceleration.h"
-#include "servoxxd_modbus.h"
+#include "servoxxd.h"
 #include <cmath>
 #include <algorithm>
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
-    static const char *const TAG = "servoxxd_modbus.acceleration";
+    static const char *const TAG = "servoxxd.acceleration";
 
     // Hardware acceleration constants
     static constexpr float MAX_RPM_PER_SEC = 20000.0f; // acc=255 → Δt=50μs → 20000 RPM/s
 
     // Primary constructor: float value
-    Acceleration::Acceleration(float value, AccelerationUnit unit, const ServoXxdModbus *parent) : parent_(parent)
+    Acceleration::Acceleration(float value, AccelerationUnit unit, const ServoXxd *parent) : parent_(parent)
     {
       // Step 1: Convert to RPM/s
       float rpm_per_sec = 0.0f;
@@ -93,39 +93,39 @@ namespace esphome
     }
 
     // Constructor overload: double → float
-    Acceleration::Acceleration(double value, AccelerationUnit unit, const ServoXxdModbus *parent)
+    Acceleration::Acceleration(double value, AccelerationUnit unit, const ServoXxd *parent)
         : Acceleration(static_cast<float>(value), unit, parent) {}
 
     // Constructor overload: int64_t → float
-    Acceleration::Acceleration(int64_t value, AccelerationUnit unit, const ServoXxdModbus *parent)
+    Acceleration::Acceleration(int64_t value, AccelerationUnit unit, const ServoXxd *parent)
         : Acceleration(static_cast<float>(value), unit, parent) {}
 
     // Constructor overload: int32_t → float
-    Acceleration::Acceleration(int32_t value, AccelerationUnit unit, const ServoXxdModbus *parent)
+    Acceleration::Acceleration(int32_t value, AccelerationUnit unit, const ServoXxd *parent)
         : Acceleration(static_cast<float>(value), unit, parent) {}
 
     // Factory methods
-    Acceleration Acceleration::from_steps_per_sec2(float value, const ServoXxdModbus *parent)
+    Acceleration Acceleration::from_steps_per_sec2(float value, const ServoXxd *parent)
     {
       return Acceleration(value, AccelerationUnit::STEPS_PER_SEC_SQ, parent);
     }
 
-    Acceleration Acceleration::from_rpm_per_sec(float value, const ServoXxdModbus *parent)
+    Acceleration Acceleration::from_rpm_per_sec(float value, const ServoXxd *parent)
     {
       return Acceleration(value, AccelerationUnit::RPM_PER_SEC, parent);
     }
 
-    Acceleration Acceleration::from_rev_per_sec2(float value, const ServoXxdModbus *parent)
+    Acceleration Acceleration::from_rev_per_sec2(float value, const ServoXxd *parent)
     {
       return Acceleration(value, AccelerationUnit::REV_PER_SEC_SQ, parent);
     }
 
-    Acceleration Acceleration::from_degrees_per_sec2(float value, const ServoXxdModbus *parent)
+    Acceleration Acceleration::from_degrees_per_sec2(float value, const ServoXxd *parent)
     {
       return Acceleration(value, AccelerationUnit::DEGREES_PER_SEC_SQ, parent);
     }
 
-    Acceleration Acceleration::from_radians_per_sec2(float value, const ServoXxdModbus *parent)
+    Acceleration Acceleration::from_radians_per_sec2(float value, const ServoXxd *parent)
     {
       return Acceleration(value, AccelerationUnit::RADIANS_PER_SEC_SQ, parent);
     }
@@ -203,5 +203,5 @@ namespace esphome
       *this = Acceleration(static_cast<float>(value), unit, parent_);
     }
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

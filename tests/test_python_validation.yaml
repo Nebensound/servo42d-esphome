@@ -16,7 +16,7 @@ external_components:
   - source:
       type: local
       path: ../components
-    components: [servoxxd_modbus]
+    components: [servoxxd]
 
 logger:
   level: DEBUG
@@ -35,7 +35,7 @@ modbus:
 
 # Test basic stepper configuration
 stepper:
-  - platform: servoxxd_modbus
+  - platform: servoxxd
     id: test_motor
     modbus_id: modbus_bus
     address: 0x01

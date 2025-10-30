@@ -1,6 +1,7 @@
 """
-ServoXXD Modbus Stepper Platform for ESPHome
+ServoXXD Stepper Platform for ESPHome
 Implements YAML validation and code generation for MKS ServoXXD motors
+Transport layer: Modbus RTU (via *_modbus.cpp/h files)
 """
 
 from esphome.components import stepper, modbus
@@ -17,52 +18,53 @@ from esphome.const import (
 from esphome import automation
 import math
 
-# Create namespace
-servoxxd_modbus_ns = cg.esphome_ns.namespace("servoxxd_modbus")
+# Create namespace (servoxxd - generic stepper logic)
+# Modbus transport is in ServoXxd class (*_modbus files)
+servoxxd_ns = cg.esphome_ns.namespace("servoxxd")
 
-# Main component class
-ServoXxdModbus = servoxxd_modbus_ns.class_(
-    "ServoXxdModbus", 
+# Main component class (Modbus transport implementation)
+ServoXxd = servoxxd_ns.class_(
+    "ServoXxd", 
     stepper.Stepper, 
     modbus.ModbusDevice, 
     cg.Component
 )
 
-# Action classes - all 20 actions declared in servoxxd_modbus namespace
+# Action classes - all 20 actions declared in servoxxd namespace
 # Movement actions
-SetTargetAction = servoxxd_modbus_ns.class_("SetTargetAction", automation.Action)
-RunContinuousAction = servoxxd_modbus_ns.class_("RunContinuousAction", automation.Action)
-StopAction = servoxxd_modbus_ns.class_("StopAction", automation.Action)
-EmergencyStopAction = servoxxd_modbus_ns.class_("EmergencyStopAction", automation.Action)
-HomeAction = servoxxd_modbus_ns.class_("HomeAction", automation.Action)
+SetTargetAction = servoxxd_ns.class_("SetTargetAction", automation.Action)
+RunContinuousAction = servoxxd_ns.class_("RunContinuousAction", automation.Action)
+StopAction = servoxxd_ns.class_("StopAction", automation.Action)
+EmergencyStopAction = servoxxd_ns.class_("EmergencyStopAction", automation.Action)
+HomeAction = servoxxd_ns.class_("HomeAction", automation.Action)
 
 # Position actions
-ReportPositionAction = servoxxd_modbus_ns.class_("ReportPositionAction", automation.Action)
-SetZeroAction = servoxxd_modbus_ns.class_("SetZeroAction", automation.Action)
+ReportPositionAction = servoxxd_ns.class_("ReportPositionAction", automation.Action)
+SetZeroAction = servoxxd_ns.class_("SetZeroAction", automation.Action)
 
 # Motor control actions
-EnableAction = servoxxd_modbus_ns.class_("EnableAction", automation.Action)
-DisableAction = servoxxd_modbus_ns.class_("DisableAction", automation.Action)
+EnableAction = servoxxd_ns.class_("EnableAction", automation.Action)
+DisableAction = servoxxd_ns.class_("DisableAction", automation.Action)
 
 # Configuration actions
-SetSpeedAction = servoxxd_modbus_ns.class_("SetSpeedAction", automation.Action)
-SetAccelerationAction = servoxxd_modbus_ns.class_("SetAccelerationAction", automation.Action)
-SetWorkModeAction = servoxxd_modbus_ns.class_("SetWorkModeAction", automation.Action)
-SetWorkingCurrentAction = servoxxd_modbus_ns.class_("SetWorkingCurrentAction", automation.Action)
-SetHoldingCurrentPercentAction = servoxxd_modbus_ns.class_("SetHoldingCurrentPercentAction", automation.Action)
-SetMicrosteppingAction = servoxxd_modbus_ns.class_("SetMicrosteppingAction", automation.Action)
+SetSpeedAction = servoxxd_ns.class_("SetSpeedAction", automation.Action)
+SetAccelerationAction = servoxxd_ns.class_("SetAccelerationAction", automation.Action)
+SetWorkModeAction = servoxxd_ns.class_("SetWorkModeAction", automation.Action)
+SetWorkingCurrentAction = servoxxd_ns.class_("SetWorkingCurrentAction", automation.Action)
+SetHoldingCurrentPercentAction = servoxxd_ns.class_("SetHoldingCurrentPercentAction", automation.Action)
+SetMicrosteppingAction = servoxxd_ns.class_("SetMicrosteppingAction", automation.Action)
 
 # System actions
-CalibrateAction = servoxxd_modbus_ns.class_("CalibrateAction", automation.Action)
-ReleaseProtectionAction = servoxxd_modbus_ns.class_("ReleaseProtectionAction", automation.Action)
-RestartAction = servoxxd_modbus_ns.class_("RestartAction", automation.Action)
+CalibrateAction = servoxxd_ns.class_("CalibrateAction", automation.Action)
+ReleaseProtectionAction = servoxxd_ns.class_("ReleaseProtectionAction", automation.Action)
+RestartAction = servoxxd_ns.class_("RestartAction", automation.Action)
 
 # Key lock actions
-KeyLockAction = servoxxd_modbus_ns.class_("KeyLockAction", automation.Action)
-KeyUnlockAction = servoxxd_modbus_ns.class_("KeyUnlockAction", automation.Action)
+KeyLockAction = servoxxd_ns.class_("KeyLockAction", automation.Action)
+KeyUnlockAction = servoxxd_ns.class_("KeyUnlockAction", automation.Action)
 
 # Enums for C++ (matching specification)
-SpeedUnit = servoxxd_modbus_ns.enum("SpeedUnit", is_class=True)
+SpeedUnit = servoxxd_ns.enum("SpeedUnit", is_class=True)
 SPEED_UNITS = {
     "STEPS_PER_SEC": SpeedUnit.STEPS_PER_SEC,
     "RPM": SpeedUnit.RPM,
@@ -73,7 +75,7 @@ SPEED_UNITS = {
     "DEGREES_PER_HOUR": SpeedUnit.DEGREES_PER_HOUR,
 }
 
-AccelerationUnit = servoxxd_modbus_ns.enum("AccelerationUnit", is_class=True)
+AccelerationUnit = servoxxd_ns.enum("AccelerationUnit", is_class=True)
 ACCELERATION_UNITS = {
     "STEPS_PER_SEC_SQ": AccelerationUnit.STEPS_PER_SEC_SQ,
     "RPM_PER_SEC": AccelerationUnit.RPM_PER_SEC,
@@ -82,7 +84,7 @@ ACCELERATION_UNITS = {
     "RADIANS_PER_SEC_SQ": AccelerationUnit.RADIANS_PER_SEC_SQ,
 }
 
-PositionUnit = servoxxd_modbus_ns.enum("PositionUnit", is_class=True)
+PositionUnit = servoxxd_ns.enum("PositionUnit", is_class=True)
 POSITION_UNITS = {
     "STEPS": PositionUnit.STEPS,
     "REVOLUTIONS": PositionUnit.REVOLUTIONS,
@@ -92,7 +94,7 @@ POSITION_UNITS = {
     "ARCSECONDS": PositionUnit.ARCSECONDS,
 }
 
-ZeroingSpeed = servoxxd_modbus_ns.enum("ZeroingSpeed", is_class=True)
+ZeroingSpeed = servoxxd_ns.enum("ZeroingSpeed", is_class=True)
 ZEROING_SPEEDS = {
     "VERY_SLOW": ZeroingSpeed.VERY_SLOW,
     "SLOW": ZeroingSpeed.SLOW,
@@ -101,33 +103,33 @@ ZEROING_SPEEDS = {
     "VERY_FAST": ZeroingSpeed.VERY_FAST,
 }
 
-Direction = servoxxd_modbus_ns.enum("Direction", is_class=True)
+Direction = servoxxd_ns.enum("Direction", is_class=True)
 DIRECTIONS = {
     "CW": Direction.CW,
     "CCW": Direction.CCW,
 }
 
-HomingDirection = servoxxd_modbus_ns.enum("HomingDirection", is_class=True)
+HomingDirection = servoxxd_ns.enum("HomingDirection", is_class=True)
 HOMING_DIRECTIONS = {
     "CW": HomingDirection.CW,
     "CCW": HomingDirection.CCW,
     "NEAREST": HomingDirection.NEAREST,
 }
 
-HomingMode = servoxxd_modbus_ns.enum("HomingMode", is_class=True)
+HomingMode = servoxxd_ns.enum("HomingMode", is_class=True)
 HOMING_MODES = {
     "SENSORLESS": HomingMode.SENSORLESS,
     "ENDSTOP": HomingMode.ENDSTOP,
     "VIRTUAL": HomingMode.VIRTUAL,
 }
 
-EndstopTrigger = servoxxd_modbus_ns.enum("EndstopTrigger", is_class=True)
+EndstopTrigger = servoxxd_ns.enum("EndstopTrigger", is_class=True)
 ENDSTOP_TRIGGERS = {
     "LOW": EndstopTrigger.TRIGGER_LOW,
     "HIGH": EndstopTrigger.TRIGGER_HIGH,
 }
 
-ServoType = servoxxd_modbus_ns.enum("ServoType", is_class=True)
+ServoType = servoxxd_ns.enum("ServoType", is_class=True)
 SERVO_TYPES = {
     "SERVO28D": ServoType.SERVO28D,
     "SERVO35D": ServoType.SERVO35D,
@@ -135,21 +137,21 @@ SERVO_TYPES = {
     "SERVO57D": ServoType.SERVO57D,
 }
 
-ControlMode = servoxxd_modbus_ns.enum("ControlMode", is_class=True)
+ControlMode = servoxxd_ns.enum("ControlMode", is_class=True)
 CONTROL_MODES = {
     "SR_OPEN": ControlMode.SR_OPEN,
     "SR_CLOSE": ControlMode.SR_CLOSE,
     "SR_VFOC": ControlMode.SR_VFOC,
 }
 
-EnPinActive = servoxxd_modbus_ns.enum("EnPinActive", is_class=True)
+EnPinActive = servoxxd_ns.enum("EnPinActive", is_class=True)
 EN_PIN_ACTIVE_VALUES = {
     "LOW": EnPinActive.EN_LOW,
     "HIGH": EnPinActive.EN_HIGH,
     "ALWAYS": EnPinActive.EN_ALWAYS,
 }
 
-OperatingMode = servoxxd_modbus_ns.enum("OperatingMode", is_class=True)
+OperatingMode = servoxxd_ns.enum("OperatingMode", is_class=True)
 OPERATING_MODES = {
     "POSITION": OperatingMode.POSITION,
     "SPEED": OperatingMode.SPEED,
@@ -625,7 +627,7 @@ def validate_homing_config(config):
 # Main component configuration schema
 CONFIG_SCHEMA = cv.All(
     cv.Schema({
-        cv.GenerateID(): cv.declare_id(ServoXxdModbus),
+        cv.GenerateID(): cv.declare_id(ServoXxd),
         cv.GenerateID(CONF_MODBUS_ID): cv.use_id(modbus.Modbus),
         
         # Basic configuration
@@ -907,7 +909,7 @@ CONF_DECELERATION = "deceleration"
     "stepper.set_target",
     SetTargetAction,
     cv.Schema({
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
         cv.Required(CONF_TARGET): cv.templatable(validate_position_with_unit),
     })
 )
@@ -935,7 +937,7 @@ async def stepper_set_target_to_code(config, action_id, template_arg, args):
     "stepper.report_position",
     ReportPositionAction,
     cv.Schema({
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
         cv.Required(CONF_POSITION): cv.templatable(validate_position_with_unit),
     })
 )
@@ -962,8 +964,8 @@ async def stepper_report_position_to_code(config, action_id, template_arg, args)
 @automation.register_action(
     "stepper.home",
     HomeAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_home_to_code(config, action_id, template_arg, args):
@@ -976,8 +978,8 @@ async def stepper_home_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.set_zero",
     SetZeroAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_set_zero_to_code(config, action_id, template_arg, args):
@@ -996,7 +998,7 @@ async def stepper_set_zero_to_code(config, action_id, template_arg, args):
     RunContinuousAction,
     cv.All(
         cv.Schema({
-            cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+            cv.Required(CONF_ID): cv.use_id(ServoXxd),
             cv.Optional(CONF_SPEED): cv.templatable(validate_speed_with_unit),
             cv.Optional(CONF_ACCELERATION): cv.templatable(validate_acceleration_with_unit),
         }),
@@ -1040,10 +1042,13 @@ async def stepper_run_continuous_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.stop",
     StopAction,
-    cv.Schema({
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
-        cv.Optional(CONF_ACCELERATION): cv.templatable(validate_acceleration_with_unit),
-    })
+    automation.maybe_conf(
+        CONF_ID,
+        cv.Schema({
+            cv.Required(CONF_ID): cv.use_id(ServoXxd),
+            cv.Optional(CONF_ACCELERATION): cv.templatable(validate_acceleration_with_unit),
+        })
+    )
 )
 async def stepper_stop_to_code(config, action_id, template_arg, args):
     """Stop motor with deceleration."""
@@ -1069,8 +1074,8 @@ async def stepper_stop_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.emergency_stop",
     EmergencyStopAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_emergency_stop_to_code(config, action_id, template_arg, args):
@@ -1087,8 +1092,8 @@ async def stepper_emergency_stop_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.enable",
     EnableAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_enable_to_code(config, action_id, template_arg, args):
@@ -1101,8 +1106,8 @@ async def stepper_enable_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.disable",
     DisableAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_disable_to_code(config, action_id, template_arg, args):
@@ -1115,8 +1120,8 @@ async def stepper_disable_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.calibrate",
     CalibrateAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_calibrate_to_code(config, action_id, template_arg, args):
@@ -1129,8 +1134,8 @@ async def stepper_calibrate_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.release_protection",
     ReleaseProtectionAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_release_protection_to_code(config, action_id, template_arg, args):
@@ -1143,8 +1148,8 @@ async def stepper_release_protection_to_code(config, action_id, template_arg, ar
 @automation.register_action(
     "stepper.restart",
     RestartAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_restart_to_code(config, action_id, template_arg, args):
@@ -1162,7 +1167,7 @@ async def stepper_restart_to_code(config, action_id, template_arg, args):
     "stepper.set_work_mode",
     SetWorkModeAction,
     cv.Schema({
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
         cv.Required(CONF_WORK_MODE): cv.enum(OPERATING_MODES, upper=True),
     })
 )
@@ -1178,7 +1183,7 @@ async def stepper_set_work_mode_to_code(config, action_id, template_arg, args):
     "stepper.set_working_current",
     SetWorkingCurrentAction,
     cv.Schema({
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
         cv.Required(CONF_CURRENT): cv.templatable(validate_current),
     })
 )
@@ -1195,7 +1200,7 @@ async def stepper_set_working_current_to_code(config, action_id, template_arg, a
     "stepper.set_holding_current_percent",
     SetHoldingCurrentPercentAction,
     cv.Schema({
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
         cv.Required(CONF_PERCENT): cv.templatable(cv.percentage),
     })
 )
@@ -1213,7 +1218,7 @@ async def stepper_set_holding_current_percent_to_code(config, action_id, templat
     "stepper.set_microstepping",
     SetMicrosteppingAction,
     cv.Schema({
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
         cv.Required(CONF_SUBDIVISION): cv.templatable(validate_microsteps),
     })
 )
@@ -1230,7 +1235,7 @@ async def stepper_set_microstepping_to_code(config, action_id, template_arg, arg
     "stepper.set_speed",
     SetSpeedAction,
     cv.Schema({
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
         cv.Required(CONF_SPEED): cv.templatable(validate_speed_with_unit),
     })
 )
@@ -1258,7 +1263,7 @@ async def stepper_set_speed_to_code(config, action_id, template_arg, args):
     "stepper.set_acceleration",
     SetAccelerationAction,
     cv.Schema({
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
         cv.Required(CONF_ACCELERATION): cv.templatable(validate_acceleration_with_unit),
     })
 )
@@ -1289,8 +1294,8 @@ async def stepper_set_acceleration_to_code(config, action_id, template_arg, args
 @automation.register_action(
     "stepper.key_lock",
     KeyLockAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_key_lock_to_code(config, action_id, template_arg, args):
@@ -1303,8 +1308,8 @@ async def stepper_key_lock_to_code(config, action_id, template_arg, args):
 @automation.register_action(
     "stepper.key_unlock",
     KeyUnlockAction,
-    automation.maybe_conf(CONF_ID, {
-        cv.Required(CONF_ID): cv.use_id(ServoXxdModbus),
+    automation.maybe_simple_id({
+        cv.Required(CONF_ID): cv.use_id(ServoXxd),
     })
 )
 async def stepper_key_unlock_to_code(config, action_id, template_arg, args):

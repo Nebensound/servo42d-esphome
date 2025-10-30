@@ -4,11 +4,11 @@
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
     // Forward declaration
-    class ServoXxdModbus;
+    class ServoXxd;
 
     /**
      * @brief Unit options for acceleration values
@@ -35,22 +35,22 @@ namespace esphome
      */
     class Acceleration
     {
-      friend class ServoXxdModbus;
+      friend class ServoXxd;
 
     public:
       // Constructors - float primary, double/int overloads
-      Acceleration(float value, AccelerationUnit unit, const ServoXxdModbus *parent);
-      Acceleration(double value, AccelerationUnit unit, const ServoXxdModbus *parent);
-      Acceleration(int64_t value, AccelerationUnit unit, const ServoXxdModbus *parent);
-      Acceleration(int32_t value, AccelerationUnit unit, const ServoXxdModbus *parent);
-      explicit Acceleration(const ServoXxdModbus *parent) : acc_(0), parent_(parent) {}
+      Acceleration(float value, AccelerationUnit unit, const ServoXxd *parent);
+      Acceleration(double value, AccelerationUnit unit, const ServoXxd *parent);
+      Acceleration(int64_t value, AccelerationUnit unit, const ServoXxd *parent);
+      Acceleration(int32_t value, AccelerationUnit unit, const ServoXxd *parent);
+      explicit Acceleration(const ServoXxd *parent) : acc_(0), parent_(parent) {}
 
       // Factory methods for direct unit conversion
-      static Acceleration from_steps_per_sec2(float value, const ServoXxdModbus *parent);
-      static Acceleration from_rpm_per_sec(float value, const ServoXxdModbus *parent);
-      static Acceleration from_rev_per_sec2(float value, const ServoXxdModbus *parent);
-      static Acceleration from_degrees_per_sec2(float value, const ServoXxdModbus *parent);
-      static Acceleration from_radians_per_sec2(float value, const ServoXxdModbus *parent);
+      static Acceleration from_steps_per_sec2(float value, const ServoXxd *parent);
+      static Acceleration from_rpm_per_sec(float value, const ServoXxd *parent);
+      static Acceleration from_rev_per_sec2(float value, const ServoXxd *parent);
+      static Acceleration from_degrees_per_sec2(float value, const ServoXxd *parent);
+      static Acceleration from_radians_per_sec2(float value, const ServoXxd *parent);
 
       // Direct accessor to internal representation
       uint8_t acc_internal() const { return acc_; }
@@ -100,8 +100,8 @@ namespace esphome
 
     private:
       uint8_t acc_{0};                        ///< Hardware value 0-255 (inverse time mapping)
-      const ServoXxdModbus *parent_{nullptr}; ///< Parent component (for steps_per_revolution)
+      const ServoXxd *parent_{nullptr}; ///< Parent component (for steps_per_revolution)
     };
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome

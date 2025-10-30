@@ -18,7 +18,7 @@ external_components:
   - source:
       type: local
       path: ../../components
-    components: [servoxxd_modbus]
+    components: [servoxxd]
 
 # Enable logging
 logger:
@@ -41,13 +41,13 @@ modbus:
 
 # ServoXxD Modbus Stepper Motor
 stepper:
-  - platform: servoxxd_modbus
+  - platform: servoxxd
     id: test_stepper
     steps_per_revolution: 3200 # 200 steps × 16 microsteps
     speed: 1000 steps/s
     acceleration: 500 steps/s^2
     servo_type: SERVO42D
-    
+
     # MODBUS configuration
     modbus_id: modbus_bus
     address: 0x01
@@ -83,7 +83,6 @@ button:
       - stepper.run_continuous:
           id: test_stepper
           speed: 500 steps/s
-          direction: CW
 
   - platform: template
     name: "Run Continuous - RPM"
@@ -91,7 +90,6 @@ button:
       - stepper.run_continuous:
           id: test_stepper
           speed: 10 RPM
-          direction: CCW
 
   - platform: template
     name: "Run Continuous - Degrees/s"
@@ -99,10 +97,15 @@ button:
       - stepper.run_continuous:
           id: test_stepper
           speed: 180 degrees/s
-          direction: CW
 
   - platform: template
-    name: "Stop Motion"
+    name: "Stop Motion Default"
+    on_press:
+      - stepper.stop:
+          id: test_stepper
+
+  - platform: template
+    name: "Stop Motion Explicit"
     on_press:
       - stepper.stop: test_stepper
 
@@ -121,7 +124,7 @@ button:
   - platform: template
     name: "Reset Position"
     on_press:
-      - stepper.reset_position: test_stepper
+      - stepper.set_zero: test_stepper
 
   # Configuration actions
   - platform: template
@@ -222,13 +225,12 @@ script:
       - stepper.run_continuous:
           id: test_stepper
           speed: 5 RPM
-          direction: CW
       - delay: 3s
 
       # Stop and reset
       - stepper.stop: test_stepper
       - delay: 500ms
-      - stepper.reset_position: test_stepper
+      - stepper.set_zero: test_stepper
 
       # Emergency stop test
       - stepper.emergency_stop: test_stepper
@@ -249,7 +251,6 @@ script:
       - stepper.run_continuous:
           id: test_stepper
           speed: 500 steps/s
-          direction: CW
       - delay: 2s
       - stepper.stop: test_stepper
 
@@ -257,7 +258,6 @@ script:
       - stepper.run_continuous:
           id: test_stepper
           speed: 10 RPM
-          direction: CCW
       - delay: 2s
       - stepper.stop: test_stepper
 
@@ -265,7 +265,6 @@ script:
       - stepper.run_continuous:
           id: test_stepper
           speed: 180 degrees/s
-          direction: CW
       - delay: 2s
       - stepper.stop: test_stepper
 

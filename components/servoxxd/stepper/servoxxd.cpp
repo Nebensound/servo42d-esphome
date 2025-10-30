@@ -1,25 +1,25 @@
-#include "servoxxd_modbus.h"
+#include "servoxxd.h"
 #include "servoxxd_stepper_engine.h"
 
 namespace esphome
 {
-  namespace servoxxd_modbus
+  namespace servoxxd
   {
 
-    static const char *const TAG = "servoxxd_modbus";
+    static const char *const TAG = "servoxxd";
 
     // ============================================================================
     // Constructor / Destructor
     // ============================================================================
 
-    ServoXxdModbus::ServoXxdModbus()
+    ServoXxd::ServoXxd()
     {
       // Initialize Speed in homing_ union with valid parent pointer
       // Default mode is ENDSTOP, so we initialize the Speed member
       new (&homing_.speed) Speed(100.0f, SpeedUnit::RPM, this);
     }
 
-    ServoXxdModbus::~ServoXxdModbus()
+    ServoXxd::~ServoXxd()
     {
       if (this->engine_ != nullptr)
       {
@@ -32,7 +32,7 @@ namespace esphome
     // Component Lifecycle
     // ============================================================================
 
-    void ServoXxdModbus::setup()
+    void ServoXxd::setup()
     {
       ESP_LOGCONFIG(TAG, "Setting up ServoXxd Modbus...");
 
@@ -73,7 +73,7 @@ namespace esphome
       ESP_LOGCONFIG(TAG, "ServoXxd Modbus setup complete");
     }
 
-    void ServoXxdModbus::loop()
+    void ServoXxd::loop()
     {
       // Call StepperEngine state machine update
       if (this->engine_ != nullptr)
@@ -92,7 +92,7 @@ namespace esphome
       }
     }
 
-    void ServoXxdModbus::dump_config()
+    void ServoXxd::dump_config()
     {
       ESP_LOGCONFIG(TAG, "ServoXxd Modbus Stepper:");
       // LOG_STEPPER(this);  // TODO: Use proper ESPHome macro when available
@@ -142,7 +142,7 @@ namespace esphome
     // Modbus Callbacks
     // ============================================================================
 
-    void ServoXxdModbus::on_modbus_data(const std::vector<uint8_t> &data)
+    void ServoXxd::on_modbus_data(const std::vector<uint8_t> &data)
     {
       // TODO: Implementation required
       // - Parse response data
@@ -152,7 +152,7 @@ namespace esphome
       ESP_LOGW(TAG, "on_modbus_data() not yet implemented - received %zu bytes", data.size());
     }
 
-    void ServoXxdModbus::on_modbus_error(uint8_t function_code, uint8_t exception_code)
+    void ServoXxd::on_modbus_error(uint8_t function_code, uint8_t exception_code)
     {
       // TODO: Implementation required
       // - Log error details
@@ -166,7 +166,7 @@ namespace esphome
     // Public API - Action Methods (Minimal Implementation)
     // ============================================================================
 
-    void ServoXxdModbus::move_to(const Position &position)
+    void ServoXxd::move_to(const Position &position)
     {
       if (this->engine_ == nullptr)
       {
@@ -179,7 +179,7 @@ namespace esphome
       this->engine_->move_to(position, nullptr, nullptr);
     }
 
-    void ServoXxdModbus::home()
+    void ServoXxd::home()
     {
       if (this->engine_ == nullptr)
       {
@@ -192,7 +192,7 @@ namespace esphome
       this->engine_->home();
     }
 
-    void ServoXxdModbus::stop()
+    void ServoXxd::stop()
     {
       if (this->engine_ == nullptr)
       {
@@ -204,7 +204,7 @@ namespace esphome
       this->engine_->stop(nullptr);
     }
 
-    void ServoXxdModbus::run_continuous(const Speed &speed)
+    void ServoXxd::run_continuous(const Speed &speed)
     {
       if (this->engine_ == nullptr)
       {
@@ -218,7 +218,7 @@ namespace esphome
       this->engine_->run_continuous(speed, this->default_acceleration_);
     }
 
-    void ServoXxdModbus::emergency_stop()
+    void ServoXxd::emergency_stop()
     {
       if (this->engine_ == nullptr)
       {
@@ -230,7 +230,7 @@ namespace esphome
       this->engine_->emergency_stop();
     }
 
-    void ServoXxdModbus::enable()
+    void ServoXxd::enable()
     {
       if (this->engine_ == nullptr)
       {
@@ -242,7 +242,7 @@ namespace esphome
       this->engine_->enable();
     }
 
-    void ServoXxdModbus::disable()
+    void ServoXxd::disable()
     {
       if (this->engine_ == nullptr)
       {
@@ -254,5 +254,5 @@ namespace esphome
       this->engine_->disable();
     }
 
-  } // namespace servoxxd_modbus
+  } // namespace servoxxd
 } // namespace esphome
