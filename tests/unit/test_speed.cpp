@@ -102,8 +102,8 @@ void test_speed_radians_per_sec()
 
   float steps_per_rev = 3200.0f;
   MockServoXxdModbus mock(steps_per_rev);
-  constexpr float PI = 3.14159265358979323846f;
-  constexpr float two_pi = 2.0f * PI;
+  const float pi_value = static_cast<float>(PI);
+  const float two_pi = 2.0f * pi_value;
 
   // Test: 2π rad/s (1 rev/s) should be 60 RPM
   Speed speed(two_pi, SpeedUnit::RADIANS_PER_SEC, &mock);
@@ -278,11 +278,185 @@ void test_speed_invalid_steps_per_revolution()
   std::cout << "  ✓ STEPS_PER_SEC with zero steps_per_rev → 0 RPM (error handling)" << std::endl;
 }
 
+void test_speed_factory_methods()
+{
+  std::cout << "Testing factory methods..." << std::endl;
+
+  float steps_per_rev = 3200.0f;
+  MockServoXxdModbus mock(steps_per_rev);
+
+  // Test from_rpm
+  Speed speed1 = Speed::from_rpm(100.0f, &mock);
+  assert(speed1.get_rpm() == 100);
+  std::cout << "  ✓ from_rpm(100) → " << speed1.get_rpm() << " RPM" << std::endl;
+
+  // Test from_steps_per_sec
+  Speed speed2 = Speed::from_steps_per_sec(3200.0f, &mock);
+  assert(speed2.get_rpm() == 60);
+  std::cout << "  ✓ from_steps_per_sec(3200) → " << speed2.get_rpm() << " RPM" << std::endl;
+
+  // Test from_rev_per_sec
+  Speed speed3 = Speed::from_rev_per_sec(1.5f, &mock);
+  assert(speed3.get_rpm() == 90);
+  std::cout << "  ✓ from_rev_per_sec(1.5) → " << speed3.get_rpm() << " RPM" << std::endl;
+
+  // Test from_degrees_per_sec
+  Speed speed4 = Speed::from_degrees_per_sec(360.0f, &mock);
+  assert(speed4.get_rpm() == 60);
+  std::cout << "  ✓ from_degrees_per_sec(360) → " << speed4.get_rpm() << " RPM" << std::endl;
+
+  // Test from_radians_per_sec
+  const float pi_value = static_cast<float>(PI);
+  const float two_pi = 2.0f * pi_value;
+  Speed speed5 = Speed::from_radians_per_sec(two_pi, &mock);
+  assert(speed5.get_rpm() == 60);
+  std::cout << "  ✓ from_radians_per_sec(2π) → " << speed5.get_rpm() << " RPM" << std::endl;
+
+  // Test from_degrees_per_min
+  Speed speed6 = Speed::from_degrees_per_min(360.0f, &mock);
+  assert(speed6.get_rpm() == 60);
+  std::cout << "  ✓ from_degrees_per_min(360) → " << speed6.get_rpm() << " RPM" << std::endl;
+
+  // Test from_degrees_per_hour
+  Speed speed7 = Speed::from_degrees_per_hour(21600.0f, &mock);
+  assert(speed7.get_rpm() == 60);
+  std::cout << "  ✓ from_degrees_per_hour(21600) → " << speed7.get_rpm() << " RPM" << std::endl;
+}
+
+void test_speed_unit_conversions()
+{
+  std::cout << "Testing all unit accessor methods..." << std::endl;
+
+  float steps_per_rev = 3200.0f;
+  MockServoXxdModbus mock(steps_per_rev);
+
+  // Create 60 RPM speed (1 rev/s)
+  Speed speed(60.0f, SpeedUnit::RPM, &mock);
+
+  // Test int return types
+  assert(speed.get_rpm() == 60);
+  assert(speed.get_steps_per_sec() == 3200);
+  assert(speed.get_degrees_per_sec() == 360);
+  assert(speed.get_degrees_per_min() == 360);
+  assert(speed.get_degrees_per_hour() == 21600);
+  
+  // Test float return types
+  assert(float_eq(speed.get_rev_per_sec(), 1.0f));
+  assert(float_eq(speed.get_radians_per_sec(), 2.0f * static_cast<float>(PI)));
+
+  std::cout << "  ✓ 60 RPM = " << speed.get_rpm() << " RPM (int16)" << std::endl;
+  std::cout << "  ✓ 60 RPM = " << speed.get_steps_per_sec() << " steps/s (int32)" << std::endl;
+  std::cout << "  ✓ 60 RPM = " << speed.get_rev_per_sec() << " rev/s (float)" << std::endl;
+  std::cout << "  ✓ 60 RPM = " << speed.get_degrees_per_sec() << " deg/s (int32)" << std::endl;
+  std::cout << "  ✓ 60 RPM = " << speed.get_radians_per_sec() << " rad/s (float)" << std::endl;
+  std::cout << "  ✓ 60 RPM = " << speed.get_degrees_per_min() << " deg/min (int32)" << std::endl;
+  std::cout << "  ✓ 60 RPM = " << speed.get_degrees_per_hour() << " deg/h (int32)" << std::endl;
+}
+
+void test_speed_setters()
+{
+  std::cout << "Testing setter methods..." << std::endl;
+
+  float steps_per_rev = 3200.0f;
+  MockServoXxdModbus mock(steps_per_rev);
+
+  Speed speed(&mock);
+  assert(speed.rpm_internal() == 0);
+
+  // Test set_rpm
+  speed.set_rpm(100.0f);
+  assert(speed.get_rpm() == 100);
+  std::cout << "  ✓ set_rpm(100) → " << speed.get_rpm() << " RPM" << std::endl;
+
+  // Test set_steps_per_sec
+  speed.set_steps_per_sec(3200.0f);
+  assert(speed.get_rpm() == 60);
+  std::cout << "  ✓ set_steps_per_sec(3200) → " << speed.get_rpm() << " RPM" << std::endl;
+
+  // Test set_rev_per_sec
+  speed.set_rev_per_sec(2.0f);
+  assert(speed.get_rpm() == 120);
+  std::cout << "  ✓ set_rev_per_sec(2) → " << speed.get_rpm() << " RPM" << std::endl;
+
+  // Test set_degrees_per_sec
+  speed.set_degrees_per_sec(360.0f);
+  assert(speed.get_rpm() == 60);
+  std::cout << "  ✓ set_degrees_per_sec(360) → " << speed.get_rpm() << " RPM" << std::endl;
+
+  // Test set_radians_per_sec
+  const float two_pi = 2.0f * static_cast<float>(PI);
+  speed.set_radians_per_sec(two_pi);
+  assert(speed.get_rpm() == 60);
+  std::cout << "  ✓ set_radians_per_sec(2π) → " << speed.get_rpm() << " RPM" << std::endl;
+
+  // Test set_degrees_per_min
+  speed.set_degrees_per_min(360.0f);
+  assert(speed.get_rpm() == 60);
+  std::cout << "  ✓ set_degrees_per_min(360) → " << speed.get_rpm() << " RPM" << std::endl;
+
+  // Test set_degrees_per_hour
+  speed.set_degrees_per_hour(21600.0f);
+  assert(speed.get_rpm() == 60);
+  std::cout << "  ✓ set_degrees_per_hour(21600) → " << speed.get_rpm() << " RPM" << std::endl;
+}
+
+void test_speed_int_overloads()
+{
+  std::cout << "Testing int constructor/setter overloads..." << std::endl;
+
+  float steps_per_rev = 3200.0f;
+  MockServoXxdModbus mock(steps_per_rev);
+
+  // Test int64_t constructor
+  Speed speed1(static_cast<int64_t>(100), SpeedUnit::RPM, &mock);
+  assert(speed1.get_rpm() == 100);
+  std::cout << "  ✓ Speed(int64_t 100, RPM) → " << speed1.get_rpm() << " RPM" << std::endl;
+
+  // Test int32_t constructor
+  Speed speed2(static_cast<int32_t>(50), SpeedUnit::RPM, &mock);
+  assert(speed2.get_rpm() == 50);
+  std::cout << "  ✓ Speed(int32_t 50, RPM) → " << speed2.get_rpm() << " RPM" << std::endl;
+
+  // Test int64_t setter
+  Speed speed3(&mock);
+  speed3.set_rpm(static_cast<int64_t>(100));
+  assert(speed3.get_rpm() == 100);
+  std::cout << "  ✓ set_rpm(int64_t 100) → " << speed3.get_rpm() << " RPM" << std::endl;
+
+  // Test int32_t setter
+  speed3.set_rpm(static_cast<int32_t>(50));
+  assert(speed3.get_rpm() == 50);
+  std::cout << "  ✓ set_rpm(int32_t 50) → " << speed3.get_rpm() << " RPM" << std::endl;
+}
+
+void test_speed_comparison_operators()
+{
+  std::cout << "Testing comparison operators..." << std::endl;
+
+  float steps_per_rev = 3200.0f;
+  MockServoXxdModbus mock(steps_per_rev);
+
+  Speed speed1(100.0f, SpeedUnit::RPM, &mock);
+  Speed speed2(100.0f, SpeedUnit::RPM, &mock);
+  Speed speed3(50.0f, SpeedUnit::RPM, &mock);
+
+  // Test equality
+  assert(speed1 == speed2);
+  assert(!(speed1 == speed3));
+  std::cout << "  ✓ Equality: speed1 == speed2, speed1 != speed3" << std::endl;
+
+  // Test inequality
+  assert(speed1 != speed3);
+  assert(!(speed1 != speed2));
+  std::cout << "  ✓ Inequality: speed1 != speed3, !(speed1 != speed2)" << std::endl;
+}
+
 int main()
 {
   std::cout << "\n=== Speed Class Unit Tests ===" << std::endl;
   std::cout << std::endl;
 
+  // Basic unit conversions
   test_speed_steps_per_sec();
   test_speed_rpm();
   test_speed_rev_per_sec();
@@ -290,12 +464,25 @@ int main()
   test_speed_radians_per_sec();
   test_speed_degrees_per_min();
   test_speed_degrees_per_hour();
+
+  // Hardware-specific
   test_speed_microstepping_compensation();
   test_speed_steps_per_sec_conversion();
+
+  // Edge cases
   test_speed_negative_values();
   test_speed_range_clamping();
-  test_speed_null_parent();
   test_speed_zero_value();
+
+  // API pattern tests (matching Position/Acceleration)
+  test_speed_factory_methods();
+  test_speed_unit_conversions();
+  test_speed_setters();
+  test_speed_int_overloads();
+  test_speed_comparison_operators();
+
+  // Error handling
+  test_speed_null_parent();
   test_speed_invalid_steps_per_revolution();
 
   std::cout << std::endl;

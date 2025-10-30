@@ -24,54 +24,96 @@ namespace esphome
       DEGREES_PER_HOUR = 6 ///< Degrees per hour (astronomical tracking)
     };
 
-    /// Speed value with unit conversion support
-    ///
-    /// This class stores speed internally as RPM (int16_t) and provides
-    /// conversion from all supported units. Conversion happens in the constructor.
-    ///
-    /// Usage:
-    ///   Speed speed(1000.0f, SpeedUnit::STEPS_PER_SEC, parent);
-    ///   int16_t rpm = speed.rpm_as_i16();
-    ///   int16_t hw_rpm = speed.rpm_for_hardware();  // Uses stored parent
+    /**
+     * @brief Speed with unit conversion and hardware encoding
+     *
+     * Hardware format: int16_t RPM (-32768 to +32767)
+     * Supports 7 units with automatic conversion
+     */
     class Speed
     {
       friend class ServoXxdModbus;
 
     public:
-      /// Construct Speed from value and unit
-      /// @param value Speed value in the specified unit
-      /// @param unit Speed unit (default: STEPS_PER_SEC)
-      /// @param parent Pointer to parent ServoXxdModbus (required for unit conversion)
+      // Constructors - float primary, double/int overloads
       Speed(float value, SpeedUnit unit, const ServoXxdModbus *parent);
-
-      /// Construct Speed with parent only - initializes to 0 RPM
-      /// @param parent Pointer to parent ServoXxdModbus (required)
+      Speed(double value, SpeedUnit unit, const ServoXxdModbus *parent);
+      Speed(int64_t value, SpeedUnit unit, const ServoXxdModbus *parent);
+      Speed(int32_t value, SpeedUnit unit, const ServoXxdModbus *parent);
       explicit Speed(const ServoXxdModbus *parent) : rpm_(0), parent_(parent) {}
 
-      /// Get speed as RPM (float)
-      float rpm() const { return rpm_; }
+      // Factory methods for direct unit conversion
+      static Speed from_steps_per_sec(float value, const ServoXxdModbus *parent);
+      static Speed from_rpm(float value, const ServoXxdModbus *parent);
+      static Speed from_rev_per_sec(float value, const ServoXxdModbus *parent);
+      static Speed from_degrees_per_sec(float value, const ServoXxdModbus *parent);
+      static Speed from_radians_per_sec(float value, const ServoXxdModbus *parent);
+      static Speed from_degrees_per_min(float value, const ServoXxdModbus *parent);
+      static Speed from_degrees_per_hour(float value, const ServoXxdModbus *parent);
 
-      /// Get speed as RPM (int16_t) - rounded and clamped
+      // Direct accessor to internal representation
+      int16_t rpm_internal() const { return rpm_; }
+
+      // Unit conversions (getters) - optimized return types (int for linear conversions, float for fractional)
+      float get(SpeedUnit unit) const;
+      int32_t get_steps_per_sec() const { return static_cast<int32_t>(std::round(get(SpeedUnit::STEPS_PER_SEC))); }
+      int16_t get_rpm() const { return rpm_; }
+      float get_rev_per_sec() const { return get(SpeedUnit::REV_PER_SEC); }
+      int32_t get_degrees_per_sec() const { return static_cast<int32_t>(std::round(get(SpeedUnit::DEGREES_PER_SEC))); }
+      float get_radians_per_sec() const { return get(SpeedUnit::RADIANS_PER_SEC); }
+      int32_t get_degrees_per_min() const { return static_cast<int32_t>(std::round(get(SpeedUnit::DEGREES_PER_MIN))); }
+      int32_t get_degrees_per_hour() const { return static_cast<int32_t>(std::round(get(SpeedUnit::DEGREES_PER_HOUR))); }
+
+      // Unit conversions (setters) - float/double/int overloads
+      void set(float value, SpeedUnit unit);
+      void set(double value, SpeedUnit unit);
+      void set(int64_t value, SpeedUnit unit);
+      void set(int32_t value, SpeedUnit unit);
+
+      void set_steps_per_sec(float value) { set(value, SpeedUnit::STEPS_PER_SEC); }
+      void set_steps_per_sec(double value) { set(value, SpeedUnit::STEPS_PER_SEC); }
+      void set_steps_per_sec(int64_t value) { set(value, SpeedUnit::STEPS_PER_SEC); }
+      void set_steps_per_sec(int32_t value) { set(value, SpeedUnit::STEPS_PER_SEC); }
+
+      void set_rpm(float value) { set(value, SpeedUnit::RPM); }
+      void set_rpm(double value) { set(value, SpeedUnit::RPM); }
+      void set_rpm(int64_t value) { set(value, SpeedUnit::RPM); }
+      void set_rpm(int32_t value) { set(value, SpeedUnit::RPM); }
+
+      void set_rev_per_sec(float value) { set(value, SpeedUnit::REV_PER_SEC); }
+      void set_rev_per_sec(double value) { set(value, SpeedUnit::REV_PER_SEC); }
+      void set_rev_per_sec(int64_t value) { set(value, SpeedUnit::REV_PER_SEC); }
+      void set_rev_per_sec(int32_t value) { set(value, SpeedUnit::REV_PER_SEC); }
+
+      void set_degrees_per_sec(float value) { set(value, SpeedUnit::DEGREES_PER_SEC); }
+      void set_degrees_per_sec(double value) { set(value, SpeedUnit::DEGREES_PER_SEC); }
+      void set_degrees_per_sec(int64_t value) { set(value, SpeedUnit::DEGREES_PER_SEC); }
+      void set_degrees_per_sec(int32_t value) { set(value, SpeedUnit::DEGREES_PER_SEC); }
+
+      void set_radians_per_sec(float value) { set(value, SpeedUnit::RADIANS_PER_SEC); }
+      void set_radians_per_sec(double value) { set(value, SpeedUnit::RADIANS_PER_SEC); }
+      void set_radians_per_sec(int64_t value) { set(value, SpeedUnit::RADIANS_PER_SEC); }
+      void set_radians_per_sec(int32_t value) { set(value, SpeedUnit::RADIANS_PER_SEC); }
+
+      void set_degrees_per_min(float value) { set(value, SpeedUnit::DEGREES_PER_MIN); }
+      void set_degrees_per_min(double value) { set(value, SpeedUnit::DEGREES_PER_MIN); }
+      void set_degrees_per_min(int64_t value) { set(value, SpeedUnit::DEGREES_PER_MIN); }
+      void set_degrees_per_min(int32_t value) { set(value, SpeedUnit::DEGREES_PER_MIN); }
+
+      void set_degrees_per_hour(float value) { set(value, SpeedUnit::DEGREES_PER_HOUR); }
+      void set_degrees_per_hour(double value) { set(value, SpeedUnit::DEGREES_PER_HOUR); }
+      void set_degrees_per_hour(int64_t value) { set(value, SpeedUnit::DEGREES_PER_HOUR); }
+      void set_degrees_per_hour(int32_t value) { set(value, SpeedUnit::DEGREES_PER_HOUR); }
+
+      // Legacy compatibility methods
+      float rpm() const { return static_cast<float>(rpm_); }
       int16_t rpm_as_i16() const { return rpm_; }
-
-      /// Get speed for hardware with microstepping compensation
-      ///
-      /// The motor controller's speed values are calibrated for 16/32/64 subdivisions.
-      /// For other microstepping settings, the hardware applies automatic scaling:
-      /// asked_speed = actual_speed × (16 / current_microsteps)
-      ///
-      /// This method applies inverse scaling to compensate:
-      /// - Microsteps 8: multiply by 2
-      /// - Microsteps 16/32/64: no change (reference)
-      /// - Microsteps 128: divide by 8
-      /// - Microsteps 256: divide by 16
-      ///
-      /// @return Speed value compensated for hardware scaling
       int16_t rpm_for_hardware() const;
+      float steps_per_sec() const { return get_steps_per_sec(); }
 
-      /// Get speed as steps per second (for ESPHome stepper base class)
-      /// @return Speed in steps per second
-      float steps_per_sec() const;
+      // Operators for comparison
+      bool operator==(const Speed &rhs) const { return rpm_ == rhs.rpm_; }
+      bool operator!=(const Speed &rhs) const { return !(*this == rhs); }
 
     private:
       int16_t rpm_{0};                        ///< Internal storage: RPM (signed, -32768 to +32767)
