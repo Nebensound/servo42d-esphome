@@ -109,8 +109,8 @@ graph TB
 
 ### Layer 3: Command Coordination (Transport-Agnostic)
 
-**Class:** [CommandQueue](../../components/servoxxd/stepper/servoxxd_command_queue.h)  
-**Files:** `servoxxd_command_queue.h` / `servoxxd_command_queue.cpp`  
+**Class:** [CommandQueue](../../components/servoxxd/stepper/servoxxd_queue.h)  
+**Files:** `servoxxd_queue.h` / `servoxxd_queue.cpp`  
 **Managed by:** StepperEngine
 
 **Responsibilities:**
@@ -125,27 +125,39 @@ graph TB
 
 **[→ Detailed Layer 3 Specification](./02c-layer3-command-queue.md)**
 
-### Layer 4: Transport Layer (Modbus-Specific)
+### Layer 4: Transport Layer (Protocol-Agnostic Commands + Transport Implementation)
 
-**Classes:** [Modbus Commands](../../components/servoxxd/stepper/servoxxd_modbus.h)  
-**Files:** `servoxxd_modbus.h` / `servoxxd_modbus.cpp`
+**⚠️ Refactoring in Progress:** See [Transport Abstraction Refactoring](./02d-layer4-transport-refactoring.md) for details
+
+**Layer 4a: Semantic Commands** (Transport-Agnostic)  
+**Files:** `servoxxd_command.h` / `servoxxd_command.cpp` (renamed from `servoxxd_modbus.*`)
 
 **Responsibilities:**
 
-- Protocol-specific command implementation:
-  - `ReadCommand` (Modbus function 0x04)
-  - `WriteCommand` (Modbus function 0x06)
-  - `MultiWriteCommand` (Modbus function 0x10)
+- Transport-agnostic register commands:
+  - `ReadRegisterCommand(register, count)`
+  - `WriteRegisterCommand(register, value)`
+  - `WriteMultipleRegistersCommand(register, values)`
 - Command state tracking (PENDING → EXECUTING → COMPLETED/FAILED/TIMEOUT)
-- Request encoding (register addresses, values)
-- Response decoding and validation
-- Protocol-specific error handling
+- Request/response coordination via `ITransport` interface
+- No knowledge of protocol specifics (Modbus, Serial, CAN)
 
-**Future Extensibility:** Can be replaced with:
+**Layer 4b: Transport Interface + Implementations**  
+**Files:** `servoxxd_transport.h`, `servoxxd_modbus_transport.h/.cpp`
 
-- `servoxxd_serial.h/.cpp` for direct Serial communication
-- `servoxxd_can.h/.cpp` for CAN bus communication
-- Same Layers 1-3, different Layer 4
+**Responsibilities:**
+
+- **ITransport Interface:** Abstract protocol methods (`send_read`, `send_write`, etc.)
+- **ModbusTransport:** Modbus-RTU implementation (functions 0x04/0x06/0x10)
+- **Future:** SerialTransport, CANTransport, etc.
+- Protocol encoding/decoding
+- Response routing to commands
+
+**Future Extensibility:**
+
+- ✅ Commands work with any transport (Modbus, Serial, CAN)
+- ✅ Same Layers 1-3, swap Layer 4b implementation
+- ✅ Easy to add new hardware protocols
 
 **[→ Detailed Layer 4 Specification](./02d-layer4-transport.md)**
 

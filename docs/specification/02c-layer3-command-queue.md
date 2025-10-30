@@ -13,8 +13,8 @@
 
 ## Overview
 
-**Class:** [CommandQueue](../../components/servoxxd/stepper/servoxxd_command_queue.h)  
-**Files:** `servoxxd_command_queue.h` / `servoxxd_command_queue.cpp`
+**Class:** [CommandQueue](../../components/servoxxd/stepper/servoxxd_queue.h)  
+**Files:** `servoxxd_queue.h` / `servoxxd_queue.cpp`
 
 **Design Pattern:** Command Queue + State Machine
 
