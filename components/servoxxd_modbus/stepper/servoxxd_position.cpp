@@ -9,10 +9,6 @@ namespace esphome
 
     static const char *const TAG = "servoxxd_modbus.position";
 
-    // Mathematical constants (C++11 compatible)
-    constexpr float PI = 3.14159265358979323846f;
-    constexpr float TWO_PI = 2.0f * PI;
-
     /**
      * @brief Convert position unit to string for logging
      */
@@ -32,121 +28,77 @@ namespace esphome
         return "arcmin";
       case PositionUnit::ARCSECONDS:
         return "arcsec";
+      case PositionUnit::TICKS:
+        return "ticks";
       default:
         return "unknown";
       }
     }
 
-    Position::Position(float value, PositionUnit unit, const ServoXxdModbus *parent) : parent_(parent)
+    // ============================================================================
+    // Constructors
+    // ============================================================================
+
+    Position::Position(double value, PositionUnit unit, const ServoXxdModbus *parent) : parent_(parent)
     {
       ESP_LOGV(TAG, "Creating Position: value=%.3f %s, parent=%p", value, unit_to_string(unit),
                static_cast<const void *>(parent_));
 
-      // Validate parent pointer for STEPS unit
-      if (unit == PositionUnit::STEPS)
-      {
-        if (parent_ == nullptr)
-        {
-          ESP_LOGE(TAG, "Parent pointer is null (required for STEPS unit conversion)");
-          return; // Leave position at zero
-        }
-
-        float steps_per_revolution = parent_->get_steps_per_revolution();
-        if (steps_per_revolution <= 0.0f)
-        {
-          ESP_LOGE(TAG, "Invalid steps_per_revolution: %.1f (must be > 0)", steps_per_revolution);
-          return; // Leave position at zero
-        }
-      }
-
-      // Convert to total ticks based on unit
-      int64_t total_ticks = 0;
+      // Use factory methods for conversion
+      Position temp;
 
       switch (unit)
       {
+      case PositionUnit::TICKS:
+        temp = Position::from_ticks(static_cast<int64_t>(value));
+        break;
       case PositionUnit::STEPS:
-      {
-        // STEPS: value is motor steps, convert using steps_per_revolution from parent
-        // total_ticks = (value × 16384) / steps_per_revolution
-        float steps_per_revolution = parent_->get_steps_per_revolution();
-        total_ticks = static_cast<int64_t>((value * TICKS_PER_REV) / steps_per_revolution);
+        temp = Position::from_steps(static_cast<int64_t>(value), parent);
         break;
-      }
-
       case PositionUnit::REVOLUTIONS:
-      {
-        // Convert revolutions to encoder ticks
-        // total_ticks = revolutions × 16384
-        total_ticks = static_cast<int64_t>(roundf(value * static_cast<float>(TICKS_PER_REV)));
+        temp = Position::from_revolutions(value);
         break;
-      }
-
       case PositionUnit::DEGREES:
-      {
-        // Convert degrees to encoder ticks
-        // total_ticks = (degrees / 360) × 16384
-        float revolutions = value / 360.0f;
-        total_ticks = static_cast<int64_t>(roundf(revolutions * static_cast<float>(TICKS_PER_REV)));
+        temp = Position::from_degrees(value);
         break;
-      }
-
       case PositionUnit::RADIANS:
-      {
-        // Convert radians to encoder ticks
-        // total_ticks = (radians / 2π) × 16384
-        float revolutions = value / TWO_PI;
-        total_ticks = static_cast<int64_t>(roundf(revolutions * static_cast<float>(TICKS_PER_REV)));
+        temp = Position::from_radians(value);
         break;
-      }
-
       case PositionUnit::ARCMINUTES:
-      {
-        // Convert arcminutes to encoder ticks
-        // 1 revolution = 360° = 21600 arcmin
-        // total_ticks = (arcmin / 21600) × 16384
-        float revolutions = value / 21600.0f;
-        total_ticks = static_cast<int64_t>(roundf(revolutions * static_cast<float>(TICKS_PER_REV)));
+        temp = Position::from_arcminutes(static_cast<int64_t>(value));
         break;
-      }
-
       case PositionUnit::ARCSECONDS:
-      {
-        // Convert arcseconds to encoder ticks
-        // 1 revolution = 360° = 1296000 arcsec
-        // total_ticks = (arcsec / 1296000) × 16384
-        float revolutions = value / 1296000.0f;
-        total_ticks = static_cast<int64_t>(roundf(revolutions * static_cast<float>(TICKS_PER_REV)));
+        temp = Position::from_arcseconds(static_cast<int64_t>(value));
         break;
-      }
-
       default:
         ESP_LOGE(TAG, "Unknown PositionUnit: %d", static_cast<int>(unit));
-        total_ticks = 0;
-        break;
+        revs_ = 0;
+        angle_ticks_ = 0;
+        return;
       }
 
-      ESP_LOGV(TAG, "Converted to total ticks: %lld", total_ticks);
+      // Copy result
+      revs_ = temp.revs_;
+      angle_ticks_ = temp.angle_ticks_;
 
-      // Step 2: Split total_ticks into revolutions and angle_ticks
-      // revs = total_ticks / 16384 (integer division with sign)
-      // angle_ticks = total_ticks % 16384 (always positive 0-16383)
-
-      revs_ = static_cast<int32_t>(total_ticks / static_cast<int64_t>(TICKS_PER_REV));
-      int64_t remainder = total_ticks % static_cast<int64_t>(TICKS_PER_REV);
-
-      // Handle negative remainder (C++ modulo can be negative)
-      if (remainder < 0)
-      {
-        revs_--;
-        remainder += static_cast<int64_t>(TICKS_PER_REV);
-      }
-
-      angle_ticks_ = static_cast<uint16_t>(remainder);
-
-      ESP_LOGV(TAG, "Split format: revs=%d, angle_ticks=%u", revs_, angle_ticks_);
+      ESP_LOGV(TAG, "Position created: value=%.3f %s → revs=%d, angle_ticks=%u",
+               value, unit_to_string(unit), revs_, angle_ticks_);
     }
 
-    Position Position::from_ticks_total(int64_t total_ticks)
+    Position::Position(float value, PositionUnit unit, const ServoXxdModbus *parent)
+        : Position(static_cast<double>(value), unit, parent) {}
+
+    Position::Position(int64_t value, PositionUnit unit, const ServoXxdModbus *parent)
+        : Position(static_cast<double>(value), unit, parent) {}
+
+    Position::Position(int32_t value, PositionUnit unit, const ServoXxdModbus *parent)
+        : Position(static_cast<double>(value), unit, parent) {}
+
+    // ============================================================================
+    // Factory Methods - Unit Conversions
+    // ============================================================================
+
+    Position Position::from_ticks(int64_t total_ticks)
     {
       Position pos;
 
@@ -163,120 +115,220 @@ namespace esphome
 
       pos.angle_ticks_ = static_cast<uint16_t>(remainder);
 
-      ESP_LOGV(TAG, "from_ticks_total(%lld) → revs=%d, angle_ticks=%u", total_ticks, pos.revs_, pos.angle_ticks_);
+      ESP_LOGV(TAG, "from_ticks(%lld) → revs=%d, angle_ticks=%u", total_ticks, pos.revs_, pos.angle_ticks_);
 
       return pos;
     }
 
-    Position Position::from_parts(int32_t revolutions, uint16_t angle_ticks)
+    Position Position::from_steps(int64_t steps, const ServoXxdModbus *parent)
+    {
+      if (parent == nullptr)
+      {
+        ESP_LOGE(TAG, "Parent pointer is null (required for STEPS unit conversion)");
+        return Position(); // Return zero position
+      }
+
+      float steps_per_revolution = parent->get_steps_per_revolution();
+      if (steps_per_revolution <= 0.0f)
+      {
+        ESP_LOGE(TAG, "Invalid steps_per_revolution: %.1f (must be > 0)", steps_per_revolution);
+        return Position(); // Return zero position
+      }
+
+      // revolutions = steps / steps_per_rev
+      double revolutions_total = static_cast<double>(steps) / static_cast<double>(steps_per_revolution);
+      return from_revolutions(revolutions_total);
+    }
+
+    Position Position::from_revolutions(double revolutions)
     {
       Position pos;
-      pos.revs_ = revolutions;
-      pos.angle_ticks_ = angle_ticks;
+      double revolutions_total = revolutions;
 
-      // Normalize to ensure angle_ticks is in [0, 16383]
-      pos.normalize();
+      // Split into integer and fractional parts
+      pos.revs_ = static_cast<int32_t>(revolutions_total);
+      double fractional_rev = revolutions_total - static_cast<double>(pos.revs_);
 
-      ESP_LOGV(TAG, "from_parts(%d, %u) → revs=%d, angle_ticks=%u (after normalize)", revolutions, angle_ticks, pos.revs_,
-               pos.angle_ticks_);
+      // Handle negative fractional part
+      if (fractional_rev < 0.0)
+      {
+        pos.revs_--;
+        fractional_rev += 1.0;
+      }
 
+      pos.angle_ticks_ = static_cast<uint16_t>(fractional_rev * static_cast<double>(TICKS_PER_REV));
       return pos;
     }
 
-    int64_t Position::ticks_total() const
+    Position Position::from_degrees(double deg)
     {
-      // total_ticks = (revs × 16384) + angle_ticks
-      int64_t total = static_cast<int64_t>(revs_) * static_cast<int64_t>(TICKS_PER_REV) + static_cast<int64_t>(angle_ticks_);
-      return total;
+      // 1 revolution = 360°
+      double revolutions_total = deg / 360.0;
+      return from_revolutions(revolutions_total);
     }
 
-    int32_t Position::steps() const
+    Position Position::from_radians(double rad)
     {
-      if (parent_ == nullptr)
+      // 1 revolution = 2π radians
+      double revolutions_total = rad / TWO_PI;
+      return from_revolutions(revolutions_total);
+    }
+
+    Position Position::from_arcminutes(int64_t arcminutes)
+    {
+      // 1 revolution = 21600 arcmin
+      // Convert using ticks for precision
+      int64_t total_ticks = (arcminutes * static_cast<int64_t>(TICKS_PER_REV)) / 21600LL;
+      return from_ticks(total_ticks);
+    }
+
+    Position Position::from_arcseconds(int64_t arcseconds)
+    {
+      // 1 revolution = 1296000 arcsec
+      // Convert using ticks for precision
+      int64_t total_ticks = (arcseconds * static_cast<int64_t>(TICKS_PER_REV)) / 1296000LL;
+      return from_ticks(total_ticks);
+    }
+
+    // ============================================================================
+    // Getters
+    // ============================================================================
+
+    double Position::get_double_unit(PositionUnit unit) const
+    {
+      // Compute total ticks directly to avoid recursion with get_ticks()
+      int64_t total = static_cast<int64_t>(revs_) * static_cast<int64_t>(TICKS_PER_REV) +
+                      static_cast<int64_t>(angle_ticks_);
+
+      switch (unit)
       {
-        ESP_LOGE(TAG, "steps() called with null parent pointer");
-        return 0;
+      case PositionUnit::TICKS:
+        return static_cast<double>(total);
+
+      case PositionUnit::STEPS:
+      {
+        if (!parent_)
+        {
+          ESP_LOGE(TAG, "get_steps: parent_ is nullptr - cannot get steps_per_rev");
+          return 0.0;
+        }
+        float steps_per_rev = parent_->get_steps_per_revolution();
+        // steps = (total_ticks × steps_per_rev) / 16384
+        return (static_cast<double>(total) * steps_per_rev) / static_cast<double>(TICKS_PER_REV);
       }
 
-      float steps_per_rev = parent_->get_steps_per_revolution();
-      if (steps_per_rev <= 0)
+      case PositionUnit::REVOLUTIONS:
+        // revs = total_ticks / 16384
+        return static_cast<double>(total) / static_cast<double>(TICKS_PER_REV);
+
+      case PositionUnit::DEGREES:
+        // degrees = (total_ticks × 360) / 16384
+        return (static_cast<double>(total) * 360.0) / static_cast<double>(TICKS_PER_REV);
+
+      case PositionUnit::RADIANS:
+        // radians = (total_ticks × 2π) / 16384
+        return (static_cast<double>(total) * 2.0 * M_PI) / static_cast<double>(TICKS_PER_REV);
+
+      case PositionUnit::ARCMINUTES:
+        return static_cast<double>(get_int64_unit(PositionUnit::ARCMINUTES));
+
+      case PositionUnit::ARCSECONDS:
+        return static_cast<double>(get_int64_unit(PositionUnit::ARCSECONDS));
+
+      default:
+        ESP_LOGE(TAG, "Invalid PositionUnit in get_double_unit()");
+        return 0.0;
+      }
+    }
+
+    int64_t Position::get_int64_unit(PositionUnit unit) const
+    {
+      // Compute total ticks directly to avoid recursion with get_ticks()
+      int64_t total = static_cast<int64_t>(revs_) * static_cast<int64_t>(TICKS_PER_REV) +
+                      static_cast<int64_t>(angle_ticks_);
+
+      switch (unit)
       {
-        ESP_LOGE(TAG, "Invalid steps_per_revolution from parent: %.1f", steps_per_rev);
-        return 0;
+      case PositionUnit::TICKS:
+        return total;
+
+      case PositionUnit::STEPS:
+      {
+        if (!parent_)
+        {
+          ESP_LOGE(TAG, "get_steps: parent_ is nullptr - cannot get steps_per_rev");
+          return 0;
+        }
+        float steps_per_rev = parent_->get_steps_per_revolution();
+        // steps = (total_ticks × steps_per_rev) / 16384
+        return (total * static_cast<int64_t>(steps_per_rev)) / static_cast<int64_t>(TICKS_PER_REV);
       }
 
-      // Convert encoder ticks to steps
-      // steps = (total_ticks × steps_per_rev) / 16384
-      int64_t total = this->ticks_total();
-      int32_t steps_value = static_cast<int32_t>((total * static_cast<int64_t>(steps_per_rev)) / static_cast<int64_t>(TICKS_PER_REV));
+      case PositionUnit::ARCMINUTES:
+        // arcmin = (total_ticks × 21600) / 16384
+        return (total * 21600LL) / static_cast<int64_t>(TICKS_PER_REV);
 
-      ESP_LOGV(TAG, "Position(revs=%d, ticks=%u) → %d steps (steps_per_rev=%.1f)", revs_, angle_ticks_, steps_value,
-               steps_per_rev);
+      case PositionUnit::ARCSECONDS:
+        // arcsec = (total_ticks × 1296000) / 16384
+        return (total * 1296000LL) / static_cast<int64_t>(TICKS_PER_REV);
 
-      return steps_value;
+      default:
+        ESP_LOGE(TAG, "Invalid PositionUnit for int64_t conversion: %s", unit_to_string(unit));
+        return 0;
+      }
     }
 
-    float Position::degrees() const
+    // ============================================================================
+    // Setters
+    // ============================================================================
+
+    void Position::set(double value, PositionUnit unit)
     {
-      // Convert encoder ticks to degrees
-      // degrees = (total_ticks / 16384) × 360
-      int64_t total = this->ticks_total();
-      float degrees_value = (static_cast<float>(total) / static_cast<float>(TICKS_PER_REV)) * 360.0f;
-      return degrees_value;
+      // Create temporary Position with the new value using the internal parent pointer
+      Position temp(value, unit, this->parent_);
+
+      // Copy the calculated values back to this object
+      this->revs_ = temp.revs_;
+      this->angle_ticks_ = temp.angle_ticks_;
     }
 
-    float Position::radians() const
+    void Position::set(float value, PositionUnit unit)
     {
-      // Convert encoder ticks to radians
-      // radians = (total_ticks / 16384) × 2π
-      int64_t total = this->ticks_total();
-      float radians_value = (static_cast<float>(total) / static_cast<float>(TICKS_PER_REV)) * TWO_PI;
-      return radians_value;
+      set(static_cast<double>(value), unit);
     }
 
-    float Position::arcminutes() const
+    void Position::set(int64_t value, PositionUnit unit)
     {
-      // Convert encoder ticks to arcminutes
-      // arcmin = (total_ticks / 16384) × 21600
-      int64_t total = this->ticks_total();
-      float arcmin_value = (static_cast<float>(total) / static_cast<float>(TICKS_PER_REV)) * 21600.0f;
-      return arcmin_value;
+      set(static_cast<double>(value), unit);
     }
 
-    float Position::arcseconds() const
+    void Position::set(int32_t value, PositionUnit unit)
     {
-      // Convert encoder ticks to arcseconds
-      // arcsec = (total_ticks / 16384) × 1296000
-      int64_t total = this->ticks_total();
-      float arcsec_value = (static_cast<float>(total) / static_cast<float>(TICKS_PER_REV)) * 1296000.0f;
-      return arcsec_value;
+      set(static_cast<double>(value), unit);
     }
 
-    uint32_t Position::steps_as_u32() const
-    {
-      int32_t steps_value = this->steps();
-      // Convert signed to unsigned (wraps around if negative)
-      return static_cast<uint32_t>(steps_value);
-    }
+    // ============================================================================
+    // Operators
+    // ============================================================================
 
     Position Position::operator+(const Position &rhs) const
     {
       // Add total ticks and convert back to split format
-      int64_t total_lhs = this->ticks_total();
-      int64_t total_rhs = rhs.ticks_total();
+      int64_t total_lhs = this->get_ticks();
+      int64_t total_rhs = rhs.get_ticks();
       int64_t total_sum = total_lhs + total_rhs;
 
-      return Position::from_ticks_total(total_sum);
+      return Position::from_ticks(total_sum);
     }
 
     Position Position::operator-(const Position &rhs) const
     {
       // Subtract total ticks and convert back to split format
-      int64_t total_lhs = this->ticks_total();
-      int64_t total_rhs = rhs.ticks_total();
+      int64_t total_lhs = this->get_ticks();
+      int64_t total_rhs = rhs.get_ticks();
       int64_t total_diff = total_lhs - total_rhs;
 
-      return Position::from_ticks_total(total_diff);
+      return Position::from_ticks(total_diff);
     }
 
     bool Position::operator==(const Position &rhs) const
@@ -284,6 +336,10 @@ namespace esphome
       // Compare split format directly
       return (revs_ == rhs.revs_) && (angle_ticks_ == rhs.angle_ticks_);
     }
+
+    // ============================================================================
+    // Private Methods
+    // ============================================================================
 
     void Position::normalize()
     {

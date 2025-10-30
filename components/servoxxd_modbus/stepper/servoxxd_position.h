@@ -1,21 +1,15 @@
 #pragma once
 
-// Undefine Arduino macros that conflict with our method names
-#ifdef degrees
-#undef degrees
-#endif
-#ifdef radians
-#undef radians
-#endif
-#ifdef PI
-#undef PI
-#endif
-#ifdef TWO_PI
-#undef TWO_PI
-#endif
-
 #include "esphome/core/log.h"
 #include <cstdint>
+
+// Define math constants if not already available (Arduino/system compatibility)
+#ifndef PI
+#define PI 3.1415926535897932384626433832795
+#endif
+#ifndef TWO_PI
+#define TWO_PI 6.283185307179586476925286766559
+#endif
 
 namespace esphome
 {
@@ -27,162 +21,103 @@ namespace esphome
 
     /**
      * @brief Unit options for position values
-     *
-     * Defines the units that can be used to specify motor position.
-     * All units are converted to encoder ticks (split format) during construction.
      */
     enum class PositionUnit : uint8_t
     {
-      STEPS = 0,       ///< Steps (ESPHome default)
-      REVOLUTIONS = 1, ///< Full revolutions
-      DEGREES = 2,     ///< Degrees (0-360 per revolution)
-      RADIANS = 3,     ///< Radians (0-2π per revolution)
-      ARCMINUTES = 4,  ///< Arcminutes (1° = 60 arcmin)
-      ARCSECONDS = 5   ///< Arcseconds (1° = 3600 arcsec)
+      STEPS = 0,
+      REVOLUTIONS = 1,
+      DEGREES = 2,
+      RADIANS = 3,
+      ARCMINUTES = 4,
+      ARCSECONDS = 5,
+      TICKS = 6
     };
 
     /**
-     * @brief Position value with unit conversion and encoder format support
+     * @brief Position with encoder split format (revolutions + angle_ticks)
      *
-     * This class handles position values with automatic unit conversion to the
-     * hardware-native encoder format (split format: revolutions + angle_ticks).
-     *
-     * **Hardware Encoding (Split Format):**
-     *
-     * The motor controller uses a split format based on the integrated encoder:
-     *
-     * ```
-     * Position = revolutions + (angle_ticks / 16384)
-     * ```
-     *
-     * - `revolutions`: Full rotations (int32_t, -2³¹..2³¹-1)
-     * - `angle_ticks`: Angle within one rotation (uint16_t, 0-16383)
-     * - `TICKS_PER_REV = 16384`: Encoder constant (hardware-fixed, 2¹⁴ ticks per revolution)
-     *
-     * **Carry/Borrow Behavior:**
-     * ```
-     * If angle_ticks ≥ 16384:  revolutions++, angle_ticks -= 16384  (overflow → next revolution)
-     * If angle_ticks < 0:      revolutions--, angle_ticks += 16384  (underflow → previous revolution)
-     * ```
-     *
-     * Valid range: `angle_ticks` is always [0, 16383], over/underflow is carried to `revolutions`
-     *
-     * **Conversion (User → Hardware):**
-     * ```
-     * total_ticks = (value × steps_per_rev × 16384) / steps_per_rev
-     * revs = total_ticks / 16384           (division with sign)
-     * angle_ticks = total_ticks % 16384    (modulo always positive 0-16383)
-     * ```
-     *
-     * **Conversion (Hardware → Total Ticks):**
-     * ```
-     * total_ticks = (revs × 16384) + angle_ticks
-     * ```
-     *
-     * @see ServoXxdModbus for parent class that provides steps_per_revolution
+     * Hardware format: Position = revolutions + (angle_ticks / 16384)
+     * - revolutions: int32_t, full rotations
+     * - angle_ticks: uint16_t, 0-16383 (2^14 ticks per revolution)
+     * - Automatic carry/borrow between fields
      */
     class Position
     {
       friend class ServoXxdModbus;
 
     public:
-      /**
-       * @brief Construct a Position from a value and unit
-       *
-       * Converts the input value to total encoder ticks, then splits into
-       * revolutions and angle_ticks.
-       *
-       * @param value Position magnitude in the specified unit
-       * @param unit The unit of the position value
-       * @param parent Pointer to parent ServoXxdModbus (required for unit conversion)
-       */
+      // Constructors
+      Position(double value, PositionUnit unit, const ServoXxdModbus *parent);
       Position(float value, PositionUnit unit, const ServoXxdModbus *parent);
-
-      /**
-       * @brief Construct Position with parent only - initializes to position 0
-       * @param parent Pointer to parent ServoXxdModbus (required)
-       */
+      Position(int64_t value, PositionUnit unit, const ServoXxdModbus *parent);
+      Position(int32_t value, PositionUnit unit, const ServoXxdModbus *parent);
       explicit Position(const ServoXxdModbus *parent) : revs_(0), angle_ticks_(0), parent_(parent) {}
 
-      /**
-       * @brief Construct a Position from total encoder ticks
-       *
-       * Splits total_ticks into revolutions and angle_ticks.
-       *
-       * @param total_ticks Total encoder ticks (signed)
-       * @return Position object in split format
-       */
-      static Position from_ticks_total(int64_t total_ticks);
+      // Factory methods - direct unit conversion
+      static Position from_ticks(int64_t ticks);
+      static Position from_steps(int64_t steps, const ServoXxdModbus *parent);
+      static Position from_revolutions(double revolutions);
+      static Position from_degrees(double deg);
+      static Position from_radians(double rad);
+      static Position from_arcminutes(int64_t arcminutes);
+      static Position from_arcseconds(int64_t arcseconds);
 
-      /**
-       * @brief Construct a Position from split encoder format
-       *
-       * @param revolutions Full rotations (int32_t)
-       * @param angle_ticks Angle within rotation (uint16_t, 0-16383)
-       * @return Position object
-       */
-      static Position from_parts(int32_t revolutions, uint16_t angle_ticks);
-
-      /**
-       * @brief Get full revolutions component
-       * @return Number of complete revolutions (signed)
-       */
+      // Direct accessors to internal representation
       int32_t revolutions() const { return revs_; }
-
-      /**
-       * @brief Get angle ticks component
-       * @return Angle within current revolution (0-16383)
-       */
       uint16_t angle_ticks() const { return angle_ticks_; }
 
-      /**
-       * @brief Get total encoder ticks
-       * @return Total ticks = (revs × 16384) + angle_ticks
-       */
-      int64_t ticks_total() const;
+      // Unit conversions (getters)
+      double get(PositionUnit unit) const { return get_double_unit(unit); };
+      double get_double_unit(PositionUnit unit) const;
+      int64_t get_int64_unit(PositionUnit unit) const;
+      int64_t get_ticks() const { return get_int64_unit(PositionUnit::TICKS); };
+      int64_t get_steps() const { return get_int64_unit(PositionUnit::STEPS); };
+      double get_revolutions() const { return get_double_unit(PositionUnit::REVOLUTIONS); };
+      double get_degrees() const { return get_double_unit(PositionUnit::DEGREES); };
+      double get_radians() const { return get_double_unit(PositionUnit::RADIANS); };
+      int64_t get_arcminutes() const { return get_int64_unit(PositionUnit::ARCMINUTES); };
+      int64_t get_arcseconds() const { return get_int64_unit(PositionUnit::ARCSECONDS); };
 
-      /**
-       * @brief Get position in steps
-       *
-       * Converts encoder ticks to steps using steps_per_revolution.
-       *
-       * @return Position in steps (signed)
-       */
-      int32_t steps() const;
+      // Unit conversions (setters) - uses internal parent_
+      void set(double value, PositionUnit unit);
+      void set(float value, PositionUnit unit);
+      void set(int64_t value, PositionUnit unit);
+      void set(int32_t value, PositionUnit unit);
 
-      /**
-       * @brief Get position in degrees
-       * @return Position in degrees (0-360 per revolution)
-       */
-      float degrees() const;
+      void set_ticks(int64_t ticks) { set(ticks, PositionUnit::TICKS); };
+      void set_ticks(int32_t ticks) { set(ticks, PositionUnit::TICKS); };
+      void set_ticks(double ticks) { set(ticks, PositionUnit::TICKS); };
+      void set_ticks(float ticks) { set(ticks, PositionUnit::TICKS); };
 
-      /**
-       * @brief Get position in radians
-       * @return Position in radians (0-2π per revolution)
-       */
-      float radians() const;
+      void set_steps(int64_t steps) { set(steps, PositionUnit::STEPS); };
+      void set_steps(int32_t steps) { set(steps, PositionUnit::STEPS); };
+      void set_steps(float steps) { set(steps, PositionUnit::STEPS); };
+      void set_steps(double steps) { set(steps, PositionUnit::STEPS); };
 
-      /**
-       * @brief Get position in arcminutes
-       * @return Position in arcminutes (1° = 60 arcmin)
-       */
-      float arcminutes() const;
+      void set_revolutions(double revolutions) { set(revolutions, PositionUnit::REVOLUTIONS); };
+      void set_revolutions(float revolutions) { set(revolutions, PositionUnit::REVOLUTIONS); };
+      void set_revolutions(int64_t revolutions) { set(revolutions, PositionUnit::REVOLUTIONS); };
+      void set_revolutions(int32_t revolutions) { set(revolutions, PositionUnit::REVOLUTIONS); };
 
-      /**
-       * @brief Get position in arcseconds
-       * @return Position in arcseconds (1° = 3600 arcsec)
-       */
-      float arcseconds() const;
+      void set_degrees(double deg) { set(deg, PositionUnit::DEGREES); };
+      void set_degrees(float deg) { set(deg, PositionUnit::DEGREES); };
+      void set_degrees(int64_t deg) { set(deg, PositionUnit::DEGREES); };
+      void set_degrees(int32_t deg) { set(deg, PositionUnit::DEGREES); };
 
-      /**
-       * @brief Get position in steps as unsigned (for ESPHome compatibility)
-       *
-       * Note: ESPHome base class uses uint32_t for position. This method
-       * converts signed steps to unsigned (wraps around if negative).
-       *
-       * @return Position in steps (unsigned)
-       */
-      uint32_t steps_as_u32() const;
+      void set_radians(double rad) { set(rad, PositionUnit::RADIANS); };
+      void set_radians(float rad) { set(rad, PositionUnit::RADIANS); };
+      void set_radians(int64_t rad) { set(rad, PositionUnit::RADIANS); };
+      void set_radians(int32_t rad) { set(rad, PositionUnit::RADIANS); };
+
+      void set_arcminutes(int64_t arcminutes) { set(arcminutes, PositionUnit::ARCMINUTES); };
+      void set_arcminutes(int32_t arcminutes) { set(arcminutes, PositionUnit::ARCMINUTES); };
+      void set_arcminutes(float arcminutes) { set(arcminutes, PositionUnit::ARCMINUTES); };
+      void set_arcminutes(double arcminutes) { set(arcminutes, PositionUnit::ARCMINUTES); };
+
+      void set_arcseconds(int64_t arcseconds) { set(arcseconds, PositionUnit::ARCSECONDS); };
+      void set_arcseconds(int32_t arcseconds) { set(arcseconds, PositionUnit::ARCSECONDS); };
+      void set_arcseconds(float arcseconds) { set(arcseconds, PositionUnit::ARCSECONDS); };
+      void set_arcseconds(double arcseconds) { set(arcseconds, PositionUnit::ARCSECONDS); };
 
       // Operators for position arithmetic
       Position operator+(const Position &rhs) const;
@@ -191,20 +126,13 @@ namespace esphome
       bool operator!=(const Position &rhs) const { return !(*this == rhs); }
 
     private:
-      static constexpr uint32_t TICKS_PER_REV = 16384u; ///< Encoder ticks per revolution (2^14)
-      int32_t revs_{0};                                 ///< Full revolutions (signed)
-      uint16_t angle_ticks_{0};                         ///< Angle within revolution (0-16383)
-      const ServoXxdModbus *parent_{nullptr};           ///< Parent component (for steps_per_revolution)
+      static constexpr uint16_t TICKS_PER_REV = 16384u; // 2^14
+      int32_t revs_{0};
+      uint16_t angle_ticks_{0}; // 0-16383
+      const ServoXxdModbus *parent_{nullptr};
 
-      /// Private default constructor for factory methods only
-      Position() = default;
-
-      /**
-       * @brief Normalize angle_ticks to [0, 16383] and carry/borrow to revs_
-       *
-       * Ensures angle_ticks is always in valid range, adjusting revs_ accordingly.
-       */
-      void normalize();
+      Position() = default; // For factory methods
+      void normalize();     // Ensure angle_ticks in [0, 16383]
     };
 
   } // namespace servoxxd_modbus
