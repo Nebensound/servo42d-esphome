@@ -523,7 +523,7 @@ namespace esphome
       }
 
       // Invoke callback if position changed significantly (threshold: 10 steps)
-      float delta = std::abs(current_position_.steps() - old_position.steps());
+      float delta = std::abs(current_position_.get_steps() - old_position.get_steps());
       if (delta >= 10.0f && position_callback_)
       {
         position_callback_(current_position_);
@@ -583,7 +583,7 @@ namespace esphome
     {
       // TODO: Implement with tolerance threshold (e.g., ±5 steps)
       float tolerance = 5.0f; // steps
-      float delta = std::abs(current_position_.steps() - target_position_.steps());
+      float delta = std::abs(current_position_.get_steps() - target_position_.get_steps());
       return delta <= tolerance;
     }
 

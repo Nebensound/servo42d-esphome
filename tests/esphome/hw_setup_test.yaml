@@ -20,46 +20,39 @@ esphome:
       # Test encoder reading
       - logger.log: "=== ENCODER TEST START ==="
       - logger.log: "Motor is DISABLED - you can turn it manually"
-      - logger.log: "Watching encoder values for 30 seconds..."
+      - logger.log: "Watching position values for 30 seconds..."
       - lambda: |-
-          ESP_LOGI("test", "Initial encoder value: %lld", id(test_motor).get_encoder_ticks());
           ESP_LOGI("test", "Initial position: %d", (int)id(test_motor).current_position);
 
       # Watch encoder for 30 seconds while user turns motor manually
       - delay: 5s
       - lambda: |-
-          ESP_LOGI("test", "After 5s: Encoder=%lld, Position=%d", 
-                   id(test_motor).get_encoder_ticks(), 
+          ESP_LOGI("test", "After 5s: Position=%d", 
                    (int)id(test_motor).current_position);
 
       - delay: 5s
       - lambda: |-
-          ESP_LOGI("test", "After 10s: Encoder=%lld, Position=%d", 
-                   id(test_motor).get_encoder_ticks(), 
+          ESP_LOGI("test", "After 10s: Position=%d", 
                    (int)id(test_motor).current_position);
 
       - delay: 5s
       - lambda: |-
-          ESP_LOGI("test", "After 15s: Encoder=%lld, Position=%d", 
-                   id(test_motor).get_encoder_ticks(), 
+          ESP_LOGI("test", "After 15s: Position=%d", 
                    (int)id(test_motor).current_position);
 
       - delay: 5s
       - lambda: |-
-          ESP_LOGI("test", "After 20s: Encoder=%lld, Position=%d", 
-                   id(test_motor).get_encoder_ticks(), 
+          ESP_LOGI("test", "After 20s: Position=%d", 
                    (int)id(test_motor).current_position);
 
       - delay: 5s
       - lambda: |-
-          ESP_LOGI("test", "After 25s: Encoder=%lld, Position=%d", 
-                   id(test_motor).get_encoder_ticks(), 
+          ESP_LOGI("test", "After 25s: Position=%d", 
                    (int)id(test_motor).current_position);
 
       - delay: 5s
       - lambda: |-
-          ESP_LOGI("test", "After 30s (FINAL): Encoder=%lld, Position=%d", 
-                   id(test_motor).get_encoder_ticks(), 
+          ESP_LOGI("test", "After 30s (FINAL): Position=%d", 
                    (int)id(test_motor).current_position);
 
       - logger.log: "=== ENCODER TEST COMPLETE ==="

@@ -12,6 +12,13 @@ namespace esphome
     // Constructor / Destructor
     // ============================================================================
 
+    ServoXxdModbus::ServoXxdModbus()
+    {
+      // Initialize Speed in homing_ union with valid parent pointer
+      // Default mode is ENDSTOP, so we initialize the Speed member
+      new (&homing_.speed) Speed(100.0f, SpeedUnit::RPM, this);
+    }
+
     ServoXxdModbus::~ServoXxdModbus()
     {
       if (this->engine_ != nullptr)
@@ -75,7 +82,7 @@ namespace esphome
 
         // TODO: Sync position with ESPHome base class if changed
         // Position current_pos = this->engine_->get_current_position();
-        // this->current_position = current_pos.steps();
+        // this->current_position = current_pos.get_steps();
 
         // TODO: Handle polling for motor state updates
         // - Read position periodically

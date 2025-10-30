@@ -480,7 +480,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        parent_->set_microstepping(microsteps_);
+        parent_->set_microsteps(microsteps_);
       }
 
     protected:

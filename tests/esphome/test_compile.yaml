@@ -17,8 +17,8 @@ esp32:
 external_components:
   - source:
       type: local
-      path: ../components
-    components: [servo42d_rs485]
+      path: ../../components
+    components: [servoxxd_modbus]
 
 # Enable logging
 logger:
@@ -39,15 +39,15 @@ modbus:
   uart_id: uart_bus
   send_wait_time: 50ms # Shorter delay for faster communication
 
-# Servo42D RS485 Stepper Motor
+# ServoXxD Modbus Stepper Motor
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd_modbus
     id: test_stepper
     steps_per_revolution: 3200 # 200 steps × 16 microsteps
-    max_speed: 1000 steps/s
+    speed: 1000 steps/s
     acceleration: 500 steps/s^2
-    deceleration: 500 steps/s^2
-
+    servo_type: SERVO42D
+    
     # MODBUS configuration
     modbus_id: modbus_bus
     address: 0x01

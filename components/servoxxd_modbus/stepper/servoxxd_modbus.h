@@ -23,6 +23,70 @@ namespace esphome
     // Forward declarations
     class StepperEngine;
 
+    // Enum definitions for YAML configuration
+    enum class ServoType : uint8_t
+    {
+      SERVO28D = 0,
+      SERVO35D = 1,
+      SERVO42D = 2,
+      SERVO57D = 3,
+    };
+
+    enum class ControlMode : uint8_t
+    {
+      SR_OPEN = 0,   // SR open loop mode
+      SR_CLOSE = 1,  // SR closed loop mode
+      SR_VFOC = 2,   // SR vector FOC mode
+    };
+
+    enum class EnPinActive : uint8_t
+    {
+      EN_LOW = 0,    // EN pin active low (motor enabled when LOW)
+      EN_HIGH = 1,   // EN pin active high (motor enabled when HIGH)
+      EN_ALWAYS = 2, // Motor always enabled (ignore EN pin)
+    };
+
+    enum class OperatingMode : uint8_t
+    {
+      POSITION = 0, // Position control mode
+      SPEED = 1,    // Speed control mode
+    };
+
+    enum class EndstopTrigger : uint8_t
+    {
+      TRIGGER_LOW = 0,  // Endstop triggers on LOW signal
+      TRIGGER_HIGH = 1, // Endstop triggers on HIGH signal
+    };
+
+    enum class HomingMode : uint8_t
+    {
+      SENSORLESS = 0, // Sensorless homing using stall detection
+      ENDSTOP = 1,    // Homing with physical endstop switch
+      VIRTUAL = 2,    // Virtual homing (just set zero)
+    };
+
+    enum class HomingDirection : uint8_t
+    {
+      CW = 0,      // Clockwise
+      CCW = 1,     // Counter-clockwise
+      NEAREST = 2, // Nearest direction
+    };
+
+    enum class Direction : uint8_t
+    {
+      CW = 0,  // Clockwise
+      CCW = 1, // Counter-clockwise
+    };
+
+    enum class ZeroingSpeed : uint8_t
+    {
+      VERY_SLOW = 0,
+      SLOW = 1,
+      MEDIUM = 2,
+      FAST = 3,
+      VERY_FAST = 4,
+    };
+
     /**
      * @brief Main component class for ServoXxd stepper motors
      *
@@ -58,7 +122,7 @@ namespace esphome
     class ServoXxdModbus : public stepper::Stepper, public modbus::ModbusDevice, public Component
     {
     public:
-      ServoXxdModbus() = default;
+      ServoXxdModbus();  // Implemented in .cpp to initialize homing_.speed with valid parent pointer
       ~ServoXxdModbus(); // Implemented in .cpp to avoid incomplete type
 
       // ============================================================================
@@ -124,17 +188,17 @@ namespace esphome
       virtual float get_steps_per_revolution() const { return steps_per_revolution_; }
 
       /**
-       * @brief Set microstepping mode
+       * @brief Set microstepping subdivision (per specification)
        *
-       * Valid values: 1-256 (per specification)
+       * Valid values: 1-256 (hardware supports any value in this range)
        * Affects Speed class hardware compensation (rpm_for_hardware).
        */
-      void set_microstepping(uint16_t microsteps)
+      void set_microsteps(uint16_t microsteps)
       {
         // Validate microstepping value (1-256 per spec)
         if (microsteps < 1 || microsteps > 256)
         {
-          ESP_LOGE("servoxxd_modbus", "Invalid microstepping: %u (must be 1-256)", microsteps);
+          ESP_LOGE("servoxxd_modbus", "Invalid microsteps: %u (must be 1-256)", microsteps);
           return;
         }
         microstepping_ = microsteps;
@@ -168,33 +232,53 @@ namespace esphome
         default_acceleration_ = Acceleration(value, unit, this);
       }
 
-      /**
-       * @brief Set homing speed from value and unit (called from Python/YAML)
-       */
-      void set_homing_speed(float value, SpeedUnit unit)
-      {
-        home_speed_ = Speed(value, unit, this);
-      }
-
       // Configuration setters for motor parameters
       void set_address(uint8_t addr) { this->address_ = addr; }
-      void set_servo_type(uint8_t type) { /* Store servo type */ }
-      void set_control_mode(uint8_t mode) { /* Store control mode */ }
+      void set_servo_type(ServoType type) { /* Store servo type */ }
+      void set_control_mode(ControlMode mode) { /* Store control mode */ }
       void set_working_current(uint16_t ma) { working_current_ = ma; }
-      void set_holding_current_percent(float percent) { holding_current_percent_ = static_cast<uint8_t>(percent * 100.0f); }
-      void set_en_pin_active(uint8_t value) { /* Store EN pin setting */ }
+      void set_holding_current_percent(uint8_t percent) { 
+        if (percent > 100) {
+          ESP_LOGE("servoxxd_modbus", "Invalid holding current percent: %u (must be 0-100)", percent);
+          return;
+        }
+        holding_current_percent_ = percent; 
+      }
+      void set_en_pin_active(EnPinActive value) { /* Store EN pin setting */ }
       void set_auto_screen_off(bool enable) { /* Store auto screen off */ }
       void set_lock_keys_at_startup(bool lock) { /* Store key lock setting */ }
-      void set_mode(uint8_t mode) { /* Store operating mode (POSITION/SPEED) */ }
+      void set_mode(OperatingMode mode) { /* Store operating mode (POSITION/SPEED) */ }
       void set_sleep_when_done(uint32_t ms) { /* Store sleep delay */ }
 
-      // Homing configuration setters
-      void set_homing_mode(uint8_t mode) { /* Store homing mode */ }
-      void set_homing_direction(uint8_t direction) { home_direction_cw_ = (direction == 0); }
-      void set_homing_zeroing_speed(uint8_t level) { /* Store zeroing speed level for VIRTUAL mode */ }
-      void set_endstop_trigger(uint8_t trigger) { /* Store endstop trigger level */ }
-      void set_homing_current(uint16_t ma) { /* Store homing current for SENSORLESS mode */ }
-      void set_homing_at_startup(bool enable) { /* Store homing at startup flag */ }
+      // Homing configuration setters - grouped together
+      void set_homing_mode(HomingMode mode) { homing_.mode = mode; }
+      void set_homing_at_startup(bool enable) { homing_.at_startup = enable; }
+      void set_homing_direction(HomingDirection direction) { homing_.direction = direction; }
+      
+      /**
+       * @brief Set homing speed for ENDSTOP/SENSORLESS modes
+       * Overload for regular Speed type with value and unit
+       */
+      void set_homing_speed(float value, SpeedUnit unit) {
+        // Destroy old Speed if needed, construct new one
+        if (homing_.mode != HomingMode::VIRTUAL) homing_.speed.~Speed();
+        new (&homing_.speed) Speed(value, unit, this);
+      }
+      
+      /**
+       * @brief Set homing speed level for VIRTUAL mode
+       * Overload for ZeroingSpeed enum (0-4)
+       */
+      void set_homing_speed(uint8_t level) {
+        if (level > 4) {
+          ESP_LOGE("servoxxd_modbus", "Invalid homing speed level: %u (must be 0-4)", level);
+          return;
+        }
+        homing_.level = level;
+      }
+      
+      void set_homing_endstop_trigger(EndstopTrigger trigger) { homing_.endstop_trigger = trigger; }
+      void set_homing_current(uint16_t ma) { homing_.current_ma = ma; }
 
       // ============================================================================
       // Public API (called from Actions)
@@ -337,9 +421,58 @@ namespace esphome
       bool shaft_reversed_{false};     ///< Reverse shaft direction
       bool en_pin_active_high_{false}; ///< EN pin polarity
 
-      // Homing configuration
-      bool home_direction_cw_{true};                   ///< Home in clockwise direction
-      Speed home_speed_{100.0f, SpeedUnit::RPM, this}; ///< Speed for homing operations
+      // Homing configuration - grouped in one struct for clarity
+      struct HomingConfig {
+        HomingMode mode{HomingMode::ENDSTOP};        ///< Homing mode (determines which speed field is used)
+        bool at_startup{false};                      ///< Perform homing at startup
+        HomingDirection direction{HomingDirection::CW};  ///< Homing direction
+        
+        // Speed - union of two types (mode determines which is active):
+        // - VIRTUAL: speed_level (0-4)
+        // - ENDSTOP/SENSORLESS: speed (Speed object)
+        union {
+          Speed speed;        ///< For ENDSTOP/SENSORLESS modes
+          uint8_t level;      ///< For VIRTUAL mode (ZeroingSpeed 0-4)
+        };
+        
+        EndstopTrigger endstop_trigger{EndstopTrigger::TRIGGER_LOW};  ///< For ENDSTOP mode
+        uint16_t current_ma{0};  ///< For SENSORLESS mode (0 = use defaults)
+        
+        // Constructor - don't initialize union member yet (will be done in ServoXxdModbus constructor)
+        HomingConfig() : level(2) {}  // Default to MEDIUM for VIRTUAL, will be overwritten for ENDSTOP/SENSORLESS
+        
+        // Destructor - clean up Speed if that's the active member
+        ~HomingConfig() { 
+          if (mode != HomingMode::VIRTUAL) speed.~Speed(); 
+        }
+        
+        // Copy constructor
+        HomingConfig(const HomingConfig& other) 
+          : mode(other.mode), at_startup(other.at_startup), direction(other.direction),
+            endstop_trigger(other.endstop_trigger), current_ma(other.current_ma) {
+          if (mode == HomingMode::VIRTUAL) level = other.level;
+          else new (&speed) Speed(other.speed);
+        }
+        
+        // Copy assignment
+        HomingConfig& operator=(const HomingConfig& other) {
+          if (this != &other) {
+            // Destroy old Speed if needed
+            if (mode != HomingMode::VIRTUAL) speed.~Speed();
+            
+            mode = other.mode;
+            at_startup = other.at_startup;
+            direction = other.direction;
+            endstop_trigger = other.endstop_trigger;
+            current_ma = other.current_ma;
+            
+            // Copy union member based on new mode
+            if (mode == HomingMode::VIRTUAL) level = other.level;
+            else new (&speed) Speed(other.speed);
+          }
+          return *this;
+        }
+      } homing_;
 
       // Default motion parameters
       Speed default_speed_{100.0f, SpeedUnit::RPM, this};                               ///< Default/max speed for movements

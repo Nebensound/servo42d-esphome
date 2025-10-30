@@ -62,7 +62,7 @@ KeyLockAction = servoxxd_modbus_ns.class_("KeyLockAction", automation.Action)
 KeyUnlockAction = servoxxd_modbus_ns.class_("KeyUnlockAction", automation.Action)
 
 # Enums for C++ (matching specification)
-SpeedUnit = servoxxd_modbus_ns.enum("SpeedUnit")
+SpeedUnit = servoxxd_modbus_ns.enum("SpeedUnit", is_class=True)
 SPEED_UNITS = {
     "STEPS_PER_SEC": SpeedUnit.STEPS_PER_SEC,
     "RPM": SpeedUnit.RPM,
@@ -73,7 +73,7 @@ SPEED_UNITS = {
     "DEGREES_PER_HOUR": SpeedUnit.DEGREES_PER_HOUR,
 }
 
-AccelerationUnit = servoxxd_modbus_ns.enum("AccelerationUnit")
+AccelerationUnit = servoxxd_modbus_ns.enum("AccelerationUnit", is_class=True)
 ACCELERATION_UNITS = {
     "STEPS_PER_SEC_SQ": AccelerationUnit.STEPS_PER_SEC_SQ,
     "RPM_PER_SEC": AccelerationUnit.RPM_PER_SEC,
@@ -82,7 +82,7 @@ ACCELERATION_UNITS = {
     "RADIANS_PER_SEC_SQ": AccelerationUnit.RADIANS_PER_SEC_SQ,
 }
 
-PositionUnit = servoxxd_modbus_ns.enum("PositionUnit")
+PositionUnit = servoxxd_modbus_ns.enum("PositionUnit", is_class=True)
 POSITION_UNITS = {
     "STEPS": PositionUnit.STEPS,
     "REVOLUTIONS": PositionUnit.REVOLUTIONS,
@@ -92,7 +92,7 @@ POSITION_UNITS = {
     "ARCSECONDS": PositionUnit.ARCSECONDS,
 }
 
-ZeroingSpeed = servoxxd_modbus_ns.enum("ZeroingSpeed")
+ZeroingSpeed = servoxxd_modbus_ns.enum("ZeroingSpeed", is_class=True)
 ZEROING_SPEEDS = {
     "VERY_SLOW": ZeroingSpeed.VERY_SLOW,
     "SLOW": ZeroingSpeed.SLOW,
@@ -101,33 +101,33 @@ ZEROING_SPEEDS = {
     "VERY_FAST": ZeroingSpeed.VERY_FAST,
 }
 
-Direction = servoxxd_modbus_ns.enum("Direction")
+Direction = servoxxd_modbus_ns.enum("Direction", is_class=True)
 DIRECTIONS = {
     "CW": Direction.CW,
     "CCW": Direction.CCW,
 }
 
-HomingDirection = servoxxd_modbus_ns.enum("HomingDirection")
+HomingDirection = servoxxd_modbus_ns.enum("HomingDirection", is_class=True)
 HOMING_DIRECTIONS = {
     "CW": HomingDirection.CW,
     "CCW": HomingDirection.CCW,
     "NEAREST": HomingDirection.NEAREST,
 }
 
-HomingMode = servoxxd_modbus_ns.enum("HomingMode")
+HomingMode = servoxxd_modbus_ns.enum("HomingMode", is_class=True)
 HOMING_MODES = {
     "SENSORLESS": HomingMode.SENSORLESS,
     "ENDSTOP": HomingMode.ENDSTOP,
     "VIRTUAL": HomingMode.VIRTUAL,
 }
 
-EndstopTrigger = servoxxd_modbus_ns.enum("EndstopTrigger")
+EndstopTrigger = servoxxd_modbus_ns.enum("EndstopTrigger", is_class=True)
 ENDSTOP_TRIGGERS = {
-    "LOW": EndstopTrigger.LOW,
-    "HIGH": EndstopTrigger.HIGH,
+    "LOW": EndstopTrigger.TRIGGER_LOW,
+    "HIGH": EndstopTrigger.TRIGGER_HIGH,
 }
 
-ServoType = servoxxd_modbus_ns.enum("ServoType")
+ServoType = servoxxd_modbus_ns.enum("ServoType", is_class=True)
 SERVO_TYPES = {
     "SERVO28D": ServoType.SERVO28D,
     "SERVO35D": ServoType.SERVO35D,
@@ -135,21 +135,21 @@ SERVO_TYPES = {
     "SERVO57D": ServoType.SERVO57D,
 }
 
-ControlMode = servoxxd_modbus_ns.enum("ControlMode")
+ControlMode = servoxxd_modbus_ns.enum("ControlMode", is_class=True)
 CONTROL_MODES = {
     "SR_OPEN": ControlMode.SR_OPEN,
     "SR_CLOSE": ControlMode.SR_CLOSE,
     "SR_VFOC": ControlMode.SR_VFOC,
 }
 
-EnPinActive = servoxxd_modbus_ns.enum("EnPinActive")
+EnPinActive = servoxxd_modbus_ns.enum("EnPinActive", is_class=True)
 EN_PIN_ACTIVE_VALUES = {
-    "LOW": EnPinActive.LOW,
-    "HIGH": EnPinActive.HIGH,
-    "ALWAYS": EnPinActive.ALWAYS,
+    "LOW": EnPinActive.EN_LOW,
+    "HIGH": EnPinActive.EN_HIGH,
+    "ALWAYS": EnPinActive.EN_ALWAYS,
 }
 
-OperatingMode = servoxxd_modbus_ns.enum("OperatingMode")
+OperatingMode = servoxxd_modbus_ns.enum("OperatingMode", is_class=True)
 OPERATING_MODES = {
     "POSITION": OperatingMode.POSITION,
     "SPEED": OperatingMode.SPEED,
@@ -772,6 +772,9 @@ async def to_code(config):
     """
     Generate C++ code for the component configuration.
     """
+    # Add required includes
+    cg.add_global(cg.RawStatement('#include "esphome/components/servoxxd_modbus/stepper/servoxxd_modbus.h"'))
+    
     # Create component instance
     var = cg.new_Pvariable(config[CONF_ID])
     
@@ -795,7 +798,9 @@ async def to_code(config):
     
     # Set motor configuration
     cg.add(var.set_working_current(config[CONF_WORKING_CURRENT]))
-    cg.add(var.set_holding_current_percent(config[CONF_HOLDING_CURRENT_PERCENT]))
+    # cv.percentage returns float 0.0-1.0, convert to uint8_t 0-100
+    holding_percent_int = int(config[CONF_HOLDING_CURRENT_PERCENT] * 100)
+    cg.add(var.set_holding_current_percent(holding_percent_int))
     cg.add(var.set_en_pin_active(config[CONF_EN_PIN_ACTIVE]))
     cg.add(var.set_auto_screen_off(config[CONF_AUTO_SCREEN_OFF]))
     cg.add(var.set_lock_keys_at_startup(config[CONF_LOCK_KEYS_AT_STARTUP]))
@@ -814,16 +819,17 @@ async def to_code(config):
             cg.add(var.set_homing_direction(homing[CONF_HOMING_DIRECTION]))
             
             # Homing speed - depends on mode
+            # set_homing_speed() is overloaded: accepts both (float, SpeedUnit) and (uint8_t level)
             homing_speed = homing[CONF_HOMING_SPEED]
             if "level" in homing_speed:
-                # ZeroingSpeed level for VIRTUAL mode
-                cg.add(var.set_homing_zeroing_speed(homing_speed["level"]))
+                # ZeroingSpeed level for VIRTUAL mode (0-4) - calls set_homing_speed(uint8_t)
+                cg.add(var.set_homing_speed(homing_speed["level"]))
             else:
-                # Regular speed for ENDSTOP/SENSORLESS
+                # Regular speed for ENDSTOP/SENSORLESS - calls set_homing_speed(float, SpeedUnit)
                 await set_homing_speed_from_dict(var, homing_speed, config[CONF_STEPS_PER_REVOLUTION])
             
             if homing[CONF_HOMING_MODE] == "ENDSTOP":
-                cg.add(var.set_endstop_trigger(homing[CONF_ENDSTOP_TRIGGER]))
+                cg.add(var.set_homing_endstop_trigger(homing[CONF_ENDSTOP_TRIGGER]))
             
             if homing[CONF_HOMING_MODE] == "SENSORLESS":
                 cg.add(var.set_homing_current(homing[CONF_HOMING_CURRENT]))

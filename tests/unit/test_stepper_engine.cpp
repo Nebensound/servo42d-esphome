@@ -673,7 +673,7 @@ void test_set_zero_command(TestStats &stats)
 
     // Position should be ~0
     Position current = engine.get_current_position();
-    if (std::abs(current.steps()) < 1.0f)
+    if (std::abs(current.get_steps()) < 1.0f)
     {
       stats.pass("Current position is ~0 after set_zero()");
     }
