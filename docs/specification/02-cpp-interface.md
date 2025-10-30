@@ -453,14 +453,13 @@ class Position {
   explicit Position(const ServoXxd* parent) : revs_(0), angle_ticks_(0), parent_(parent) {}
   
   // Factory methods for direct construction
-  static Position from_ticks_total(uint64_t total_ticks, const ServoXxd* parent);
-  static Position from_parts(int32_t revolutions, uint16_t angle_ticks, const ServoXxd* parent);
-  static Position from_steps(int32_t steps, const ServoXxd* parent);
-  static Position from_revolutions(float revolutions, const ServoXxd* parent);
-  static Position from_degrees(float degrees, const ServoXxd* parent);
-  static Position from_radians(float radians, const ServoXxd* parent);
-  static Position from_arcminutes(float arcminutes, const ServoXxd* parent);
-  static Position from_arcseconds(float arcseconds, const ServoXxd* parent);
+  static Position from_ticks(int64_t ticks);
+  static Position from_steps(int64_t steps, const ServoXxd* parent);  // Only this needs parent!
+  static Position from_revolutions(double revolutions);
+  static Position from_degrees(double deg);
+  static Position from_radians(double rad);
+  static Position from_arcminutes(int64_t arcminutes);
+  static Position from_arcseconds(int64_t arcseconds);
   
   // Direct accessors to internal representation
   int32_t revolutions_internal() const;       // Raw revolutions count
