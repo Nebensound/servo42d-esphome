@@ -659,7 +659,7 @@ void test_parent_handling_in_operators()
   Position prod = pos11 * 2.5;
   assert(prod.revolutions() == 2);
   assert(prod.angle_ticks() == 8192); // 2.5 rev = 2 rev + 0.5 rev (8192 ticks)
-  assert(prod.get_steps() == 8000);   // 2.5 rev * 3200 steps/rev = 8000 steps
+  assert(prod.get_steps() == 8000); // 2.5 rev * 3200 steps/rev = 8000 steps
   std::cout << "  ✓ Multiplication: 1 rev * 2.5 = " << prod.revolutions() << " rev + " << prod.angle_ticks() << " ticks" << std::endl;
 
   // Test: Division (scalar) with parent propagation

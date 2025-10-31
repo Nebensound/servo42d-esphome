@@ -12,26 +12,26 @@ SOURCES = \
 	$(COMPONENT_DIR)/servoxxd.cpp \
 	$(COMPONENT_DIR)/servoxxd_modbus.cpp \
 	$(COMPONENT_DIR)/servoxxd_stepper_engine.cpp \
-	$(COMPONENT_DIR)/servoxxd_queue.cpp \
+	$(COMPONENT_DIR)/servoxxd_command_queue.cpp \
 	$(COMPONENT_DIR)/servoxxd_speed.cpp \
 	$(COMPONENT_DIR)/servoxxd_acceleration.cpp \
 	$(COMPONENT_DIR)/servoxxd_position.cpp \
 	$(MOCK_DIR)/hal.cpp
 
 QUEUE_SOURCES = \
-	$(COMPONENT_DIR)/servoxxd_queue.cpp
+	$(COMPONENT_DIR)/servoxxd_command_queue.cpp
 
 ENGINE_SOURCES = \
 	$(COMPONENT_DIR)/servoxxd.cpp \
 	$(COMPONENT_DIR)/servoxxd_stepper_engine.cpp \
-	$(COMPONENT_DIR)/servoxxd_queue.cpp \
+	$(COMPONENT_DIR)/servoxxd_command_queue.cpp \
 	$(COMPONENT_DIR)/servoxxd_modbus.cpp \
 	$(COMPONENT_DIR)/servoxxd_speed.cpp \
 	$(COMPONENT_DIR)/servoxxd_acceleration.cpp \
 	$(COMPONENT_DIR)/servoxxd_position.cpp
 
 # Test executables (only the working ones for now)
-TESTS = test_speed test_acceleration test_position test_modbus_commands
+TESTS = test_speed test_acceleration test_position
 # TODO: Re-enable when implementation is complete:
 # TESTS += test_command_queue test_stepper_engine
 
@@ -54,10 +54,6 @@ test_acceleration: test_acceleration.cpp $(SOURCES)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 test_position: test_position.cpp $(SOURCES)
-	@echo "Building $@..."
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
-
-test_modbus_commands: test_modbus_commands.cpp $(COMPONENT_DIR)/servoxxd_modbus.cpp
 	@echo "Building $@..."
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
