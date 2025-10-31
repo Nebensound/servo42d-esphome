@@ -22,7 +22,7 @@
 static uint32_t test_millis = 0;
 uint32_t millis() { return test_millis; }
 
-#include "components/servoxxd_modbus/stepper/servoxxd_command_queue.h"
+#include "servoxxd_queue.h"
 #include "components/servoxxd_modbus/stepper/servoxxd.h"
 
 using namespace esphome::servoxxd_modbus;

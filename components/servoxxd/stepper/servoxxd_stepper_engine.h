@@ -2,7 +2,7 @@
 
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
-#include "servoxxd_command_queue.h"
+#include "servoxxd_queue.h"
 #include "servoxxd_position.h"
 #include "servoxxd_speed.h"
 #include "servoxxd_acceleration.h"
