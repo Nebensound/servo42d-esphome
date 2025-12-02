@@ -266,6 +266,11 @@ void test_position_arithmetic()
   assert(pos1 == pos3);
   assert(!(pos1 == pos2));
   std::cout << "  ✓ Equality: pos1 == pos3, pos1 != pos2" << std::endl;
+
+  // Test inequality operator
+  assert(pos1 != pos2);
+  assert(!(pos1 != pos3));
+  std::cout << "  ✓ Inequality: pos1 != pos2, !(pos1 != pos3)" << std::endl;
 }
 
 void test_position_zero()
@@ -659,7 +664,7 @@ void test_parent_handling_in_operators()
   Position prod = pos11 * 2.5;
   assert(prod.revolutions() == 2);
   assert(prod.angle_ticks() == 8192); // 2.5 rev = 2 rev + 0.5 rev (8192 ticks)
-  assert(prod.get_steps() == 8000); // 2.5 rev * 3200 steps/rev = 8000 steps
+  assert(prod.get_steps() == 8000);   // 2.5 rev * 3200 steps/rev = 8000 steps
   std::cout << "  ✓ Multiplication: 1 rev * 2.5 = " << prod.revolutions() << " rev + " << prod.angle_ticks() << " ticks" << std::endl;
 
   // Test: Division (scalar) with parent propagation
@@ -696,6 +701,85 @@ void test_nan_inf_steps_per_rev()
   MockServoXxd mock_neg_inf(-std::numeric_limits<float>::infinity());
   Position pos_neg_inf(3200, PositionUnit::STEPS, &mock_neg_inf);
   std::cout << "  ✓ STEPS with -Inf steps_per_rev → " << pos_neg_inf.revolutions() << " rev + " << pos_neg_inf.angle_ticks() << " ticks (implementation-defined)" << std::endl;
+}
+
+void test_operator_edge_cases()
+{
+  std::cout << "Testing operator edge cases..." << std::endl;
+
+  MockServoXxd mock(3200.0f);
+
+  // Test: Addition causing overflow in angle_ticks
+  Position pos1(0, PositionUnit::REVOLUTIONS, &mock);
+  pos1.set_ticks(16380); // Close to overflow (16384)
+  Position pos2(0, PositionUnit::REVOLUTIONS, &mock);
+  pos2.set_ticks(10);
+  Position sum = pos1 + pos2;
+  assert(sum.revolutions() == 1);
+  assert(sum.angle_ticks() == 6); // 16380 + 10 = 16390 → 1 rev + 6 ticks
+  std::cout << "  ✓ Addition overflow: 16380 + 10 = " << sum.revolutions() << " rev + " << sum.angle_ticks() << " ticks" << std::endl;
+
+  // Test: Subtraction causing underflow in angle_ticks
+  Position pos3(1, PositionUnit::REVOLUTIONS, &mock);
+  pos3.set_ticks(16384 + 5); // 1 rev + 5 ticks
+  Position pos4(0, PositionUnit::REVOLUTIONS, &mock);
+  pos4.set_ticks(10);
+  Position diff = pos3 - pos4;
+  assert(diff.revolutions() == 0);
+  assert(diff.angle_ticks() == 16379); // (16384 + 5) - 10 = 16379
+  std::cout << "  ✓ Subtraction underflow: (1 rev + 5 ticks) - 10 ticks = " << diff.revolutions() << " rev + " << diff.angle_ticks() << " ticks" << std::endl;
+
+  // Test: Multiplication by zero
+  Position pos5(5.0, PositionUnit::REVOLUTIONS, &mock);
+  Position prod_zero = pos5 * 0.0;
+  assert(prod_zero.revolutions() == 0);
+  assert(prod_zero.angle_ticks() == 0);
+  std::cout << "  ✓ Multiplication by zero: 5 rev * 0 = 0" << std::endl;
+
+  // Test: Multiplication by negative scalar
+  Position pos6(2.0, PositionUnit::REVOLUTIONS, &mock);
+  Position prod_neg = pos6 * -1.5;
+  assert(prod_neg.revolutions() == -3);
+  assert(prod_neg.angle_ticks() == 0);
+  std::cout << "  ✓ Multiplication by negative: 2 rev * -1.5 = " << prod_neg.revolutions() << " rev" << std::endl;
+
+  // Test: Division by negative scalar
+  Position pos7(4.0, PositionUnit::REVOLUTIONS, &mock);
+  Position quot_neg = pos7 / -2.0;
+  assert(quot_neg.revolutions() == -2);
+  assert(quot_neg.angle_ticks() == 0);
+  std::cout << "  ✓ Division by negative: 4 rev / -2 = " << quot_neg.revolutions() << " rev" << std::endl;
+
+  // Test: Very small scalar multiplication (precision test)
+  Position pos8(1.0, PositionUnit::REVOLUTIONS, &mock);
+  Position prod_tiny = pos8 * 0.0001;
+  double revs = prod_tiny.get_revolutions();
+  assert(float_eq(revs, 0.0001));
+  std::cout << "  ✓ Tiny scalar multiplication: 1 rev * 0.0001 = " << revs << " rev" << std::endl;
+
+  // Test: Chained operations: (a + b) * c - d
+  Position a(1.0, PositionUnit::REVOLUTIONS, &mock);
+  Position b(0.5, PositionUnit::REVOLUTIONS, &mock);
+  Position c_scalar_pos(2.0, PositionUnit::REVOLUTIONS, &mock);
+  Position d(1.0, PositionUnit::REVOLUTIONS, &mock);
+  Position result = ((a + b) * 2.0) - d; // (1 + 0.5) * 2 - 1 = 3 - 1 = 2
+  assert(result.revolutions() == 2);
+  assert(result.angle_ticks() == 0);
+  std::cout << "  ✓ Chained operations: (1 + 0.5) * 2 - 1 = " << result.revolutions() << " rev" << std::endl;
+
+  // Test: Self-addition (pos + pos)
+  Position pos9(1.5, PositionUnit::REVOLUTIONS, &mock);
+  Position self_sum = pos9 + pos9;
+  assert(self_sum.revolutions() == 3);
+  assert(self_sum.angle_ticks() == 0);
+  std::cout << "  ✓ Self-addition: 1.5 rev + 1.5 rev = " << self_sum.revolutions() << " rev" << std::endl;
+
+  // Test: Self-subtraction (should be zero)
+  Position pos10(2.75, PositionUnit::REVOLUTIONS, &mock);
+  Position self_diff = pos10 - pos10;
+  assert(self_diff.revolutions() == 0);
+  assert(self_diff.angle_ticks() == 0);
+  std::cout << "  ✓ Self-subtraction: 2.75 rev - 2.75 rev = 0" << std::endl;
 }
 
 void test_arcminute_arcsecond_precision()
@@ -770,6 +854,7 @@ int main()
   test_factory_method_roundtrips();
   test_mixed_sign_operators();
   test_parent_handling_in_operators();
+  test_operator_edge_cases();
   test_nan_inf_steps_per_rev();
   test_arcminute_arcsecond_precision();
 

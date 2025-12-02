@@ -353,7 +353,7 @@ on_...:
 
 ## `stepper.enable` / `stepper.disable`
 
-Enable or disables the motor. Same action is used für the `sleep_when_done` configuration.
+Enable or disables the motor. Same action is used for the `sleep_when_done` configuration.
 
 ```yaml
 on_...:

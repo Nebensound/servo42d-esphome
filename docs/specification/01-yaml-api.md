@@ -8,9 +8,9 @@
 
 **Architecture Note:** The component uses a modular architecture:
 - **`servoxxd`**: Main platform name (transport-agnostic)
-- **`servoxxd.h/.cpp`**: Core component implementation (Facade, config, actions)
-- **`servoxxd_modbus.h/.cpp`**: Modbus RTU transport layer (commands, callbacks)
-- **`servoxxd_stepper_engine.h/.cpp`**: State machine and movement logic
+- **Core component**: Facade, configuration, actions
+- **Transport layer (Modbus RTU)**: Commands, callbacks
+- **Movement logic (Stepper Engine)**: State machine and movement control
 
 This separation allows future support for alternative transports (e.g., Serial, CAN) while maintaining the same YAML API.
 
@@ -110,21 +110,7 @@ Lambdas → Pass to C++ for runtime conversion:
 - `value`: Lambda code (templatable)
 - `unit`: Enum integer
 
-**Unit Enum (C++):**
-
-```cpp
-enum class SpeedUnit : uint8_t {
-    STEPS_PER_SEC = 0,     // Default - ESPHome stepper compatibility
-    RPM = 1,
-    REV_PER_SEC = 2,
-    DEGREES_PER_SEC = 3,
-    RADIANS_PER_SEC = 4,
-    DEGREES_PER_MIN = 5,
-    DEGREES_PER_HOUR = 6
-};
-```
-
-**C++ Type:** `int16_t` (RPM, signed for bidirectional)
+> Implementation hint: The C++ layer maps these to an internal unit enum and integer RPM representation. Details are defined in the C++ spec.
 
 **References:**
 
@@ -184,19 +170,7 @@ Lambdas → Pass to C++ for runtime conversion:
 - `value`: Lambda code (templatable)
 - `unit`: Enum integer
 
-**Unit Enum (C++):**
-
-```cpp
-enum class AccelerationUnit : uint8_t {
-    STEPS_PER_SEC_SQ = 0,  // Default - ESPHome stepper compatibility
-    RPM_PER_SEC = 1,
-    REV_PER_SEC_SQ = 2,
-    DEGREES_PER_SEC_SQ = 3,
-    RADIANS_PER_SEC_SQ = 4
-};
-```
-
-**C++ Type:** `uint16_t` (RPM/s, unsigned since acceleration is always positive)
+> Implementation hint: The C++ layer uses a hardware-native 0–255 value; mapping is documented in the C++ spec.
 
 **References:**
 
@@ -264,20 +238,7 @@ Lambdas → Pass to C++ for runtime conversion:
 - `value`: Lambda code (templatable)
 - `unit`: Enum integer
 
-**Unit Enum (C++):**
-
-```cpp
-enum class PositionUnit : uint8_t {
-    STEPS = 0,         // Default - ESPHome stepper compatibility
-    REVOLUTIONS = 1,
-    DEGREES = 2,
-    RADIANS = 3,
-    ARCMINUTES = 4,
-    ARCSECONDS = 5
-};
-```
-
-**C++ Type:** `int32_t` (steps, signed for bidirectional positioning)
+> Implementation hint: The C++ layer represents positions using encoder-aligned split format. See C++ spec for details.
 
 **References:**
 
@@ -308,26 +269,7 @@ enum class PositionUnit : uint8_t {
 - `0` = Immediately disable (`true`/`0s`)
 - `1` to `4294967294` = Delay in milliseconds
 
-**Example Usage in C++:**
-
-```cpp
-static constexpr uint32_t AUTO_SLEEP_DISABLED = UINT32_MAX;
-
-void on_idle() {  // Called when motor becomes idle (e.g., movement complete)
-    if (auto_sleep_delay_ms_ == AUTO_SLEEP_DISABLED) {
-        // false/inf: Feature disabled, motor stays powered
-        return;
-    } else if (auto_sleep_delay_ms_ == 0) {
-        // true/0ms: Disable immediately
-        this->disable_motor();
-    } else {
-        // 1+ms: Start delay timer
-        this->set_timeout("auto_sleep", auto_sleep_delay_ms_, [this]() {
-            this->disable_motor();
-        });
-    }
-}
-```
+> Implementation hint: Auto-sleep maps to a 32-bit millisecond timeout; special values are defined in the C++ spec.
 
 **YAML Examples:**
 

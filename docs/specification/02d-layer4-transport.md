@@ -1,168 +1,290 @@
 # Layer 4: Transport Abstraction - Detailed Specification
 
 **Parent Document:** [02-cpp-interface.md](./02-cpp-interface.md)  
-**Status:** ✅ FINALIZED – Layer 4 implementation details
+**Status:** 🔵 SPECIFICATION – Layer 4 design and contracts
 
 **Navigation:**
-
 - [← Previous: Layer 3 (CommandQueue)](./02c-layer3-command-queue.md)
-- [← Back to Overview](./02-cpp-interface.md#layer-4-transport-layer-modbus-specific)
+- [← Back to Overview](./02-cpp-interface.md#layer-4-transport-abstraction)
 
 ---
 
-## Architecture
+## Overview
 
-**Register-basierte Transport-Abstraktion**
+**Components:** 
+1. `Command` enum - Type-safe command identifiers (0x30-0xFF)
+2. `ITransport` interface - Protocol-agnostic transport contract
+3. `ServoCommandCodec` - Encode/decode command payloads
+4. `ModbusTransport` / `SerialTransport` - Protocol implementations
 
-MKS SERVO42D/57D Hardware: Identische Register-Codes für Modbus-RTU und Serial Protocol. Unterschiede nur im Transport-Format (Modbus Function Codes 0x04/0x06/0x10 vs. Serial FA/FB Frames).
+**Design Pattern:** Strategy (ITransport) + Codec (ServoCommandCodec)
 
-```
-Layer 4a: Commands (servoxxd_command.h/.cpp)
-   ├─ ReadRegisterCommand(addr, count)
-   ├─ WriteRegisterCommand(addr, value)
-   └─ WriteMultipleRegistersCommand(addr, values)
-   
-Layer 4b: Transport Interface (servoxxd_transport.h)
-   └─ ITransport (abstract)
-   
-Layer 4c: Implementations
-   ├─ ModbusTransport
-   └─ SerialTransport (future)
-```
+**Key Responsibilities:**
+- Abstract protocol details (Modbus-RTU, Serial FA/FB)
+- Provide unified Command-based API for upper layers
+- Manage framing, addressing, CRC calculation
+- Handle request-response state machine (half-duplex)
+
+**Design Goals:**
+1. Transport agnostic upper layers (Command enum only)
+2. Protocol isolation (Modbus/Serial details hidden)
+3. Type safety (no raw register addresses)
+4. Separation of concerns (Transport = framing, Codec = data encoding)
 
 ---
 
-## Layer 4a: Commands
+## Component 1: Command Enum
 
-**Files:** `servoxxd_command.h/.cpp`
+**Purpose:** Type-safe hardware command identifiers. Maps 1:1 to command codes (0x30-0xFF).
 
-### BaseCommand
+**Location:** `servoxxd_commands.h`
 
 ```cpp
-class BaseCommand {
- protected:
-  ITransport* transport_;      // NOT ModbusDevice!
-  uint16_t register_address_;
-  uint32_t timeout_ms_;
-  CommandState state_;         // PENDING → EXECUTING → COMPLETED/FAILED/TIMEOUT
+enum class Command : uint8_t {
+  // Read Commands
+  READ_ENCODER_CARRY = 0x30,
+  READ_ENCODER_ADDITION = 0x31,
+  READ_CURRENT_SPEED = 0x32,
+  READ_PULSE_COUNT = 0x33,
+  READ_IO_STATUS = 0x34,
+  READ_MOTOR_STATUS = 0x3A,
+  READ_HOMING_STATUS = 0x3B,
+  READ_PROTECTION_STATUS = 0x3E,
   
-  std::function<void(bool)> completion_callback_;
-  std::function<void(const std::vector<uint8_t>&)> data_callback_;
-
- public:
-  virtual void execute() = 0;                          // Send via transport
-  virtual void process_response(const std::vector<uint8_t>&) = 0;  // Parse response
-  virtual const char* get_command_name() const = 0;
+  // Configuration Commands
+  SET_WORKING_CURRENT = 0x44,
+  SET_SUBDIVISION = 0x84,
+  SET_WORK_MODE = 0x82,
+  SET_HOME_PARAMS = 0x4A,
   
-  bool is_timeout(uint32_t current_time_ms) const;
-  // ... state management
+  // Movement Commands (Position Modes)
+  MOVE_POSITION_MODE_1 = 0xFD,  // Same code for STOP (pulses=0)
+  MOVE_POSITION_MODE_2 = 0xFE,  // Same code for STOP (position=0)
+  MOVE_POSITION_MODE_3 = 0xF4,
+  MOVE_POSITION_MODE_4 = 0xF5,
+  
+  // Movement Commands (Speed Mode)
+  MOVE_SPEED_MODE = 0xF6,       // Same code for STOP (speed=0)
+  
+  // Special Commands
+  EMERGENCY_STOP = 0xF7,
+  ENABLE_MOTOR = 0xF3,
+  START_HOMING = 0x9A,
+  CALIBRATE_ENCODER = 0x80,
+  RESTART_CONTROLLER = 0x3F,
+  RELEASE_PROTECTION = 0x0E,
 };
 ```
 
-### Concrete Commands
-
-- `ReadRegisterCommand` - Liest Register via `transport_->send_read()`
-- `WriteRegisterCommand` - Schreibt Register via `transport_->send_write()`
-- `WriteMultipleRegistersCommand` - Schreibt mehrere Register via `transport_->send_write_multiple()`
+**Key Insight:** Same command code can represent different operations (MOVE vs STOP) based on data payload. Upper layers use ServoCommandCodec to differentiate.
 
 ---
 
-## Layer 4b: Transport Interface
+## Component 2: ITransport Interface
+
+**Purpose:** Protocol-agnostic contract for command execution.
+
+**Location:** `servoxxd_transport.h`
 
 ```cpp
 class ITransport {
-  virtual void send_read(uint16_t addr, uint16_t count) = 0;
-  virtual void send_write(uint16_t addr, uint16_t value) = 0;
-  virtual void send_write_multiple(uint16_t addr, const std::vector<uint16_t>& vals) = 0;
+ public:
+  virtual ~ITransport() = default;
   
-  virtual void set_response_callback(std::function<void(const std::vector<uint8_t>&)>) = 0;
-  virtual void set_error_callback(std::function<void(uint8_t)>) = 0;
+  // Execute write command with data payload
+  virtual Result execute_command(Command cmd, const std::vector<uint8_t>& data = {}) = 0;
+  
+  // Execute read command and retrieve response
+  virtual Result read_command(Command cmd, std::vector<uint8_t>& response) = 0;
+  
+  // Check if transport is busy (waiting for response)
+  virtual bool is_busy() const = 0;
+  
+  // Process state machine, timeouts, incoming data
+  virtual void update() = 0;
 };
+
+struct Result {
+  bool success;
+  ErrorCode error_code;
+};
+
+enum class ErrorCode {
+  OK, TIMEOUT, PROTOCOL_ERROR, DEVICE_ERROR, INVALID_RESPONSE, BUSY
+};
+```
+
+**Contracts:**
+- `execute_command()` / `read_command()`: Non-blocking, return immediately
+- Precondition: `is_busy() == false`
+- Responses processed asynchronously in `update()`
+- Callbacks registered by CommandQueue
+
+**State Machine:**
+```
+IDLE → (execute/read) → WAITING_RESPONSE → (response/timeout) → IDLE
 ```
 
 ---
 
-## Layer 4c: ModbusTransport
+## Component 3: ServoCommandCodec
+
+**Purpose:** Encode parameters to bytes (transmission) and decode bytes to structured types (responses).
+
+**Location:** `servoxxd_command_codec.h` / `.cpp`
+
+**Design:** Pure static functions (no state)
+
+### Key Methods
+
+```cpp
+class ServoCommandCodec {
+ public:
+  // === Movement Encoders ===
+  static std::vector<uint8_t> encode_move_position_mode_2(
+    int32_t position, uint16_t speed, uint8_t accel);
+  static std::vector<uint8_t> encode_stop_position_mode_2(uint8_t decel);
+  
+  static std::vector<uint8_t> encode_move_speed_mode(
+    uint16_t speed, uint8_t accel, Direction dir);
+  
+  // === Configuration Encoders ===
+  static std::vector<uint8_t> encode_set_working_current(uint16_t mA);
+  static std::vector<uint8_t> encode_set_subdivision(uint8_t microsteps);
+  static std::vector<uint8_t> encode_enable_motor(bool enable);
+  
+  // === Response Decoders ===
+  static int16_t decode_current_speed(const std::vector<uint8_t>& data);
+  static int32_t decode_pulse_count(const std::vector<uint8_t>& data);
+  static EncoderValue decode_encoder_carry(const std::vector<uint8_t>& data);
+  static MotorStatus decode_motor_status(const std::vector<uint8_t>& data);
+  static ProtectionStatus decode_protection_status(const std::vector<uint8_t>& data);
+};
+
+enum class Direction { CW = 0, CCW = 1 };
+enum class WorkMode { CR_OPEN = 0, SR_VFOC = 5 /* ... */ };
+
+struct EncoderValue { int32_t carry; uint16_t value; };
+struct MotorStatus { enum State { STOP, MOVING, HOMING /* ... */ }; State state; };
+struct ProtectionStatus { bool protected_state; };
+```
+
+**Error Handling:**
+- Encoders: Validate ranges, return empty `{}` on error
+- Decoders: Check buffer size, return default values on error
+
+**Byte Ordering:** Big-endian (MSB first)
+
+---
+
+## Component 4: ModbusTransport Implementation
+
+**Purpose:** Implement ITransport using Modbus-RTU protocol.
+
+**Location:** `servoxxd_modbus_transport.h` / `.cpp`
+
+### Design Outline
 
 ```cpp
 class ModbusTransport : public ITransport {
+ public:
+  ModbusTransport(modbus::ModbusDevice* device, uint8_t slave_address);
+  
+  Result execute_command(Command cmd, const std::vector<uint8_t>& data) override;
+  Result read_command(Command cmd, std::vector<uint8_t>& response) override;
+  bool is_busy() const override;
+  void update() override;
+  
+ private:
   modbus::ModbusDevice* device_;
-  
-  void send_read(uint16_t addr, uint16_t count) override;    // Modbus 0x04
-  void send_write(uint16_t addr, uint16_t value) override;   // Modbus 0x06
-  void send_write_multiple(...) override;                    // Modbus 0x10
-  
-  void on_modbus_data(const std::vector<uint8_t>& data);
-  void on_modbus_error(uint8_t func, uint8_t exc);
+  State state_;  // IDLE, WAITING_RESPONSE
+  Command pending_command_;
+  uint32_t timeout_start_ms_;
+  std::function<void(Command, const std::vector<uint8_t>&)> response_callback_;
+  std::function<void(Command, ErrorCode)> error_callback_;
 };
 ```
 
-Übersetzt ITransport-Calls in Modbus Function Codes, routet ESPHome-Callbacks.
+**Protocol Mapping:**
+- Command enum value → Modbus register address (direct mapping)
+- Read: Function 0x04 (Read Input Registers)
+- Write: Function 0x06 (Single) or 0x10 (Multiple)
+- CRC16 calculated per Modbus standard
+
+**Integration:** Wraps ESPHome's `modbus::ModbusDevice`, implements callbacks
 
 ---
 
-## Integration
+## Component 5: SerialTransport (Future)
 
-- **CommandQueue:** Verwendet `ITransport*`, setzt Callbacks
-- **ServoXxd:** Erstellt `ModbusTransport` in `setup()`, routet ESPHome-Callbacks
-- **Testing:** `MockTransport` statt `MockModbusDevice`
+**Status:** Placeholder for future implementation
 
----
+**Protocol:** Serial FA/FB frames with CRC8
 
-
-## Complete Register/Function/Command Mapping
-
-Below is a comprehensive, English-language table of all relevant register codes, functions, serial commands, and Modbus registers for the MKS SERVO42&57D. This table is based on the official hardware manual (see reference below).
-
-| Register | Function | Serial Command | Modbus Register | Modbus Function |
-|----------|----------|----------------|-----------------|-----------------|
-| 0x30 | Read encoder carry | `FA 01 30 CRC` | 0x0030 | 0x04 (Read) |
-| 0x31 | Read encoder addition | `FA 01 31 CRC` | 0x0031 | 0x04 (Read) |
-| 0x32 | Read real-time speed (RPM) | `FA 01 32 CRC` | 0x0032 | 0x04 (Read) |
-| 0x33 | Read pulse count | `FA 01 33 CRC` | 0x0033 | 0x04 (Read) |
-| 0x34 | Read IO port status | `FA 01 34 CRC` | 0x0034 | 0x04 (Read) |
-| 0x39 | Read angle error | `FA 01 39 CRC` | 0x0039 | 0x04 (Read) |
-| 0x3A | Read enable pin status | `FA 01 3A CRC` | 0x003A | 0x04 (Read) |
-| 0x3B | Read homing status | `FA 01 3B CRC` | 0x003B | 0x04 (Read) |
-| 0x3D | Release locked-rotor protection | `FA 01 3D CRC` | 0x003D | 0x06 (Write) |
-| 0x3E | Read protection status | `FA 01 3E CRC` | 0x003E | 0x04 (Read) |
-| 0x3F | Restore default parameters | `FA 01 3F CRC` | 0x003F | 0x06 (Write) |
-| 0x41 | Restart motor | `FA 01 41 CRC` | 0x0041 | 0x06 (Write) |
-| 0x80 | Calibrate encoder | `FA 01 80 00 CRC` | 0x0080 | 0x06 (Write) |
-| 0x82 | Set work mode | `FA 01 82 [mode] CRC` | 0x0082 | 0x06 (Write) |
-| 0x83 | Set working current | `FA 01 83 [current] CRC` | 0x0083 | 0x06 (Write) |
-| 0x84 | Set subdivision | `FA 01 84 [micstep] CRC` | 0x0084 | 0x06 (Write) |
-| 0x85 | Set En pin active | `FA 01 85 [enable] CRC` | 0x0085 | 0x06 (Write) |
-| 0x86 | Set direction | `FA 01 86 [dir] CRC` | 0x0086 | 0x06 (Write) |
-| 0x87 | Set auto screen off | `FA 01 87 [enable] CRC` | 0x0087 | 0x06 (Write) |
-| 0x88 | Set locked-rotor protection | `FA 01 88 [enable] CRC` | 0x0088 | 0x06 (Write) |
-| 0x89 | Set subdivision interpolation | `FA 01 89 [enable] CRC` | 0x0089 | 0x06 (Write) |
-| 0x8A | Set baud rate | `FA 01 8A [baud] CRC` | 0x008A | 0x06 (Write) |
-| 0x8B | Set slave address | `FA 01 8B [addr] CRC` | 0x008B | 0x06 (Write) |
-| 0x8C | Set slave respond/active | `FA 01 8C [resp] [active] CRC` | 0x008C | 0x06 (Write) |
-| 0x8D | Set group address | `FA 01 8D [addr] CRC` | 0x008D | 0x06 (Write) |
-| 0x8E | Set MODBUS-RTU enable | `FA 01 8E [enable] CRC` | 0x008E | 0x06 (Write) |
-| 0x8F | Set key lock/unlock | `FA 01 8F [enable] CRC` | 0x008F | 0x06 (Write) |
-| 0x90 | Set home parameters | `FA 01 90 [params...] CRC` | 0x0090 | 0x10 (Write Multiple) |
-| 0x91 | Go home | `FA 01 91 CRC` | 0x0091 | 0x06 (Write) |
-| 0x92 | Set current axis to zero | `FA 01 92 CRC` | 0x0092 | 0x06 (Write) |
-| 0x94 | Set noLimit home params | `FA 01 94 [params...] CRC` | 0x0094 | 0x06 (Write) |
-| 0x9A | Set 0_Mode params | `FA 01 9A [params...] CRC` | 0x009A | 0x10 (Write Multiple) |
-| 0x9B | Set holding current % | `FA 01 9B [holdMa] CRC` | 0x009B | 0x06 (Write) |
-| 0x9E | Set limit port remap | `FA 01 9E [enable] CRC` | 0x009E | 0x06 (Write) |
-| 0xF1 | Query motor status | `FA 01 F1 CRC` | 0x00F1 | 0x04 (Read) |
-| 0xF3 | Enable/disable motor | `FA 01 F3 [en] CRC` | 0x00F3 | 0x06 (Write) |
-| 0xF4 | Position mode 3 (rel. axis) | `FA 01 F4 [params...] CRC` | 0x00F4 | 0x10 (Write Multiple) |
-| 0xF5 | Position mode 4 (abs. axis) | `FA 01 F5 [params...] CRC` | 0x00F5 | 0x10 (Write Multiple) |
-| 0xF6 | Speed mode | `FA 01 F6 [params...] CRC` | 0x00F6 | 0x10 (Write Multiple) |
-| 0xF7 | Emergency stop | `FA 01 F7 CRC` | 0x00F7 | 0x06 (Write) |
-| 0xFD | Position mode 1 (rel. pulses) | `FA 01 FD [params...] CRC` | 0x00FD | 0x10 (Write Multiple) |
-| 0xFE | Position mode 2 (abs. pulses) | `FA 01 FE [params...] CRC` | 0x00FE | 0x10 (Write Multiple) |
-| 0xFF | Save/Clean speed mode param | `FA 01 FF [flag] CRC` | 0x00FF | 0x06 (Write) |
-
-**Reference:**
-MKS SERVO42&57D_RS485 User Manual V1.0.5 — see `docs/servo_hardware_doc/AI/MKS_SERVO42D57D_RS485_User_Manual_V1.0.5.txt`
+```cpp
+class SerialTransport : public ITransport {
+  // Similar structure to ModbusTransport
+};
+```
 
 ---
 
-[← Layer 3](./02c-layer3-command-queue.md) | [↑ Overview](./02-cpp-interface.md#layer-4-transport-layer-modbus-specific)
+## Usage Examples
+
+### Layer 2 (StepperEngine)
+
+```cpp
+void StepperEngine::move_to(Position target, Speed speed, Acceleration accel) {
+  auto data = ServoCommandCodec::encode_move_position_mode_2(
+    target.to_pulses(), speed.to_motor_units(), accel.to_motor_units());
+  
+  transport_->execute_command(Command::MOVE_POSITION_MODE_2, data);
+}
+
+void StepperEngine::update_speed() {
+  std::vector<uint8_t> response;
+  if (transport_->read_command(Command::READ_CURRENT_SPEED, response).success) {
+    int16_t rpm = ServoCommandCodec::decode_current_speed(response);
+    current_speed_ = Speed::from_rpm(rpm);
+  }
+}
+```
+
+### Layer 1 (ServoXxd)
+
+```cpp
+void ServoXxd::set_working_current(float mA) {
+  auto data = ServoCommandCodec::encode_set_working_current(static_cast<uint16_t>(mA));
+  transport_->execute_command(Command::SET_WORKING_CURRENT, data);
+}
+```
+
+---
+
+## Command Reference (Excerpt)
+
+| Command | Code | Modbus | Serial | Description |
+|---------|------|--------|--------|-------------|
+| READ_ENCODER_CARRY | 0x30 | `04 0030 0002` | `FA 01 30 [CRC8]` | Read encoder |
+| READ_CURRENT_SPEED | 0x32 | `04 0032 0001` | `FA 01 32 [CRC8]` | Read RPM |
+| SET_WORKING_CURRENT | 0x44 | `06 0044 [data]` | `FA 01 44 [hi][lo] [CRC8]` | Set current |
+| MOVE_POSITION_MODE_2 | 0xFE | `10 00FE 0004 [8B]` | `FA 01 FE [8B] [CRC8]` | Absolute move |
+| EMERGENCY_STOP | 0xF7 | `06 00F7 0001` | `FA 01 F7 [CRC8]` | Halt |
+
+**Notes:** Function codes: 04=Read, 06=Write Single, 10=Write Multiple. All values big-endian.
+
+---
+
+## Benefits
+
+1. **Clean Separation:** Protocol details isolated from movement logic
+2. **Testability:** Mock ITransport for unit tests
+3. **Extensibility:** Add protocols without changing Layers 1-3
+4. **Type Safety:** Command enum prevents errors
+5. **Maintainability:** Codec centralizes protocol knowledge
+
+---
+
+**Navigation:**
+- [← Previous: Layer 3 (CommandQueue)](./02c-layer3-command-queue.md)
+- [← Back to Overview](./02-cpp-interface.md#layer-4-transport-abstraction)

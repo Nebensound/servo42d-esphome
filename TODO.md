@@ -21,15 +21,15 @@
 - [x] Operators `+ - * /` - parent pointer propagation + parent compatibility checks
 - [x] Split-Format-Logik: Alle Getter arbeiten direkt ohne int64_t Umweg
 - [x] Tests erweitert: operator*, operator/, parent handling, compatibility warnings
-- [ ] Tests zum addiren und subtrahiern (und andere operatoren)
+- [x] Tests zum Addieren und Subtrahieren (und andere Operatoren) - `test_operator_edge_cases()` mit 10+ Edge Cases
 
 #### 1.2 Modbus Command Classes ❌ (6-8h) ⚠️ BLOCKIERT ALLES
 **Spec:** [02d-layer4-transport.md](docs/specification/02d-layer4-transport.md)  
-**Files:** `servoxxd_modbus_commands.h/.cpp` (NEU)
+**Files:** `servoxxd_command.h/.cpp` (NEU)
 
-- [ ] Create header: CommandState enum + BaseCommand + Read/Write/MultiWrite classes
-- [ ] Implement execute() für alle 3 Typen (0x04, 0x06, 0x10)
-- [ ] Implement process_response() mit Validation
+- [ ] Create header: CommandState enum + BaseCommand + ReadCommand/WriteCommand/WriteMultipleCommand classes
+- [ ] Implement execute() for all 3 types (Modbus 0x04, 0x06, 0x10)
+- [ ] Implement process_response() with validation
 - [ ] State transitions: PENDING → EXECUTING → COMPLETED/FAILED/TIMEOUT
 - [ ] Timeout tracking + callbacks
 - [ ] Unit tests
@@ -130,11 +130,11 @@
 - [ ] 4 operators: +, -, *, / propagate parent pointer
 
 
-### Modbus Commands (6-8h)
-**Files:** `servoxxd_modbus_commands.h/.cpp` (NEW)
+### Commands (6-8h)
+**Files:** `servoxxd_command.h/.cpp` (NEW)
 
-- [ ] .h: CommandState enum, BaseCommand/ReadCommand/WriteCommand/MultiWriteCommand classes
-- [ ] .cpp: execute/process_response für 3 Klassen, timeout tracking, state transitions, unit tests
+- [ ] .h: CommandState enum, BaseCommand/ReadCommand/WriteCommand/WriteMultipleCommand classes
+- [ ] .cpp: execute/process_response for 3 classes, timeout tracking, state transitions, unit tests
 
 
 ### CommandQueue (4-6h)

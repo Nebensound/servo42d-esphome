@@ -11,8 +11,7 @@
 
 ## Overview
 
-**Class:** [ServoXxd](../../components/servoxxd/stepper/servoxxd.h)  
-**Files:** `servoxxd.h` / `servoxxd.cpp`  
+**Class:** ServoXxd  
 **Inherits:** 
 - [`stepper::Stepper`](https://github.com/esphome/esphome/blob/dev/esphome/components/stepper/stepper.h) (ESPHome base stepper interface)
 - [`modbus::ModbusDevice`](https://github.com/esphome/esphome/blob/dev/esphome/components/modbus/modbus_controller.h) (ESPHome Modbus client)
@@ -50,81 +49,31 @@ The component follows ESPHome's standard architecture by inheriting from three b
 - Provides `setup()`, `loop()`, `dump_config()` lifecycle methods
 - Enables `set_interval()` and `set_timeout()` for periodic tasks
 
-## Required Method Overrides
+## Required Method Overrides (essentials)
 
-> [!Important]
-> **Required Method Overrides**
->
-> The following virtual methods from the base classes **must** be overridden:
->
-> **From `stepper::Stepper`:**
->
-> - `virtual void on_update_speed()` - Optional override, called by `SetSpeedAction` after speed changes
->   - Default implementation is empty
->   - Override if you need to react to runtime speed changes
->
-> **IMPORTANT - Non-overridable methods:**
-> The following `stepper::Stepper` methods are **NOT virtual** and **CANNOT be overridden**, but they **CAN be overloaded**:
->
-> - `void set_target(int32_t steps)` - Directly sets `target_position` member (base class)
-> - `void report_position(int32_t steps)` - Directly sets `current_position` member (base class)
-> - `bool has_reached_target()` - Compares `current_position == target_position`
-> - `void set_max_speed(float steps_per_second)` - Directly sets `max_speed_` member (base class, non-virtual)
->
-> **Overloading Strategy:**
-> We define additional overloads with our custom types:
->
-> - `void set_target(Position target)` - Our Position-based API (converts to steps internally)
-> - `void report_position(Position position)` - Our Position-based API (converts to steps internally)
-> - `void set_speed(Speed speed)` - Our Speed-based API (coexists with base class `set_max_speed()`)
->
-> **Speed Handling:**
->
-> - ESPHome may call base class `set_max_speed(float steps_per_second)` → updates `max_speed_` directly
-> - Our YAML config calls our `set_speed(Speed)` → converts from units and updates internal state
-> - Component must monitor `max_speed_` in `loop()` for external changes and sync internal Speed representation if needed
->
-> Both signatures coexist:
->
-> - ESPHome actions call `set_target(int32_t)` → updates `target_position` directly
-> - Our YAML actions call `set_target(Position)` → updates `target_pos_` and syncs `target_position`
-> - In `loop()`, check if `target_position` changed externally and sync to `target_pos_` if needed
->
-> These methods directly manipulate the public `current_position` and `target_position` members.
-> Our implementation must:
->
-> 1. Define our own Position-based members (`current_pos_`, `target_pos_`)
-> 2. Keep the base class members synchronized whenever our Position objects change
-> 3. Provide overloaded methods for both int32_t (ESPHome) and Position (our API) types
-> 4. Monitor base class members in loop() for external changes from ESPHome actions
->
-> **From `modbus::ModbusDevice`:**
->
-> - `void on_modbus_data(const std::vector<uint8_t> &data)` - **Required override** (pure virtual `= 0`). Process successful Modbus responses
-> - `void on_modbus_error(uint8_t function_code, uint8_t exception_code)` - Optional override (virtual with empty default `{}`). Handle Modbus communication errors
-> - `void on_modbus_read_registers(uint8_t function_code, uint16_t start_address, uint16_t number_of_registers)` - Optional override (virtual with empty default `{}`). Handle read register requests (server mode only)
-> - `void on_modbus_write_registers(uint8_t function_code, const std::vector<uint8_t> &data)` - Optional override (virtual with empty default `{}`). Handle write register requests (server mode only)
->
-> **From `Component`:**
->
-> - `void setup()` - **Required override** (virtual). Component initialization (motor configuration, initial state)
-> - `void loop()` - **Required override** (virtual). Called every iteration (command queue processing)
-> - `void dump_config()` - **Required override** (virtual). Log component configuration for diagnostics
-> - `void on_shutdown()` - Optional override (virtual with empty default `{}`). Called before system shutdown
-> - `void on_safe_shutdown()` - Optional override (virtual with empty default `{}`). Called during safe shutdown sequence
-> - `bool teardown()` - Optional override (virtual returning `true`). Gracefully finish operations before powerdown
-> - `void on_powerdown()` - Optional override (virtual with empty default `{}`). Power down hardware after teardown
->
-> These overrides bridge ESPHome's standard interfaces to our motor-specific implementation.
+- From `stepper::Stepper`:
+  - Optional: `on_update_speed()` if runtime reactions to speed changes are needed.
+  - Non-virtual base methods (cannot override, may overload): `set_target(int32_t)`, `report_position(int32_t)`, `set_max_speed(float)`.
+  - Overloads provided by this component: `set_target(Position)`, `report_position(Position)`, `set_speed(Speed)`.
+  - Synchronization: Keep base members `current_position`/`target_position` in sync with internal `Position` objects; monitor external changes in `loop()`.
+- From `modbus::ModbusDevice`:
+  - Implement `on_modbus_data(...)` and `on_modbus_error(...)` - these forward to active ITransport implementation (Layer 4)
+  - These are ESPHome-specific callbacks; SerialTransport would use different integration mechanism
+  - These are implementation details of the transport layer and should not be called directly
 
+- From `Component`:
+  - Implement `setup()`, `loop()`, `dump_config()`; other lifecycle hooks optional.
+
+These overrides bridge ESPHome's standard interfaces to the motor-specific implementation.
 ## Responsibilities
 
 - **Lifecycle Management:** setup(), dump_config(), loop()
 - **Periodic Polling:** via set_interval("status_poll", ...): encoder, speed, motor status, protection status
-- **Modbus Bridge:** on_modbus_data() → queue.process_response(), on_modbus_error() → queue.handle_error()
+- **Transport Bridge:** ESPHome protocol callbacks → forward to ITransport implementation (Layer 4) → CommandQueue
 - **Public API:** Implementing all YAML actions (see [02-cpp-interface.md](./02-cpp-interface.md#public-c-api-binding))
 - **Configuration Storage:** Holds all YAML configuration values
 - **State Management:** Tracks runtime state, last-used parameters
+- **Coordination:** Delegates to StepperEngine (Layer 2), manages helpers and sub-components
 - **Coordination:** Delegates to StepperEngine (Layer 2), manages helpers and sub-components
 
 ## Key Configuration Fields
@@ -208,11 +157,16 @@ Acceleration last_accel;              // Shared accel/decel (includes unit)
 
 **Layer 3 (CommandQueue):**
 - StepperEngine manages the queue (not ServoXxd directly)
-- ServoXxd only bridges Modbus callbacks to queue
-
-**Layer 4 (Transport):**
-- ServoXxd inherits ModbusDevice for Modbus communication
-- Callbacks on_modbus_data() and on_modbus_error() delegate to StepperEngine
+- ServoXxd only bridges transport callbacks to engine
+**Layer 4 (Transport + ServoCommandCodec):**
+- ServoXxd inherits ModbusDevice (ESPHome framework requirement)
+- ESPHome protocol callbacks are forwarded to active ITransport implementation
+- Current implementation: ModbusTransport (via ModbusDevice callbacks)
+- Future: SerialTransport would use different ESPHome integration (e.g., uart component callbacks)
+- ServoCommandCodec (in Layer 4) provides encode/decode functions for all commands
+- StepperEngine (Layer 2) uses codec to prepare command data and parse responses
+- Transport layer is completely abstracted - upper layers only see ITransport and Command enumds
+- StepperEngine (Layer 2) uses codec to prepare command data and parse responses
 
 ---
 

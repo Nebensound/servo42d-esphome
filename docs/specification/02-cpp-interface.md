@@ -10,13 +10,13 @@ Purpose: Provide a clear, cohesive design for the C++ classes, methods, responsi
 > - [02a-layer1-core.md](./02a-layer1-core.md) - Layer 1 (ServoXxd) details
 > - [02b-layer2-stepper-engine.md](./02b-layer2-stepper-engine.md) - Layer 2 (StepperEngine) details
 > - [02c-layer3-command-queue.md](./02c-layer3-command-queue.md) - Layer 3 (CommandQueue) details
-> - [02d-layer4-transport.md](./02d-layer4-transport.md) - Layer 4 (Modbus) details
+> - [02d-layer4-transport.md](./02d-layer4-transport.md) - Layer 4 (Transport) details
 
 ## Design goals
 
 - Honor [README.md](../../README.md) and [01-yaml-api.md](./01-yaml-api.md) exactly (names, types, behavior, notes)
 - Clean separation of concerns: device, control, positioning, command queue, conversions
-- Deterministic, serial Modbus command execution with timeouts and deduplication
+- Deterministic, serialized command execution with timeouts and deduplication
 - Stable public API for actions/configs; internal details are free to evolve
 - Explicit units for all public methods; centralized conversions internally
 - Safe defaults and clamps to hardware limits; protect mechanics on stop
@@ -50,11 +50,11 @@ graph TB
         L3C["Command Deduplication"]
     end
     
-    subgraph Layer4["Layer 4: Transport Layer (Modbus)"]
-        L4A["Protocol Commands<br/>(Read 0x04, Write 0x06, Multi 0x10)"]
-        L4B["Request/Response Handling"]
-        L4C["Encoding/Decoding"]
-        L4D["Future: Serial, CAN, etc."]
+    subgraph Layer4["Layer 4: Transport Abstraction"]
+        L4A["Command Enum<br/>(Type-safe 0x30-0xFF)"]
+        L4B["ITransport Interface<br/>(execute/read_command)"]
+        L4C["ServoCommandCodec<br/>(encode/decode)"]
+        L4D["ModbusTransport, SerialTransport"]
     end
     
     Layer1 -->|delegates movement logic| Layer2
@@ -69,8 +69,7 @@ graph TB
 
 ### Layer 1: Core Component (Transport-Agnostic)
 
-**Class:** [ServoXxd](../../components/servoxxd/stepper/servoxxd.h)  
-**Files:** `servoxxd.h` / `servoxxd.cpp`  
+**Class:** ServoXxd  
 **Inherits:** [stepper::Stepper](https://esphome.io/components/stepper/), [modbus::ModbusDevice](https://esphome.io/components/modbus.html), esphome::Component
 
 **Responsibilities:**
@@ -78,7 +77,7 @@ graph TB
 - Component lifecycle (setup, loop, dump_config)
 - Configuration management (setters for all YAML parameters)
 - YAML action API (enable, disable, set_target, home, etc.)
-- Modbus callbacks (delegates to transport layer)
+- Transport bridge (ESPHome callbacks forward to ITransport implementation)
 - Synchronization with ESPHome base classes
 - Delegates all movement logic to StepperEngine
 
@@ -88,8 +87,7 @@ graph TB
 
 ### Layer 2: Movement Logic (Transport-Agnostic)
 
-**Class:** [StepperEngine](../../components/servoxxd/stepper/servoxxd_stepper_engine.h)  
-**Files:** `servoxxd_stepper_engine.h` / `servoxxd_stepper_engine.cpp`
+**Class:** StepperEngine
 
 **Responsibilities:**
 
@@ -109,8 +107,7 @@ graph TB
 
 ### Layer 3: Command Coordination (Transport-Agnostic)
 
-**Class:** [CommandQueue](../../components/servoxxd/stepper/servoxxd_queue.h)  
-**Files:** `servoxxd_queue.h` / `servoxxd_queue.cpp`  
+**Class:** CommandQueue  
 **Managed by:** StepperEngine
 
 **Responsibilities:**
@@ -125,39 +122,31 @@ graph TB
 
 **[→ Detailed Layer 3 Specification](./02c-layer3-command-queue.md)**
 
-### Layer 4: Transport Layer (Protocol-Agnostic Commands + Transport Implementation)
+### Layer 4: Transport Abstraction
 
-**⚠️ Refactoring in Progress:** See [Transport Abstraction Refactoring](./02d-layer4-transport-refactoring.md) for details
+**Components:**
+- **Command enum:** Type-safe hardware command identifiers (0x30-0xFF)
+- **ITransport interface:** Protocol-agnostic contract (`execute_command`, `read_command`, `is_busy`, `update`)
+- **ServoCommandCodec:** Encode/decode command payloads (static functions)
+- **ModbusTransport:** Modbus-RTU implementation
+- **SerialTransport (future):** Serial FA/FB implementation
 
-**Layer 4a: Semantic Commands** (Transport-Agnostic)  
-**Files:** `servoxxd_command.h` / `servoxxd_command.cpp` (renamed from `servoxxd_modbus.*`)
+**Design Pattern:** Strategy (ITransport) + Codec (ServoCommandCodec)
 
-**Responsibilities:**
+**Key Responsibilities:**
+- Abstract protocol details (Modbus-RTU, Serial FA/FB frames)
+- Provide unified Command-based API for upper layers
+- Manage framing, addressing, CRC calculation
+- Handle request-response state machine (half-duplex)
+- Encode/decode command data via ServoCommandCodec
 
-- Transport-agnostic register commands:
-  - `ReadRegisterCommand(register, count)`
-  - `WriteRegisterCommand(register, value)`
-  - `WriteMultipleRegistersCommand(register, values)`
-- Command state tracking (PENDING → EXECUTING → COMPLETED/FAILED/TIMEOUT)
-- Request/response coordination via `ITransport` interface
-- No knowledge of protocol specifics (Modbus, Serial, CAN)
-
-**Layer 4b: Transport Interface + Implementations**  
-**Files:** `servoxxd_transport.h`, `servoxxd_modbus_transport.h/.cpp`
-
-**Responsibilities:**
-
-- **ITransport Interface:** Abstract protocol methods (`send_read`, `send_write`, etc.)
-- **ModbusTransport:** Modbus-RTU implementation (functions 0x04/0x06/0x10)
-- **Future:** SerialTransport, CANTransport, etc.
-- Protocol encoding/decoding
-- Response routing to commands
+**Key Insight:** Hardware uses identical command codes (0x30-0xFF) for both Serial and Modbus protocols. Same code can represent different operations (MOVE vs STOP) based on data payload.
 
 **Future Extensibility:**
-
-- ✅ Commands work with any transport (Modbus, Serial, CAN)
-- ✅ Same Layers 1-3, swap Layer 4b implementation
-- ✅ Easy to add new hardware protocols
+- ✅ Upper layers use Command enum only (transport-agnostic)
+- ✅ Add SerialTransport without changing Layers 1-3
+- ✅ Same Command enum, different wire protocols
+- ✅ Codec reusable across all transports
 
 **[→ Detailed Layer 4 Specification](./02d-layer4-transport.md)**
 
@@ -165,7 +154,7 @@ graph TB
 
 **Unit Conversion & Value Storage:**
 
-- **Files:** `servoxxd_speed.h/.cpp`, `servoxxd_acceleration.h/.cpp`, `servoxxd_position.h/.cpp`
+- **Classes:** Speed, Acceleration, Position
 - **Purpose:**
   - Type-safe unit conversion (steps, degrees, RPM, etc.)
   - Optimized getter types based on mathematical analysis
@@ -187,7 +176,7 @@ For detailed implementation specifications of each layer, see the dedicated docu
 - **[Layer 3 (CommandQueue) - Command Coordination](./02c-layer3-command-queue.md)**
   - Single-flight guarantee, execution flow, smart command management
   
-- **[Layer 4 (Modbus) - Transport Layer](./02d-layer4-transport.md)**
+- **[Layer 4 - Transport Abstraction](./02d-layer4-transport.md)**
   - Command classes, state machine, protocol details
 
 ---
@@ -302,7 +291,7 @@ void set_acceleration(Acceleration acceleration);  // YAML: stepper.set_accelera
 > **Hardware Limitation:** The motor controller does not support separate acceleration and deceleration values. The `set_acceleration` method affects both rates. A `stepper.set_deceleration` action in YAML will cause a validation error.
 
 > [!NOTE]
-> All methods are non-blocking: they enqueue Modbus commands and return immediately. Unit conversions and hardware clamps are applied before enqueueing.
+> All methods are non-blocking: they enqueue transport commands and return immediately. Unit conversions and hardware clamps are applied before enqueueing.
 
 ### Unit Type Definitions
 
@@ -411,44 +400,44 @@ enum class AccelerationUnit : uint8_t {
 > [!CAUTION]
 > **Hardware Acceleration Encoding (Inverse Time Mapping)**
 >
-> Die Hardware verwendet einen **nicht-linearen Wert 0-255**, der die Zeitdauer zwischen diskreten Geschwindigkeitsänderungen von ±1 RPM steuert:
+> The hardware uses a **non-linear value 0-255** that controls the time duration between discrete speed changes of ±1 RPM:
 >
-> **Fundamentale Beziehung:**
->
-> ```text
-> acc = 0:    Keine Beschleunigung (Motor springt sofort auf Zielgeschwindigkeit)
-> acc = 1-255: Δt = (256 - acc) × 50 μs  (Zeit zwischen ±1 RPM Änderungen)
-> ```
->
-> - `acc`: Hardware-Wert (0-255, wird an Motor gesendet)
-> - `Δt`: Zeitintervall zwischen aufeinanderfolgenden Geschwindigkeitsänderungen von ±1 RPM
-> - Bei `acc=0`: **Spezialfall** - keine Rampe, direkte Geschwindigkeitsänderung (∞ RPM/s)
-> - Bei `acc=1`: Langsamste Beschleunigung (Δt = 12,75 ms → ~78 RPM/s)
-> - Bei `acc=255`: Schnellste Beschleunigung (Δt = 50 μs → 20000 RPM/s)
->
-> **Umrechnung User-Eingabe → Hardware:**
->
-> Gegeben: Gewünschte Beschleunigung `a_user` in RPM/s
+> **Fundamental Relationship:**
 >
 > ```text
-> Für a_user = ∞ (keine Rampe):   acc = 0
-> Für a_user > 0 (mit Rampe):     acc = 256 - (20000 / a_user)
->                                 acc = max(1, min(255, berechnet))
+> acc = 0:    No acceleration (motor jumps immediately to target speed)
+> acc = 1-255: Δt = (256 - acc) × 50 μs  (time between ±1 RPM changes)
 > ```
 >
-> **Umrechnung Hardware → Effektive Rate:**
+> - `acc`: Hardware value (0-255, sent to motor)
+> - `Δt`: Time interval between consecutive speed changes of ±1 RPM
+> - At `acc=0`: **Special case** - no ramp, direct speed change (∞ RPM/s)
+> - At `acc=1`: Slowest acceleration (Δt = 12.75 ms → ~78 RPM/s)
+> - At `acc=255`: Fastest acceleration (Δt = 50 μs → 20000 RPM/s)
+>
+> **Conversion User Input → Hardware:**
+>
+> Given: Desired acceleration `a_user` in RPM/s
 >
 > ```text
-> Für acc = 0:       a_eff = ∞ (sofortige Änderung)
-> Für acc = 1-255:   a_eff = 20000 / (256 - acc)  [RPM/s]
+> For a_user = ∞ (no ramp):   acc = 0
+> For a_user > 0 (with ramp): acc = 256 - (20000 / a_user)
+>                             acc = max(1, min(255, calculated))
 > ```
 >
-> **Wichtig:**
+> **Conversion Hardware → Effective Rate:**
 >
-> - **acc=0 ist Spezialfall:** Wert aus YAML wird direkt übernommen, keine Rampe
-> - Nicht microstepping-kalibriert (im Gegensatz zu Speed)
-> - Gilt für bereits skalierte RPM-Werte
-> - Nicht-lineare Beziehung: kleine acc-Änderungen bei hohen Werten → große Effekt-Unterschiede
+> ```text
+> For acc = 0:       a_eff = ∞ (immediate change)
+> For acc = 1-255:   a_eff = 20000 / (256 - acc)  [RPM/s]
+> ```
+>
+> **Important:**
+>
+> - **acc=0 is special case:** Value from YAML is used directly, no ramp
+> - Not microstepping-calibrated (unlike Speed)
+> - Applies to already scaled RPM values
+> - Non-linear relationship: small acc changes at high values → large effect differences
 
 > [!NOTE]
 > **Friend Class Design:** Stores only `uint8_t acc_` (1 byte) hardware value. Conversions to user-facing RPM/s are approximate due to non-linear mapping. Constructor maps user units to nearest hardware value using inverse formula.
@@ -517,32 +506,32 @@ enum class PositionUnit : uint8_t {
 >
 > Die Hardware verwendet ein **Split-Format** basierend auf dem integrierten Encoder:
 >
-> **Fundamentale Struktur:**
+> **Fundamental Structure:**
 >
 > ```text
 > Position = revolutions + (angle_ticks / 16384)
 > ```
 >
-> - `revolutions`: Vollständige Umdrehungen (int32_t, -2^31..2^31-1)
-> - `angle_ticks`: Winkelposition innerhalb einer Umdrehung (uint16_t, 0-16383)
-> - `TICKS_PER_REV = 16384`: Encoder-Konstante (Hardware-fest, 2^14 Ticks pro Umdrehung)
+> - `revolutions`: Complete revolutions (int32_t, -2^31..2^31-1)
+> - `angle_ticks`: Angular position within one revolution (uint16_t, 0-16383)
+> - `TICKS_PER_REV = 16384`: Encoder constant (hardware-fixed, 2^14 ticks per revolution)
 >
-> **Carry/Borrow Verhalten:**
+> **Carry/Borrow Behavior:**
 >
 > ```text
-> Wenn angle_ticks ≥ 16384:  revolutions++, angle_ticks -= 16384  (Überlauf → nächste Umdrehung)
-> Wenn angle_ticks < 0:      revolutions--, angle_ticks += 16384  (Unterlauf → vorherige Umdrehung)
+> If angle_ticks ≥ 16384:  revolutions++, angle_ticks -= 16384  (overflow → next revolution)
+> If angle_ticks < 0:      revolutions--, angle_ticks += 16384  (underflow → previous revolution)
 > ```
 >
-> Valider Bereich: `angle_ticks` ist immer [0, 16383], Über-/Unterlauf wird in `revolutions` getragen
+> Valid range: `angle_ticks` is always [0, 16383], overflow/underflow is carried into `revolutions`
 >
-> **Umrechnung:**
+> **Conversion:**
 >
 > User → Hardware (Split):
 >
 > ```text
 > total_ticks = (value × steps_per_rev × 16384) / steps_per_rev
-> revs = total_ticks / 16384           (Division mit Vorzeichen)
+> revs = total_ticks / 16384           (signed division)
 > angle_ticks = total_ticks % 16384    (Modulo immer positiv 0-16383)
 > ```
 >
@@ -552,11 +541,11 @@ enum class PositionUnit : uint8_t {
 > total_ticks = (revs × 16384) + angle_ticks
 > ```
 >
-> **Wichtig:**
+> **Important:**
 >
-> - Encoder-natives Format (direkt aus Hardware-Feedback)
-> - Arithmetik erfolgt auf `total_ticks`, dann Re-Split mit Carry/Borrow-Handling
-> - Conversions zu Steps benötigen `steps_per_revolution` (via parent pointer)
+> - Encoder-native format (directly from hardware feedback)
+> - Arithmetic operates on `total_ticks`, then re-splits with carry/borrow handling
+> - Conversions to Steps require `steps_per_revolution` (via parent pointer)
 
 **Key Design Features:**
 
@@ -635,87 +624,7 @@ float display_acc = accel.rpm_per_sec();          // ~100 RPM/s (float, approxim
 
 ## Units and conversions
 
-The component supports multiple unit types for speed, acceleration, and position to provide flexibility and compatibility with ESPHome's stepper interface while enabling more intuitive physical units.
-   - Provides the standard stepper API that ESPHome automation expects (e.g., `set_target()`, `current_position`, `target_position`)
-   - Defines lifecycle hooks and state management common to all steppers
-   - Ensures compatibility with ESPHome's stepper actions and lambdas
-
-2. **[`modbus::ModbusDevice`](https://github.com/esphome/esphome/blob/dev/esphome/components/modbus/modbus_controller.h)** (ESPHome Modbus client)
-   - Handles RS485 communication via ESPHome's modbus component
-   - Provides `send()`, `on_modbus_data()`, `on_modbus_error()` for request/response flow
-   - Manages device address and parent modbus controller reference
-
-3. **[`Component`](https://github.com/esphome/esphome/blob/dev/esphome/core/component.h)** (ESPHome component lifecycle)
-   - Provides `setup()`, `loop()`, `dump_config()` lifecycle methods
-   - Enables `set_interval()` and `set_timeout()` for periodic tasks
-
-> [!Important]
-> The `stepper::Stepper` base class provides a **position-centric abstraction** (absolute target, current position). Our component extends this to support both **Position Mode** (using the base Stepper API) and **Speed Mode** (continuous rotation, bypassing position tracking). Internal state and action routing adapt to the configured operating mode.
-
-> [!Important]
-> **Required Method Overrides**
->
-> The following virtual methods from the base classes **must** be overridden:
->
-> From `stepper::Stepper`:
->
-> - `virtual void on_update_speed()` - Optional override, called by `SetSpeedAction` after speed changes
->   - Default implementation is empty
->   - Override if you need to react to runtime speed changes
->
-> **IMPORTANT - Non-overridable methods:**
-> The following `stepper::Stepper` methods are **NOT virtual** and **CANNOT be overridden**, but they **CAN be overloaded**:
->
-> - `void set_target(int32_t steps)` - Directly sets `target_position` member (base class)
-> - `void report_position(int32_t steps)` - Directly sets `current_position` member (base class)
-> - `bool has_reached_target()` - Compares `current_position == target_position`
-> - `void set_max_speed(float steps_per_second)` - Directly sets `max_speed_` member (base class, non-virtual)
->
-> **Overloading Strategy:**
-> We define additional overloads with our custom types:
->
-> - `void set_target(Position target)` - Our Position-based API (converts to steps internally)
-> - `void report_position(Position position)` - Our Position-based API (converts to steps internally)
-> - `void set_speed(Speed speed)` - Our Speed-based API (coexists with base class `set_max_speed()`)
->
-> **Speed Handling:**
->
-> - ESPHome may call base class `set_max_speed(float steps_per_second)` → updates `max_speed_` directly
-> - Our YAML config calls our `set_speed(Speed)` → converts from units and updates internal state
-> - Component must monitor `max_speed_` in `loop()` for external changes and sync internal Speed representation if needed
->
-> Both signatures coexist:
->
-> - ESPHome actions call `set_target(int32_t)` → updates `target_position` directly
-> - Our YAML actions call `set_target(Position)` → updates `target_pos_` and syncs `target_position`
-> - In `loop()`, check if `target_position` changed externally and sync to `target_pos_` if needed
->
-> These methods directly manipulate the public `current_position` and `target_position` members.
-> Our implementation must:
->
-> 1. Define our own Position-based members (`current_pos_`, `target_pos_`)
-> 2. Keep the base class members synchronized whenever our Position objects change
-> 3. Provide overloaded methods for both int32_t (ESPHome) and Position (our API) types
-> 4. Monitor base class members in loop() for external changes from ESPHome actions
->
-> From `modbus::ModbusDevice`:
->
-> - `void on_modbus_data(const std::vector<uint8_t> &data)` - **Required override** (pure virtual `= 0`). Process successful Modbus responses
-> - `void on_modbus_error(uint8_t function_code, uint8_t exception_code)` - Optional override (virtual with empty default `{}`). Handle Modbus communication errors
-> - `void on_modbus_read_registers(uint8_t function_code, uint16_t start_address, uint16_t number_of_registers)` - Optional override (virtual with empty default `{}`). Handle read register requests (server mode only)
-> - `void on_modbus_write_registers(uint8_t function_code, const std::vector<uint8_t> &data)` - Optional override (virtual with empty default `{}`). Handle write register requests (server mode only)
->
-> From `Component`:
->
-> - `void setup()` - **Required override** (virtual). Component initialization (motor configuration, initial state)
-> - `void loop()` - **Required override** (virtual). Called every iteration (command queue processing)
-> - `void dump_config()` - **Required override** (virtual). Log component configuration for diagnostics
-> - `void on_shutdown()` - Optional override (virtual with empty default `{}`). Called before system shutdown
-> - `void on_safe_shutdown()` - Optional override (virtual with empty default `{}`). Called during safe shutdown sequence
-> - `bool teardown()` - Optional override (virtual returning `true`). Gracefully finish operations before powerdown
-> - `void on_powerdown()` - Optional override (virtual with empty default `{}`). Power down hardware after teardown
->
-> These overrides bridge ESPHome's standard interfaces to our motor-specific implementation.
+The component supports multiple unit types for speed, acceleration, and position to provide flexibility and compatibility with ESPHome's stepper interface while enabling more intuitive physical units. See the type definitions above for details.
 
 ---
 

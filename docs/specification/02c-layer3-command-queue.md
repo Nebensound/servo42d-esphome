@@ -13,8 +13,7 @@
 
 ## Overview
 
-**Class:** [CommandQueue](../../components/servoxxd/stepper/servoxxd_queue.h)  
-**Files:** `servoxxd_queue.h` / `servoxxd_queue.cpp`
+**Class:** CommandQueue
 
 **Design Pattern:** Command Queue + State Machine
 
@@ -24,7 +23,7 @@
 - Manages command lifecycle: PENDING → EXECUTING → COMPLETED/FAILED/TIMEOUT
 - Smart command management (deduplication, coalescing, critical commands)
 - Error handling and timeout recovery
-- Transport-agnostic (works with any transport layer)
+- Transport-agnostic (works with ITransport interface and Command enum from Layer 4)
 
 ## Responsibilities
 
@@ -34,12 +33,13 @@
 - Process responses and errors from transport layer (Layer 4)
 - Optimize queue with deduplication, coalescing, and priority handling
 - Ensure queue never blocks: failed commands are removed, execution continues
+- Bridge between StepperEngine (Layer 2) and ITransport (Layer 4)
 
 ## Single-Flight Guarantee
 
 ### Core Concept
 
-Only **one command** may be in EXECUTING state at any time. This ensures serialized Modbus communication and prevents race conditions.
+Only **one command** may be in EXECUTING state at any time. This ensures serialized transport communication and prevents race conditions.
 
 ### Execution Guard
 
@@ -53,7 +53,7 @@ Only **one command** may be in EXECUTING state at any time. This ensures seriali
 1. **`execute_next()`**
    - Check execution guard: if **true**, return immediately (wait for response)
    - If **false** and queue not empty: dequeue next PENDING command
-   - Send via `ModbusDevice::send()`, transition to EXECUTING, start timeout timer
+   - Send via transport interface, transition to EXECUTING, start timeout timer
    - Set execution guard = **true**
 
 2. **`on_response_received(data)`**
@@ -89,26 +89,28 @@ Only **one command** may be in EXECUTING state at any time. This ensures seriali
 
 ### Deduplication
 
-- **Rule:** Duplicate read requests for the same register ignored if already queued or executing
-- **Example:** Two encoder position reads (0x30) → only one queued
+- **Rule:** Duplicate read requests for the same Command ignored if already queued or executing
+- **Example:** Two `READ_ENCODER_CARRY` commands → only one queued
 
 ### Coalescing
 
 - **Rule:** Successive position/speed commands replace earlier pending ones (keep only newest target)
-- **Example:** `move_to(100)` → `move_to(200)` → only 200 queued
+- **Example:** `MOVE_POSITION_MODE_2(100)` → `MOVE_POSITION_MODE_2(200)` → only 200 queued
 - **Benefit:** Reduces queue depth, improves responsiveness
+- **Implementation:** Compare Command enum values to detect duplicates
 
 ### Critical Commands
 
-- **Rule:** `emergency_stop()` clears all pending (non-executing) commands before enqueueing
+- **Rule:** `Command::EMERGENCY_STOP` clears all pending (non-executing) commands before enqueueing
 - **Benefit:** Ensures immediate response without waiting for queue
 
 ## Error Handling
 
-- **Modbus Error:** Mark current command as FAILED, trigger completion callback, advance to next
+- **Transport Error:** Mark current command as FAILED, trigger completion callback, advance to next
 - **Timeout:** Mark as TIMEOUT, advance to next (no automatic retry - caller's responsibility)
 - **Unexpected Response:** Log warning if no command executing
 - **Queue Never Blocks:** Failed commands removed, execution continues
+- **Error codes passed to StepperEngine** via `on_transport_error(Command, ErrorCode)`
 
 ## Integration with ServoXxd::loop()
 
@@ -118,21 +120,27 @@ Only **one command** may be in EXECUTING state at any time. This ensures seriali
 
 ## Example Command Lifecycle
 
-```
 1. StepperEngine enqueues move_to command → CommandQueue adds to queue (PENDING)
+   - Uses Command::MOVE_POSITION_MODE_2 with data encoded by ServoCommandCodec
 2. ServoXxd::loop() calls queue->execute_next()
-   → Queue checks guard (false), dequeues command, sends via Modbus, sets guard=true (EXECUTING)
-3. Modbus response received → queue->on_response_received(data)
-   → Process data, mark COMPLETED, clear guard, call execute_next() for next command
+   → Queue checks guard (false), dequeues command, sends via ITransport, sets guard=true (EXECUTING)
+3. Transport response received → queue->on_response_received(Command, data)
+   → Forward to StepperEngine, mark COMPLETED, clear guard, call execute_next() for next command
 4. If timeout → check_timeout() detects, marks TIMEOUT, clears guard, calls execute_next()
-```
+
+
+**Integration with Layer 4:**
+- CommandQueue holds reference to `ITransport*` interface
+- Uses `transport->execute_command(Command, data)` for writes
+- Uses `transport->read_command(Command, response)` for reads
+- Transport callbacks forwarded to StepperEngine with Command context
 
 ## Benefits
 
 - **Reliability:** Single-flight ensures no race conditions
 - **Robustness:** Timeout recovery prevents queue stall
 - **Performance:** Coalescing and deduplication optimize traffic
-- **Simplicity:** StepperEngine doesn't need to manage Modbus details
+- **Simplicity:** StepperEngine doesn't need to manage transport protocol details
 - **Testability:** Clear state machine, easy to unit test
 
 ---

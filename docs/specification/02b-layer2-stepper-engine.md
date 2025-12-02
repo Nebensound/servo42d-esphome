@@ -12,8 +12,7 @@
 
 ## Overview
 
-**Class:** [StepperEngine](../../components/servoxxd/stepper/servoxxd_stepper_engine.h)  
-**Files:** `servoxxd_stepper_engine.h` / `servoxxd_stepper_engine.cpp`
+**Class:** StepperEngine
 
 **Design Pattern:** State Machine + Strategy
 
@@ -68,14 +67,16 @@ void move_to(Position target, std::optional<Speed> speed, std::optional<Accelera
 void stop(std::optional<Acceleration> decel);
 void emergency_stop();
 void home();  // Uses homing configuration from ServoXxd parent
-void run_continuous(Speed speed, Acceleration accel);
+void run_continuous(std::optional<Speed> speed, std::optional<Acceleration> accel);
 void update(); // called cyclically, processes state machine, CommandQueue, and polling
 Position get_current_position() const;
 void set_position_update_callback(std::function<void(Position)> cb);
 void handle_error(...);
-void on_modbus_response(const std::vector<uint8_t>& data);
-void on_modbus_error(uint8_t function_code, uint8_t exception_code);
+void on_transport_response(Command cmd, const std::vector<uint8_t>& data);
+void on_transport_error(Command cmd, ErrorCode error);
 ```
+
+> Note: `move_to` accepts optional `speed`/`accel` overrides for atomar parametrierte Bewegungen. Wenn sie weggelassen werden, nutzt der Engine die zuletzt gesetzten Werte bzw. Defaults. `run_continuous` akzeptiert ebenfalls optionale Parameter; weggelassene Werte behalten den vorherigen Zustand.
 
 ## State Machine
 
@@ -89,7 +90,7 @@ enum class State {
   Running,       // Continuous rotation in progress (Speed Mode only)
   Homing,        // Homing process in progress
   Stopping,      // Controlled stop in progress (with deceleration)
-  Error          // Error occurred (e.g. Protection, Modbus error, Timeout)
+  Error          // Error occurred (e.g. Protection, Transport error, Timeout)
 };
 ```
 
@@ -115,9 +116,9 @@ enum class State {
 ### Events and Processing
 
 - **Commands from Layer 1:** move_to(), home(), stop(), run_continuous(), enable(), disable(), emergency_stop()
-- **StepperEngine (Layer 2):** Processes commands, manages state machine, decides transport commands
+- **StepperEngine (Layer 2):** Processes commands, manages state machine, encodes data via ServoCommandCodec, decides transport commands
 - **CommandQueue (Layer 3):** Serializes execution, manages timeouts
-- **Transport Responses (Layer 4):** Position, speed, status data processed by Layer 2
+- **Transport Responses (Layer 4):** Raw response bytes processed by Layer 2 using ServoCommandCodec decoders
 - **Polling Events:** Regular queries trigger transitions (e.g. Moving → Idle when target reached)
 - **Error Events:** Protection, timeout, transport errors trigger Error state
 
@@ -179,7 +180,9 @@ ServoXxd::loop()           → engine_->update()
 
 - StepperEngine holds and manages the CommandQueue instance
 - `update()` calls `queue->execute_next()`, checks timeouts, processes responses/errors
-- Modbus callbacks delegated to `engine->on_modbus_response()` / `on_modbus_error()`
+- Transport callbacks delegated to `engine->on_transport_response()` / `on_transport_error()`
+- Layer 2 uses `ServoCommandCodec` to encode movement parameters before passing to transport
+- Layer 2 uses `ServoCommandCodec` to decode responses from transport (encoder, speed, status, etc.)
 
 ## Benefits
 
