@@ -16,6 +16,14 @@ SOURCES = \
 	$(COMPONENT_DIR)/servoxxd_speed.cpp \
 	$(COMPONENT_DIR)/servoxxd_acceleration.cpp \
 	$(COMPONENT_DIR)/servoxxd_position.cpp \
+	$(COMPONENT_DIR)/servoxxd_codec.cpp \
+	$(MOCK_DIR)/hal.cpp
+
+CODEC_SOURCES = \
+	$(COMPONENT_DIR)/servoxxd_speed.cpp \
+	$(COMPONENT_DIR)/servoxxd_acceleration.cpp \
+	$(COMPONENT_DIR)/servoxxd_position.cpp \
+	$(COMPONENT_DIR)/servoxxd_codec.cpp \
 	$(MOCK_DIR)/hal.cpp
 
 QUEUE_SOURCES = \
@@ -31,7 +39,7 @@ ENGINE_SOURCES = \
 	$(COMPONENT_DIR)/servoxxd_position.cpp
 
 # Test executables (only the working ones for now)
-TESTS = test_speed test_acceleration test_position
+TESTS = test_speed test_acceleration test_position test_codec
 # TODO: Re-enable when implementation is complete:
 # TESTS += test_command_queue test_stepper_engine
 
@@ -54,6 +62,10 @@ test_acceleration: test_acceleration.cpp $(SOURCES)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 test_position: test_position.cpp $(SOURCES)
+	@echo "Building $@..."
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+test_codec: test_codec.cpp $(SOURCES)
 	@echo "Building $@..."
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
@@ -87,6 +99,7 @@ run: $(TESTS)
 	@./test_speed
 	@./test_acceleration
 	@./test_position
+	@./test_codec
 
 # Clean build artifacts
 clean:
@@ -109,3 +122,4 @@ help:
 	@echo "  test_speed       Build Speed class tests"
 	@echo "  test_acceleration Build Acceleration class tests"
 	@echo "  test_position    Build Position class tests"
+	@echo "  test_codec       Build ServoCommandCodec tests"
