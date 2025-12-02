@@ -1,12 +1,13 @@
 /**
- * @file servoxxd_command.h
+ * @file servoxxd_commands.h
  * @brief Type-safe command identifiers for ServoXxd servo driver communication
  *
- * This header defines the Command enum which maps 1:1 to command codes (0x30-0xFF)
- * used by the ServoXxd closed-loop servo driver. Commands are categorized into:
+ * This header defines the Command enum which maps 1:1 to command codes used by
+ * the ServoXxd closed-loop servo driver. Commands are categorized into:
  * - Read Commands (0x30-0x3F): Query motor state and sensors
- * - Configuration Commands (0x40-0x90): Setup motor parameters
+ * - Configuration Commands (0x40-0x9A): Setup motor parameters
  * - Movement Commands (0xF0-0xFF): Control motor motion
+ * - Special Commands: Commands outside the standard range
  *
  * Note: Some command codes represent multiple operations depending on the data
  * payload. The ServoCommandCodec class handles encoding/decoding to differentiate
@@ -25,7 +26,7 @@ namespace servoxxd {
 /**
  * @brief Type-safe hardware command identifiers
  *
- * Maps directly to ServoXxd command codes (0x30-0xFF).
+ * Maps directly to ServoXxd command codes.
  * Used with ITransport and ServoCommandCodec for protocol-agnostic communication.
  */
 enum class Command : uint8_t {
@@ -57,8 +58,8 @@ enum class Command : uint8_t {
   /// Restart/reset the controller
   RESTART_CONTROLLER = 0x3F,
 
-  // ==================== Configuration Commands (0x40-0x90) ====================
-  /// Set working current in mA
+  // ==================== Configuration Commands (0x40-0x9A) ====================
+  /// Set working current in mA (configuration)
   SET_WORKING_CURRENT = 0x44,
 
   /// Set home parameters (direction, speed, etc.)
@@ -70,13 +71,21 @@ enum class Command : uint8_t {
   /// Set work mode (CR_OPEN, SR_VFOC, etc.)
   SET_WORK_MODE = 0x82,
 
+  /// Set working current in mA (runtime change)
+  /// @see docs/specification/02-cpp-interface.md line 202
+  SET_WORKING_CURRENT_RUNTIME = 0x83,
+
   /// Set subdivision (microstepping: 1, 2, 4, 8, 16, 32, 64, etc.)
   SET_SUBDIVISION = 0x84,
+
+  /// Set homing current threshold for sensorless homing
+  /// @see docs/specification/02-cpp-interface.md line 221
+  SET_HOMING_CURRENT = 0x94,
 
   /// Start homing sequence
   START_HOMING = 0x9A,
 
-  // ==================== Special Commands (outside 0x30-0xFF range) ====================
+  // ==================== Special Commands (outside standard range) ====================
   /// Release protection state (clear error)
   /// Note: This command uses 0x0E, which is outside the standard command range.
   /// This is intentional per the hardware protocol specification.
