@@ -85,12 +85,6 @@ enum class Command : uint8_t {
   /// Start homing sequence
   START_HOMING = 0x9A,
 
-  // ==================== Special Commands (outside standard range) ====================
-  /// Release protection state (clear error)
-  /// Note: This command uses 0x0E, which is outside the standard command range.
-  /// This is intentional per the hardware protocol specification.
-  RELEASE_PROTECTION = 0x0E,
-
   // ==================== Movement Commands (0xF0-0xFF) ====================
   /// Enable or disable motor
   /// Data: 0x01 = enable, 0x00 = disable
@@ -120,6 +114,12 @@ enum class Command : uint8_t {
   /// Data: direction, speed, acceleration, position (4 bytes)
   /// Note: position=0 can be used to stop
   MOVE_POSITION_MODE_2 = 0xFE,
+
+  // ==================== Special Commands (outside standard range) ====================
+  /// Release protection state (clear error)
+  /// Note: This command uses 0x0E, which is outside the standard command range.
+  /// This is intentional per the hardware protocol specification.
+  RELEASE_PROTECTION = 0x0E,
 };
 
 }  // namespace servoxxd
