@@ -76,8 +76,10 @@ enum class Command : uint8_t {
   /// Start homing sequence
   START_HOMING = 0x9A,
 
-  // ==================== Protection Commands ====================
+  // ==================== Special Commands (outside 0x30-0xFF range) ====================
   /// Release protection state (clear error)
+  /// Note: This command uses 0x0E, which is outside the standard command range.
+  /// This is intentional per the hardware protocol specification.
   RELEASE_PROTECTION = 0x0E,
 
   // ==================== Movement Commands (0xF0-0xFF) ====================
