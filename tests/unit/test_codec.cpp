@@ -92,6 +92,7 @@ void test_encode_move_position_mode_2()
   std::cout << "  ✓ Positive position encoded correctly" << std::endl;
 
   // Test negative position
+  // Test negative position (using -1000 to verify two's complement encoding)
   bytes = ServoCommandCodec::encode_move_position_mode_2(-1000, 100, 50, Direction::CCW);
   assert(bytes.size() == 8);
   print_bytes(bytes);

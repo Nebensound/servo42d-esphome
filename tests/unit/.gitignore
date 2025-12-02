@@ -2,6 +2,7 @@
 test_speed
 test_acceleration
 test_position
+test_codec
 test_command_queue
 test_stepper_engine
 test_debug

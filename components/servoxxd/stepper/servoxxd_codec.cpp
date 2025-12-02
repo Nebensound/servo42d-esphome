@@ -57,6 +57,13 @@ namespace esphome
       int16_t rpm = speed.rpm_internal();
       uint8_t acc = accel.acc_internal();
 
+      // Validate revolution range - hardware uses int16_t for revolutions
+      // Range: -32768 to 32767 revolutions
+      if (revs < -32768 || revs > 32767)
+      {
+        return {}; // Out of range
+      }
+
       // Determine direction from RPM sign (or position for absolute)
       Direction dir = (rpm >= 0) ? Direction::CW : Direction::CCW;
       uint16_t abs_rpm = static_cast<uint16_t>(rpm >= 0 ? rpm : -rpm);
@@ -77,23 +84,10 @@ namespace esphome
       // Byte 3: Acceleration
       data[3] = acc;
 
-      // Bytes 4-7: Position as revolutions (int32_t, big-endian)
-      // Note: Hardware uses revolutions + angle_ticks format
-      data[4] = static_cast<uint8_t>((revs >> 24) & 0xFF);
-      data[5] = static_cast<uint8_t>((revs >> 16) & 0xFF);
-      data[6] = static_cast<uint8_t>((revs >> 8) & 0xFF);
-      data[7] = static_cast<uint8_t>(revs & 0xFF);
-
-      // Byte 8: Angle ticks high byte (upper 6 bits, lower 2 bits are in byte 9)
-      // Actually the hardware format uses:
-      // Bytes 4-5: Revolutions (big-endian int16)
-      // Bytes 6-7: Angle ticks (big-endian uint16)
-      // Let me correct this based on the Position class format
-
-      // Re-encode with correct format for mode 3:
-      // Bytes 4-5: Revolutions (int16_t, big-endian, high word)
+      // Hardware format for mode 3:
+      // Bytes 4-5: Revolutions (int16_t, big-endian)
       // Bytes 6-7: Angle ticks (uint16_t, big-endian)
-      int16_t revs_16 = static_cast<int16_t>(revs); // Truncate to 16 bits if needed
+      int16_t revs_16 = static_cast<int16_t>(revs);
 
       data[4] = static_cast<uint8_t>((revs_16 >> 8) & 0xFF);
       data[5] = static_cast<uint8_t>(revs_16 & 0xFF);
