@@ -74,4 +74,4 @@ desktop.ini
 htmlcov/
 
 # Documentation build
-docs/_build/
+docs/_build/_codeql_detected_source_root
