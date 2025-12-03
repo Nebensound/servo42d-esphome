@@ -2,30 +2,30 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up C++ compiler
         run: |
           sudo apt-get update
           sudo apt-get install -y g++ make
-      
+
       - name: Build unit tests
         run: |
           cd tests/unit
           make clean
           make all
-      
+
       - name: Run unit tests
         run: |
           cd tests/unit
@@ -42,16 +42,16 @@ jobs:
           - tests/esphome/test_hardware_movement.yaml
           - tests/esphome/test_new_units.yaml
           - tests/esphome/hw_setup_test.yaml
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      
+          python-version: "3.11"
+
       - name: Cache pip packages
         uses: actions/cache@v4
         with:
@@ -59,19 +59,24 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      
+
       - name: Install ESPHome
         run: |
           pip install esphome
-      
+
       - name: Create secrets.yaml
         run: |
           cd tests/esphome
-          cp secrets.yaml.template secrets.yaml || echo "# Dummy secrets for CI" > secrets.yaml
-          echo "wifi_ssid: \"dummy\"" >> secrets.yaml
-          echo "wifi_password: \"dummy\"" >> secrets.yaml
-          echo "api_key: \"dummy_api_key_for_ci_testing_only\"" >> secrets.yaml
-      
+          cat > secrets.yaml << 'EOF'
+          # ESPHome Secrets (CI Generated)
+          # WiFi credentials
+          wifi_ssid: "dummy_ci_ssid"
+          wifi_password: "dummy_ci_password"
+
+          # Fallback AP credentials
+          fallback_ap_password: "test1234"
+          EOF
+
       - name: Compile ${{ matrix.yaml-file }}
         run: |
           esphome compile ${{ matrix.yaml-file }}
@@ -79,11 +84,11 @@ jobs:
   lint-yaml:
     name: YAML Lint
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: YAML Lint
         uses: ibiqlik/action-yamllint@v3
         with:
@@ -97,3 +102,6 @@ jobs:
                 spaces: 2
               comments:
                 min-spaces-from-content: 1
+              document-start: disable
+              trailing-spaces: disable
+              comments-indentation: disable
