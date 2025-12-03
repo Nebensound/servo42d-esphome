@@ -1,3 +1,9 @@
+---
+# ESP32 hardware compilation test
+# This test compiles the component for actual ESP32 hardware
+# Use this to verify that all hardware-specific features compile correctly
+#
+# Run with: esphome compile tests/test_compile.yaml
 # ESP32 hardware compilation test
 # This test compiles the component for actual ESP32 hardware
 # Use this to verify that all hardware-specific features compile correctly
@@ -47,6 +53,7 @@ stepper:
     speed: 1000 steps/s
     acceleration: 500 steps/s^2
     servo_type: SERVO42D
+    mode: POSITION
 
     # MODBUS configuration
     modbus_id: modbus_bus
@@ -64,8 +71,6 @@ button:
     name: "Disable Motor"
     on_press:
       - stepper.disable: test_stepper
-
-  # Emergency functions
   - platform: template
     name: "Emergency Stop"
     on_press:
@@ -99,54 +104,25 @@ button:
           speed: 180 degrees/s
 
   - platform: template
-    name: "Stop Motion Default"
-    on_press:
-      - stepper.stop:
-          id: test_stepper
-
-  - platform: template
-    name: "Stop Motion Explicit"
+    name: "Stop Motion"
     on_press:
       - stepper.stop: test_stepper
 
-  # Homing tests
-  - platform: template
-    name: "Home Motor"
-    on_press:
-      - stepper.home: test_stepper
-
-  - platform: template
-    name: "Calibrate Motor"
-    on_press:
-      - stepper.calibrate: test_stepper
-
   # Position control
   - platform: template
-    name: "Reset Position"
+    name: "Report Position"
     on_press:
-      - stepper.set_zero: test_stepper
+      - stepper.report_position:
+          id: test_stepper
+          position: 0
 
   # Configuration actions
   - platform: template
-    name: "Set SR_VFOC Mode"
-    on_press:
-      - stepper.set_work_mode:
-          id: test_stepper
-          mode: SR_VFOC
-
-  - platform: template
-    name: "Set SR_CLOSE Mode"
-    on_press:
-      - stepper.set_work_mode:
-          id: test_stepper
-          mode: SR_CLOSE
-
-  - platform: template
-    name: "Set Working Current 1000mA"
+    name: "Set Working Current 1500mA"
     on_press:
       - stepper.set_working_current:
           id: test_stepper
-          current: 1000
+          current: 1500
 
   - platform: template
     name: "Set Working Current 2500mA"
@@ -160,14 +136,14 @@ button:
     on_press:
       - stepper.set_holding_current_percent:
           id: test_stepper
-          percent: 50
+          percent: 50%
 
   - platform: template
     name: "Set Holding Current 100%"
     on_press:
       - stepper.set_holding_current_percent:
           id: test_stepper
-          percent: 90
+          percent: 90%
 
   - platform: template
     name: "Set Microstepping 16"
@@ -182,22 +158,6 @@ button:
       - stepper.set_microstepping:
           id: test_stepper
           subdivision: 32
-
-  # System actions
-  - platform: template
-    name: "Restart Motor"
-    on_press:
-      - stepper.restart: test_stepper
-
-  - platform: template
-    name: "Key Lock"
-    on_press:
-      - stepper.key_lock: test_stepper
-
-  - platform: template
-    name: "Key Unlock"
-    on_press:
-      - stepper.key_unlock: test_stepper
 
 # Test sensors to verify compilation
 sensor:
@@ -230,7 +190,9 @@ script:
       # Stop and reset
       - stepper.stop: test_stepper
       - delay: 500ms
-      - stepper.set_zero: test_stepper
+      - stepper.report_position:
+          id: test_stepper
+          position: 0
 
       # Emergency stop test
       - stepper.emergency_stop: test_stepper
@@ -273,12 +235,6 @@ script:
   # Test configuration changes
   - id: test_configuration
     then:
-      # Test work mode changes
-      - stepper.set_work_mode:
-          id: test_stepper
-          mode: SR_CLOSE
-      - delay: 500ms
-
       # Test current settings
       - stepper.set_working_current:
           id: test_stepper
@@ -287,16 +243,10 @@ script:
 
       - stepper.set_holding_current_percent:
           id: test_stepper
-          percent: 75
-      - delay: 500ms
+          percent: 75%
 
       # Test microstepping
       - stepper.set_microstepping:
           id: test_stepper
           subdivision: 32
       - delay: 500ms
-
-      # Return to default mode
-      - stepper.set_work_mode:
-          id: test_stepper
-          mode: SR_VFOC

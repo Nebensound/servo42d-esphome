@@ -12,9 +12,8 @@ esphome:
       - delay: 5s # Wait for motor setup to complete
 
       # Stop any ongoing movement from setup
-      - lambda: |-
-          id(test_motor).stop_motor();
-          ESP_LOGI("test", "Motor stopped");
+      - stepper.stop: test_motor
+      - logger.log: "Motor stopped"
       - delay: 2s
       # Reset position to 0 after motor is stopped
       - stepper.report_position:
@@ -95,30 +94,22 @@ modbus:
 external_components:
   - source:
       type: local
-      path: ../components
-    components: [servo42d_rs485]
+      path: ../../components
+    components: [servoxxd]
 
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd
     id: test_motor
     modbus_id: modbus_rs485
     address: 0x02
+    servo_type: SERVO42D
+    mode: POSITION
 
     # Motor parameters
     steps_per_revolution: ${full_steps * microsteps}
     microsteps: ${microsteps}
-    max_speed: 3000 steps/min
+    speed: 50 steps/s # 3000 steps/min = 50 steps/s
     acceleration: 200 steps/s^2
-    deceleration: 200 steps/s^2
-
-    # Current settings
-    working_current: 1500mA
-    holding_current_percent: 50%
-
-    # Homing configuration
-    homing_direction: CW
-    homing_speed: 300 RPM
-    virtual_home_angle: 0deg
 
 # Position sensor - reports every 1 second
 sensor:

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "esphome/core/log.h"
+#include "servoxxd_transport.h"
+#include "servoxxd_commands.h"
 #include <vector>
 #include <deque>
 #include <functional>
@@ -11,43 +13,29 @@ namespace esphome
   namespace servoxxd
   {
 
-    // Forward declaration
-    class ServoXxd;
-
     /**
      * @brief Command state for state machine
      *
-     * From spec: "Each Modbus command follows a lifecycle state machine"
+     * From spec: "Each command follows a lifecycle state machine"
      */
     enum class CommandState : uint8_t
     {
       PENDING = 0, // Command in queue, not yet sent
-      EXECUTING,   // Command sent to hardware, waiting for response
+      EXECUTING,   // Command sent to transport, waiting for response
       COMPLETED,   // Response received and processed successfully
-      FAILED,      // Modbus error received (exception code)
+      FAILED,      // Transport error received
       TIMEOUT      // No response within timeout period
     };
 
     /**
-     * @brief Command queue for serial Modbus execution
+     * @brief Command queue for serialized transport execution
      *
-     * From spec (02-cpp-interface.md):
+     * From spec (02c-layer3-command-queue.md):
      * - Single-flight execution: Only one command in EXECUTING state at any time
      * - Timeout handling: Abort commands on timeout, advance to next
      * - Deduplication: Coalesce multiple identical read commands
-     * - Priority: Emergency commands clear pending queue
+     * - Priority: Emergency commands (EMERGENCY_STOP) clear pending queue
      * - Callback support: Notify when command completes (success or failure)
-     *
-     * **Command Types:**
-     * - Read commands (function code 0x04): Query registers
-     * - Write commands (function code 0x06): Write single register
-     * - Multi-write commands (function code 0x10): Write multiple registers
-     *
-     * **Queue Behavior:**
-     * - Normal commands: Added to back of queue
-     * - Priority commands: Clear pending queue (emergency)
-     * - Deduplication: If identical read command exists, merge callbacks
-     * - Timeout: Callback with error, advance to next command
      *
      * **Single-Flight Guarantee:**
      * - execution_guard_ flag acts as mutex
@@ -55,7 +43,12 @@ namespace esphome
      * - Response/error handlers clear guard and call execute_next()
      * - Timeout recovery clears guard to prevent queue stall
      *
-     * @see 02-cpp-interface.md section "CommandQueue"
+     * **Integration with Layer 4:**
+     * - Uses ITransport interface for protocol-agnostic communication
+     * - Commands identified by Command enum, not raw function codes
+     * - Transport callbacks forwarded to StepperEngine (Layer 2)
+     *
+     * @see docs/specification/02c-layer3-command-queue.md
      */
     class CommandQueue
     {
@@ -66,19 +59,18 @@ namespace esphome
        * @param success True if command succeeded, false on error/timeout
        * @param data Response data (for read commands), empty for write commands
        */
-      using CommandCallback = std::function<void(bool success, const std::vector<uint8_t> &data)>;
+      using CommandCallback = std::function<void(bool success, const std::vector<uint8_t> &)>;
 
       /**
        * @brief Construct a new Command Queue object
        *
-       * @param parent Parent ServoXxd instance for sending Modbus commands
+       * @param transport Transport layer interface (Layer 4)
        * @param timeout_ms Default timeout for commands in milliseconds (default: 1000ms)
-       * @param max_retries Maximum retry count for failed commands (default: 3)
        */
-      CommandQueue(ServoXxd *parent, uint32_t timeout_ms = 1000, uint8_t max_retries = 3);
+      CommandQueue(ITransport *transport, uint32_t timeout_ms = 1000);
 
       /**
-       * @brief Update the command queue (called from loop())
+       * @brief Update the command queue (called from ServoXxd::loop())
        *
        * From spec: "Called each loop iteration to detect stuck commands"
        * - Check timeout on current executing command
@@ -87,56 +79,45 @@ namespace esphome
       void update();
 
       /**
-       * @brief Enqueue a read command (function code 0x04)
+       * @brief Enqueue a command
+       *
+       * @param cmd Command enum value
+       * @param data Command payload (encoded by ServoCommandCodec)
+       * @param callback Callback to invoke when command completes
+       * @param priority If true, add to front of queue (emergency)
+       */
+      void enqueue(Command cmd, const std::vector<uint8_t> &data, CommandCallback callback,
+                   bool priority = false);
+
+      /**
+       * @brief Enqueue a read command
        *
        * From spec: "Deduplication: If identical read command exists, merge callbacks"
        *
-       * @param address Register address to read
-       * @param count Number of registers to read
+       * @param cmd Command enum value (READ_*)
        * @param callback Callback to invoke when command completes
-       * @param priority If true, add to front of queue (emergency)
        */
-      void enqueue_read(uint16_t address, uint16_t count, CommandCallback callback, bool priority = false);
+      void enqueue_read(Command cmd, CommandCallback callback);
 
       /**
-       * @brief Enqueue a write command (function code 0x06)
-       *
-       * @param address Register address to write
-       * @param value Value to write (single register)
-       * @param callback Callback to invoke when command completes
-       * @param priority If true, add to front of queue (emergency)
-       */
-      void enqueue_write(uint16_t address, uint16_t value, CommandCallback callback, bool priority = false);
-
-      /**
-       * @brief Enqueue a multi-write command (function code 0x10)
-       *
-       * @param address Starting register address
-       * @param values Vector of values to write (multiple registers)
-       * @param callback Callback to invoke when command completes
-       * @param priority If true, add to front of queue (emergency)
-       */
-      void enqueue_multi_write(uint16_t address, const std::vector<uint16_t> &values, CommandCallback callback,
-                               bool priority = false);
-
-      /**
-       * @brief Handle command response (called from ServoXxd::on_modbus_data)
+       * @brief Handle command response (from ITransport callback)
        *
        * From spec: "Completes command, clears guard, calls execute_next()"
        *
-       * @param data Response data from Modbus device
+       * @param cmd Command that completed
+       * @param data Response data from transport
        */
-      void on_response(const std::vector<uint8_t> &data);
+      void on_response(Command cmd, const std::vector<uint8_t> &data);
 
       /**
-       * @brief Handle command error (called from ServoXxd::on_modbus_error)
+       * @brief Handle command error (from ITransport callback)
        *
        * From spec: "Fails command, clears guard, continues"
        *
-       * @param function_code Modbus function code that failed
-       * @param exception_code Modbus exception code (error reason)
+       * @param cmd Command that failed
+       * @param error Error code from transport
        */
-      void on_error(uint8_t function_code, uint8_t exception_code);
+      void on_error(Command cmd, ErrorCode error);
 
       /**
        * @brief Clear all pending commands
@@ -161,54 +142,34 @@ namespace esphome
     private:
       /**
        * @brief Command structure with state machine
-       *
-       * From spec (02-cpp-interface.md): "Each Modbus command follows a lifecycle state machine"
        */
-      struct Command
+      struct QueuedCommand
       {
-        uint8_t function_code;                  // 0x04, 0x06, 0x10
-        uint16_t address;                       // Register address
-        uint16_t count_or_value;                // For reads: count, for write: value
-        std::vector<uint16_t> multi_values;     // For multi-write (0x10)
+        Command command;                        // Command enum value
+        std::vector<uint8_t> data;              // Command payload
         std::vector<CommandCallback> callbacks; // Multiple callbacks for deduplicated commands
         CommandState state;                     // State machine state
         uint32_t sent_time;                     // millis() when sent (for timeout)
-        uint8_t retry_count;                    // Current retry attempt
 
-        Command(uint8_t fc, uint16_t addr, uint16_t count_val, CommandCallback cb)
-            : function_code(fc),
-              address(addr),
-              count_or_value(count_val),
+        QueuedCommand(Command cmd, const std::vector<uint8_t> &payload, CommandCallback cb)
+            : command(cmd),
+              data(payload),
               state(CommandState::PENDING),
-              sent_time(0),
-              retry_count(0)
-        {
-          callbacks.push_back(cb);
-        }
-
-        Command(uint8_t fc, uint16_t addr, const std::vector<uint16_t> &values, CommandCallback cb)
-            : function_code(fc),
-              address(addr),
-              count_or_value(values.size()),
-              multi_values(values),
-              state(CommandState::PENDING),
-              sent_time(0),
-              retry_count(0)
+              sent_time(0)
         {
           callbacks.push_back(cb);
         }
       };
 
       // Queue and execution state
-      std::deque<Command> queue_;       // FIFO queue (deque for front insertion)
-      bool is_executing_{false};        // Single-flight execution guard
-      ServoXxd *parent_{nullptr}; // Parent for sending Modbus commands
+      std::deque<QueuedCommand> queue_; // FIFO queue (deque for front insertion)
+      bool execution_guard_{false};     // Single-flight execution guard
+      ITransport *transport_{nullptr};  // Transport layer interface
 
       // Configuration
       uint32_t timeout_ms_{1000}; // Default timeout (1 second)
-      uint8_t max_retries_{3};    // Maximum retry count
 
-      // Statistics (optional, for debugging)
+      // Statistics (for debugging)
       uint32_t commands_sent_{0};
       uint32_t commands_completed_{0};
       uint32_t commands_failed_{0};
@@ -218,22 +179,22 @@ namespace esphome
        * @brief Execute next pending command (if not already executing)
        *
        * From spec: "checks execution guard, sends next command if idle"
-       * - Check is_executing_ flag (single-flight guarantee)
+       * - Check execution_guard_ flag (single-flight guarantee)
        * - If executing: return immediately
        * - If queue empty: return
-       * - Get next PENDING command, transition to EXECUTING, send via Modbus
+       * - Get next PENDING command, transition to EXECUTING, send via transport
        */
       void execute_next();
 
       /**
-       * @brief Send a command to Modbus device
+       * @brief Send a command via transport
        *
-       * @param cmd Command to send
-       * - Format payload based on function code (0x04, 0x06, 0x10)
-       * - Call parent->send() with formatted data
+       * @param cmd Queued command to send
+       * - Determine if read or write based on Command enum
+       * - Call transport->execute_command() or transport->read_command()
        * - Set sent_time for timeout tracking
        */
-      void send_command(Command &cmd);
+      void send_command(QueuedCommand &cmd);
 
       /**
        * @brief Check for timeout on executing command
@@ -247,12 +208,27 @@ namespace esphome
       /**
        * @brief Check if a read command is a duplicate
        *
-       * From spec: "Deduplication only for read commands (same address+count)"
-       * - Compare function code (must be 0x04)
-       * - Compare address and count_or_value
+       * From spec: "Deduplication only for read commands (same Command enum)"
+       * - Compare Command enum values
        * - Returns iterator to existing command if duplicate, queue_.end() otherwise
        */
-      std::deque<Command>::iterator find_duplicate_read(uint16_t address, uint16_t count);
+      std::deque<QueuedCommand>::iterator find_duplicate_read(Command cmd);
+
+      /**
+       * @brief Check if a Command is a read operation
+       */
+      bool is_read_command(Command cmd) const
+      {
+        return cmd == Command::READ_ENCODER_CARRY ||
+               cmd == Command::READ_ENCODER_ADDITION ||
+               cmd == Command::READ_CURRENT_SPEED ||
+               cmd == Command::READ_PULSE_COUNT ||
+               cmd == Command::READ_IO_STATUS ||
+               cmd == Command::READ_ANGLE_ERROR ||
+               cmd == Command::READ_MOTOR_STATUS ||
+               cmd == Command::READ_HOMING_STATUS ||
+               cmd == Command::READ_PROTECTION_STATUS;
+      }
     };
 
   } // namespace servoxxd

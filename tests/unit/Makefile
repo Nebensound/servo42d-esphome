@@ -1,7 +1,7 @@
 # Makefile for ServoXxd Unit Tests
 
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -Wextra -I../.. -I. -I../../components/servoxxd/stepper
+CXXFLAGS = -std=c++17 -Wall -Wextra -I../.. -I. -I../../components/servoxxd/stepper
 LDFLAGS =
 
 # Source files
@@ -30,10 +30,8 @@ ENGINE_SOURCES = \
 	$(COMPONENT_DIR)/servoxxd_acceleration.cpp \
 	$(COMPONENT_DIR)/servoxxd_position.cpp
 
-# Test executables (only the working ones for now)
-TESTS = test_speed test_acceleration test_position
-# TODO: Re-enable when implementation is complete:
-# TESTS += test_command_queue test_stepper_engine
+# Test executables (all active tests)
+TESTS = test_speed test_acceleration test_position test_command_queue test_stepper_engine test_command_codec
 
 # Colors for output
 GREEN = \033[0;32m
@@ -65,6 +63,10 @@ test_stepper_engine: test_stepper_engine.cpp $(ENGINE_SOURCES)
 	@echo "Building $@..."
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
+test_command_codec: test_command_codec.cpp
+	@echo "Building $@..."
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
 # Run all tests
 test: $(TESTS)
 	@echo ""
@@ -74,9 +76,10 @@ test: $(TESTS)
 	@echo ""
 	@for test in $(TESTS); do \
 		echo "$(GREEN)Running $$test...$(NC)"; \
+		echo ""; \
 		./$$test || exit 1; \
+		echo ""; \
 	done
-	@echo ""
 	@echo "$(GREEN)========================================$(NC)"
 	@echo "$(GREEN)✅ All Tests Passed!$(NC)"
 	@echo "$(GREEN)========================================$(NC)"
@@ -101,10 +104,13 @@ help:
 	@echo "Targets:"
 	@echo "  all              Build all test executables"
 	@echo "  test             Build and run all tests"
-	@echo "  run              Run all tests (without rebuild)"
-	@echo "  clean            Remove all build artifacts"
-	@echo "  help             Show this help message"
-	@echo ""
+	@echo "Individual tests:"
+	@echo "  test_speed       Build Speed class tests"
+	@echo "  test_acceleration Build Acceleration class tests"
+	@echo "  test_position    Build Position class tests"
+	@echo "  test_command_queue Build CommandQueue tests"
+	@echo "  test_stepper_engine Build StepperEngine tests"
+	@echo "  test_command_codec Build CommandCodec tests"
 	@echo "Individual tests:"
 	@echo "  test_speed       Build Speed class tests"
 	@echo "  test_acceleration Build Acceleration class tests"

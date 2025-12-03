@@ -1,13 +1,17 @@
-# Compiled test executables
+# Compiled test executables (active tests)
 test_speed
 test_acceleration
 test_position
 test_command_queue
 test_stepper_engine
+test_command_codec
+
+# Debug/helper executables
 test_debug
 test_epsilon
 test_acc_debug
 test_pos_debug
+test_stepper_engine_v2
 
 # Object files
 *.o

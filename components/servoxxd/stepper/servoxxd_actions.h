@@ -1,5 +1,7 @@
+
 #pragma once
 
+#include "servoxxd.h"
 #include "esphome/core/automation.h"
 #include "servoxxd_modbus.h"
 #include "servoxxd_speed.h"
@@ -102,6 +104,7 @@ namespace esphome
       TEMPLATABLE_VALUE(float, value)
 
       void set_unit(PositionUnit unit) { unit_ = unit; }
+      void set_target(float target) { this->value_ = target; }
 
       void play(Ts... x) override
       {
@@ -131,6 +134,8 @@ namespace esphome
       TEMPLATABLE_VALUE(float, value)
 
       void set_unit(SpeedUnit unit) { unit_ = unit; }
+      void set_speed(float value) { this->value_ = value; }
+      void set_speed_unit(SpeedUnit unit) { this->unit_ = unit; }
 
       void play(Ts... x) override
       {
@@ -231,12 +236,13 @@ namespace esphome
 
       void set_unit(PositionUnit unit) { unit_ = unit; }
 
+      void set_position(float value) { this->value_ = value; }
+
       void play(Ts... x) override
       {
-        // TODO: Implement report_position in ServoXxd first
-        // float value = this->value_.value(x...);
-        // Position pos(value, unit_, parent_);
-        // parent_->report_position(pos);
+        float value = this->value_.value(x...);
+        Position pos(value, unit_, parent_);
+        parent_->report_position(pos);
       }
 
     protected:
@@ -397,18 +403,15 @@ namespace esphome
     public:
       explicit SetWorkModeAction(ServoXxd *parent) : parent_(parent) {}
 
-      // TODO: Add WorkMode parameter
-      // void set_work_mode(WorkMode mode) { mode_ = mode; }
+      TEMPLATABLE_VALUE(OperatingMode, mode)
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_work_mode in ServoXxd first
-        // parent_->set_work_mode(mode_);
+        parent_->set_work_mode(static_cast<OperatingMode>(this->mode_.value(x...)));
       }
 
     protected:
       ServoXxd *parent_;
-      // TODO: WorkMode mode_;
     };
 
     /**
@@ -476,16 +479,15 @@ namespace esphome
     public:
       explicit SetMicrosteppingAction(ServoXxd *parent) : parent_(parent) {}
 
-      void set_microstepping(uint16_t microsteps) { microsteps_ = microsteps; }
+      TEMPLATABLE_VALUE(uint16_t, subdivision)
 
       void play(Ts... x) override
       {
-        parent_->set_microsteps(microsteps_);
+        parent_->set_microsteps(this->subdivision_.value(x...));
       }
 
     protected:
       ServoXxd *parent_;
-      uint16_t microsteps_{16};
     };
 
     // ============================================================================
@@ -555,6 +557,46 @@ namespace esphome
       {
         // TODO: Implement calibrate in ServoXxd first
         // parent_->calibrate();
+      }
+
+    protected:
+      ServoXxd *parent_;
+    };
+
+    /**
+     * @brief Action: Lock motor display buttons
+     *
+     * YAML: `stepper.key_lock`
+     */
+    template <typename... Ts>
+    class KeyLockAction : public Action<Ts...>
+    {
+    public:
+      explicit KeyLockAction(ServoXxd *parent) : parent_(parent) {}
+
+      void play(Ts... x) override
+      {
+        parent_->key_lock();
+      }
+
+    protected:
+      ServoXxd *parent_;
+    };
+
+    /**
+     * @brief Action: Unlock motor display buttons
+     *
+     * YAML: `stepper.key_unlock`
+     */
+    template <typename... Ts>
+    class KeyUnlockAction : public Action<Ts...>
+    {
+    public:
+      explicit KeyUnlockAction(ServoXxd *parent) : parent_(parent) {}
+
+      void play(Ts... x) override
+      {
+        parent_->key_unlock();
       }
 
     protected:

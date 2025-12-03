@@ -3,10 +3,15 @@
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
 #include "servoxxd_command_queue.h"
+#include "servoxxd_commands.h"
+#include "servoxxd_command_codec.h"
+#include "servoxxd_transport.h"
 #include "servoxxd_position.h"
 #include "servoxxd_speed.h"
 #include "servoxxd_acceleration.h"
 #include <functional>
+#include <cmath>
+#include <optional>
 
 namespace esphome
 {
@@ -64,12 +69,12 @@ namespace esphome
        * @brief Constructor
        *
        * @param parent Pointer to parent ServoXxd component (configuration, helpers)
-       * @param command_timeout_ms Timeout for Modbus commands (default: 1000ms)
-       * @param max_retries Maximum retry count for failed commands (default: 3)
+       * @param transport Pointer to ITransport for Layer 3 integration
+       * @param command_timeout_ms Timeout for commands (default: 1000ms)
        * @param poll_interval_ms Polling interval for status updates (default: 200ms)
        */
-      StepperEngine(ServoXxd *parent, uint32_t command_timeout_ms = 1000,
-                    uint8_t max_retries = 3, uint32_t poll_interval_ms = 200);
+      StepperEngine(ServoXxd *parent, ITransport *transport = nullptr,
+                    uint32_t command_timeout_ms = 1000, uint32_t poll_interval_ms = 200);
 
       ~StepperEngine();
 
@@ -94,8 +99,8 @@ namespace esphome
        * @brief Move to absolute target position
        *
        * @param target Target position (absolute, with unit)
-       * @param speed Optional movement speed (overrides default), nullptr = use default
-       * @param accel Optional acceleration (overrides default), nullptr = use default
+       * @param speed Optional movement speed (overrides default), std::nullopt = use default
+       * @param accel Optional acceleration (overrides default), std::nullopt = use default
        *
        * Validation:
        * - Only allowed in Idle state (Position Mode only)
@@ -104,13 +109,13 @@ namespace esphome
        *
        * State transition: Idle → Moving
        */
-      void move_to(Position target, const Speed *speed = nullptr,
-                   const Acceleration *accel = nullptr);
+      void move_to(Position target, std::optional<Speed> speed = std::nullopt,
+                   std::optional<Acceleration> accel = std::nullopt);
 
       /**
        * @brief Stop motor with controlled deceleration
        *
-       * @param decel Optional deceleration (overrides default), nullptr = use default
+       * @param decel Optional deceleration (overrides default), std::nullopt = use default
        *
        * Validation:
        * - Allowed in Moving, Running, Homing, Stopping states
@@ -119,7 +124,7 @@ namespace esphome
        *
        * State transition: Moving/Running/Homing → Stopping → Idle (when speed = 0)
        */
-      void stop(const Acceleration *decel = nullptr);
+      void stop(std::optional<Acceleration> decel = std::nullopt);
 
       /**
        * @brief Emergency stop - immediate halt without deceleration
@@ -147,8 +152,8 @@ namespace esphome
       /**
        * @brief Run motor continuously at specified speed
        *
-       * @param speed Continuous rotation speed (positive = CCW, negative = CW)
-       * @param accel Acceleration for speed ramp
+       * @param speed Continuous rotation speed (positive = CCW, negative = CW), std::nullopt = use last/default
+       * @param accel Acceleration for speed ramp, std::nullopt = use last/default
        *
        * Validation:
        * - Only allowed in Idle or Running states (Speed Mode only)
@@ -156,7 +161,8 @@ namespace esphome
        *
        * State transition: Idle → Running
        */
-      void run_continuous(Speed speed, Acceleration accel);
+      void run_continuous(std::optional<Speed> speed = std::nullopt,
+                          std::optional<Acceleration> accel = std::nullopt);
 
       // ============================================================================
       // Configuration Commands
@@ -287,39 +293,40 @@ namespace esphome
       void set_motor_status_callback(std::function<void(bool)> cb);
 
       // ============================================================================
-      // Modbus Callbacks (called by parent)
+      // Transport Callbacks (Layer 4 Integration)
       // ============================================================================
 
       /**
-       * @brief Process Modbus response data
+       * @brief Process transport response
        *
-       * Called by parent when Modbus response is received. Forwards to CommandQueue
-       * and processes polled values (position, speed, status, protection).
+       * Called by CommandQueue when a successful response is received from transport layer.
+       * Decodes response data using ServoCommandCodec and updates internal state.
        *
-       * @param data Raw Modbus response data
+       * @param cmd Command that generated this response
+       * @param data Raw response data
        */
-      void on_modbus_response(const std::vector<uint8_t> &data);
+      void on_transport_response(Command cmd, const std::vector<uint8_t> &data);
 
       /**
-       * @brief Process Modbus error
+       * @brief Process transport error
        *
-       * Called by parent when Modbus error occurs. Forwards to CommandQueue
-       * for retry logic and error handling.
+       * Called by CommandQueue when transport layer reports an error (timeout, device error, etc.).
+       * Handles retries, logs errors, and transitions to Error state if necessary.
        *
-       * @param function_code Modbus function code that failed
-       * @param exception_code Modbus exception code
+       * @param cmd Command that failed
+       * @param error Error code
        */
-      void on_modbus_error(uint8_t function_code, uint8_t exception_code);
+      void on_transport_error(Command cmd, ErrorCode error);
 
     private:
       // ============================================================================
       // Private Members
       // ============================================================================
 
-      ServoXxd *parent_; ///< Parent component (configuration, helpers)
-      CommandQueue *queue_;    ///< Command queue for serial Modbus execution
-      State state_;            ///< Current state machine state
-      bool emergency_flag_;    ///< Emergency stop flag (requires restart)
+      ServoXxd *parent_;    ///< Parent component (configuration, helpers)
+      CommandQueue *queue_; ///< Command queue for serial Modbus execution
+      State state_;         ///< Current state machine state
+      bool emergency_flag_; ///< Emergency stop flag (requires restart)
 
       // Position tracking
       Position current_position_; ///< Last known encoder position
@@ -335,6 +342,7 @@ namespace esphome
       // Polling
       uint32_t poll_interval_ms_; ///< Polling interval for status updates
       uint32_t last_poll_time_;   ///< Last poll timestamp (millis)
+      uint32_t state_enter_time_; ///< State entry timestamp for timeout tracking
 
       // Callbacks
       std::function<void(Position)> position_callback_;

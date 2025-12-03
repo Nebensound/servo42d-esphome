@@ -13,7 +13,7 @@ esp32:
 external_components:
   - source:
       type: local
-      path: ../components
+      path: ../../components
     components: [servoxxd]
 
 logger:
@@ -35,14 +35,14 @@ stepper:
     id: my_stepper
     address: 0x01
     servo_type: SERVO42D
+    mode: POSITION
     steps_per_revolution: 3200
     microsteps: 16
+    modbus_id: modbus1
 
     # Test new SPEED units
     speed: 360 deg/min # DEGREES_PER_MIN
     acceleration: 1000 steps/s²
-
-    mode: POSITION
 
 # Test Actions mit neuen Units
 script:

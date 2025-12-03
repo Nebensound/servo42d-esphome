@@ -438,7 +438,9 @@ void test_acceleration_comparison_operators()
 
 int main()
 {
-  std::cout << "\n=== Acceleration Class Unit Tests ===" << std::endl;
+  std::cout << "\n========================================" << std::endl;
+  std::cout << "Acceleration Class Unit Tests" << std::endl;
+  std::cout << "========================================" << std::endl;
   std::cout << std::endl;
 
   // Basic unit conversions
@@ -468,9 +470,9 @@ int main()
   test_acceleration_null_parent();
   test_acceleration_invalid_steps_per_revolution();
 
-  std::cout << std::endl;
-  std::cout << "✅ All Acceleration tests passed!" << std::endl;
-  std::cout << std::endl;
+  std::cout << "\n========================================" << std::endl;
+  std::cout << "✅ All Acceleration Tests Passed!" << std::endl;
+  std::cout << "========================================" << std::endl;
 
   return 0;
 }

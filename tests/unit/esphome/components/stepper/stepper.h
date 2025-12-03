@@ -16,15 +16,16 @@ namespace esphome
       virtual ~Stepper() = default;
 
       // Mock stepper interface for unit testing
-      virtual void set_target(int32_t steps) { target_ = steps; }
-      virtual int32_t current_position() const { return current_position_; }
+      virtual void set_target(int32_t steps) { target_position = steps; }
       virtual void set_acceleration(float acceleration) { acceleration_ = acceleration; }
       virtual void set_deceleration(float deceleration) { deceleration_ = deceleration; }
       virtual void set_max_speed(float speed) { max_speed_ = speed; }
 
+      // Public members to match real ESPHome Stepper API
+      int32_t current_position{0};
+      int32_t target_position{0};
+
     protected:
-      int32_t target_{0};
-      int32_t current_position_{0};
       float acceleration_{1000.0f};
       float deceleration_{1000.0f};
       float max_speed_{1000.0f};

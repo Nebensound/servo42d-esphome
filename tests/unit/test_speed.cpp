@@ -453,7 +453,9 @@ void test_speed_comparison_operators()
 
 int main()
 {
-  std::cout << "\n=== Speed Class Unit Tests ===" << std::endl;
+  std::cout << "\n========================================" << std::endl;
+  std::cout << "Speed Class Unit Tests" << std::endl;
+  std::cout << "========================================" << std::endl;
   std::cout << std::endl;
 
   // Basic unit conversions
@@ -485,9 +487,9 @@ int main()
   test_speed_null_parent();
   test_speed_invalid_steps_per_revolution();
 
-  std::cout << std::endl;
-  std::cout << "✅ All Speed tests passed!" << std::endl;
-  std::cout << std::endl;
+  std::cout << "\n========================================" << std::endl;
+  std::cout << "✅ All Speed Tests Passed!" << std::endl;
+  std::cout << "========================================" << std::endl;
 
   return 0;
 }

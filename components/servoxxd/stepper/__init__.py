@@ -775,7 +775,6 @@ async def to_code(config):
     Generate C++ code for the component configuration.
     """
     # Add required includes
-    cg.add_global(cg.RawStatement('#include "esphome/components/servoxxd_modbus/stepper/servoxxd_modbus.h"'))
     
     # Create component instance
     var = cg.new_Pvariable(config[CONF_ID])

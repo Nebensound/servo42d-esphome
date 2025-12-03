@@ -110,27 +110,20 @@ external_components:
       path: ../../components
     components: [servoxxd]
 
-# Servo42D Stepper Motor
+# ServoXxD Stepper Motor
 stepper:
   - platform: servoxxd
     id: test_motor
     modbus_id: modbus_rs485
     address: 0x02
+    servo_type: SERVO42D
+    mode: POSITION
 
     # Basic configuration
     steps_per_revolution: ${ full_steps * microsteps } # 200 * 16 = 3200 steps/rev
     microsteps: ${ microsteps }
-    servo_type: SERVO42D # Required: Physical motor model
-    max_speed: 100 steps/s
+    speed: 100 steps/s
     acceleration: 100 steps/s^2
-    # Note: deceleration not supported - hardware uses same value for accel/decel
-
-    # Motor configuration (with defaults explicitly shown)
-    control_mode: SR_VFOC # Serial FOC mode (recommended)
-    working_current: 1500mA # or 1.5A (safe for testing)
-    holding_current_percent: 50% # or 0.5 (ratio of working current)
-    en_pin_active: ALWAYS # Motor always enabled
-    auto_screen_off: true # Screen turns off after 15s
 
 # Sensors to monitor status
 sensor:

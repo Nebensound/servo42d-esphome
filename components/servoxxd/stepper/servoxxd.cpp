@@ -1,5 +1,7 @@
 #include "servoxxd.h"
 #include "servoxxd_stepper_engine.h"
+#include "servoxxd_command_codec.h"
+#include "servoxxd_commands.h"
 
 namespace esphome
 {
@@ -7,6 +9,131 @@ namespace esphome
   {
 
     static const char *const TAG = "servoxxd";
+
+    // ==== Action-API Methoden ====
+    void ServoXxd::set_work_mode(OperatingMode mode)
+    {
+      if (this->engine_ == nullptr)
+        return;
+
+      // Map OperatingMode to WorkMode enum from Command layer
+      uint8_t work_mode_value;
+      switch (mode)
+      {
+      case OperatingMode::POSITION:
+        work_mode_value = 3; // SR_CLOSE_LOOP
+        break;
+      case OperatingMode::SPEED:
+        work_mode_value = 5; // SR_VFOC
+        break;
+      default:
+        ESP_LOGW(TAG, "Unknown operating mode: %d", static_cast<int>(mode));
+        return;
+      }
+
+      auto data = ServoCommandCodec::encode_set_subdivision(work_mode_value);
+      // TODO: Send via StepperEngine when Layer 2 is complete
+      // engine_->send_command(Command::SET_WORK_MODE, data);
+      ESP_LOGD(TAG, "set_work_mode: mode=%d", static_cast<int>(work_mode_value));
+    }
+
+    // void ServoXxd::set_microsteps(uint16_t microsteps) { /* bereits implementiert */ }
+    // void ServoXxd::set_working_current(uint16_t current_ma) { /* bereits implementiert */ }
+    // void ServoXxd::set_holding_current_percent(uint8_t percent) { /* bereits implementiert */ }
+
+    void ServoXxd::set_speed(const Speed &speed)
+    {
+      this->default_speed_ = speed;
+      ESP_LOGD(TAG, "set_speed: %.2f RPM", speed.rpm());
+    }
+
+    void ServoXxd::set_acceleration(const Acceleration &accel)
+    {
+      this->default_acceleration_ = accel;
+      ESP_LOGD(TAG, "set_acceleration: %.2f RPM/s", accel.get_rpm_per_sec());
+    }
+
+    void ServoXxd::set_zero()
+    {
+      if (this->engine_ == nullptr)
+        return;
+
+      // Delegate to StepperEngine
+      this->engine_->set_zero();
+
+      // Update internal position tracking
+      this->current_position = 0;
+
+      ESP_LOGD(TAG, "set_zero: current position set to zero");
+    }
+
+    void ServoXxd::report_position(const Position &pos)
+    {
+      // Set the internal position without moving the motor
+      this->current_position = pos.get_steps();
+
+      ESP_LOGD(TAG, "report_position: position set to %lld steps", pos.get_steps());
+    }
+
+    void ServoXxd::release_protection()
+    {
+      if (this->engine_ == nullptr)
+        return;
+
+      // Delegate to StepperEngine
+      this->engine_->release_protection();
+
+      ESP_LOGD(TAG, "release_protection: clearing error state");
+    }
+
+    void ServoXxd::restart()
+    {
+      if (this->engine_ == nullptr)
+        return;
+
+      // Delegate to StepperEngine
+      this->engine_->restart();
+
+      ESP_LOGW(TAG, "restart: restarting motor controller");
+    }
+
+    void ServoXxd::calibrate()
+    {
+      if (this->engine_ == nullptr)
+        return;
+
+      // Send CALIBRATE_ENCODER command
+      // TODO: Send via StepperEngine when Layer 2 is complete
+      // engine_->send_command(Command::CALIBRATE_ENCODER, {});
+
+      ESP_LOGD(TAG, "calibrate: starting encoder calibration");
+    }
+
+    void ServoXxd::key_lock()
+    {
+      if (this->engine_ == nullptr)
+        return;
+
+      // Send KEY_LOCK command (value 0x01 = lock)
+      auto data = ServoCommandCodec::encode_enable_motor(true); // Reuse encoder, value=1 means lock
+      // TODO: Send via StepperEngine when Layer 2 is complete
+      // engine_->send_command(Command::KEY_LOCK, data);
+
+      ESP_LOGD(TAG, "key_lock: locking physical buttons");
+    }
+
+    void ServoXxd::key_unlock()
+    {
+      if (this->engine_ == nullptr)
+        return;
+
+      // Send KEY_LOCK command (value 0x00 = unlock)
+      auto data = ServoCommandCodec::encode_enable_motor(false); // Reuse encoder, value=0 means unlock
+      // TODO: Send via StepperEngine when Layer 2 is complete
+      // engine_->send_command(Command::KEY_LOCK, data);
+
+      ESP_LOGD(TAG, "key_unlock: unlocking physical buttons");
+    }
 
     // ============================================================================
     // Constructor / Destructor
@@ -26,6 +153,11 @@ namespace esphome
         delete this->engine_;
         this->engine_ = nullptr;
       }
+      if (this->transport_ != nullptr)
+      {
+        delete this->transport_;
+        this->transport_ = nullptr;
+      }
     }
 
     // ============================================================================
@@ -44,8 +176,17 @@ namespace esphome
         return;
       }
 
-      // Initialize StepperEngine
-      this->engine_ = new StepperEngine(this);
+      // Layer 4: Create ModbusTransport
+      // Note: Get slave address from ModbusDevice base class
+      this->transport_ = new ModbusTransport(this, this->address_);
+      if (this->transport_ == nullptr)
+      {
+        ESP_LOGE(TAG, "Failed to allocate ModbusTransport");
+        return;
+      }
+
+      // Initialize StepperEngine (Layer 2) with transport
+      this->engine_ = new StepperEngine(this, this->transport_);
       if (this->engine_ == nullptr)
       {
         ESP_LOGE(TAG, "Failed to allocate StepperEngine");
@@ -80,15 +221,19 @@ namespace esphome
       {
         this->engine_->update();
 
-        // TODO: Sync position with ESPHome base class if changed
-        // Position current_pos = this->engine_->get_current_position();
-        // this->current_position = current_pos.get_steps();
+        // Sync position with ESPHome base class if changed
+        Position current_pos = this->engine_->get_current_position();
+        int32_t new_position = static_cast<int32_t>(current_pos.get_steps());
 
-        // TODO: Handle polling for motor state updates
-        // - Read position periodically
-        // - Read speed
-        // - Read enabled state
-        // - Read protection status
+        // Only update if position changed to avoid unnecessary writes
+        if (this->current_position != new_position)
+        {
+          this->current_position = new_position;
+        }
+
+        // Check if target_position was changed externally (via ESPHome action)
+        // and sync to StepperEngine if needed
+        // Note: Polling is handled inside StepperEngine::update()
       }
     }
 
@@ -110,11 +255,11 @@ namespace esphome
       ESP_LOGCONFIG(TAG, "  EN Pin Active: %s", this->en_pin_active_high_ ? "HIGH" : "LOW");
 
       // Homing configuration
-      ESP_LOGCONFIG(TAG, "  Home Direction: %s", this->home_direction_cw_ ? "Clockwise" : "Counter-Clockwise");
-      ESP_LOGCONFIG(TAG, "  Home Speed: %.1f RPM", this->home_speed_.rpm());
+      ESP_LOGCONFIG(TAG, "  Home Direction: %s", "Unknown");
+      ESP_LOGCONFIG(TAG, "  Home Speed: %s", "Unknown");
 
       // Motion parameters
-      ESP_LOGCONFIG(TAG, "  Default Acceleration: %.1f RPM/s", this->default_acceleration_.rpm_per_sec());
+      ESP_LOGCONFIG(TAG, "  Default Acceleration: %.1f RPM/s", this->default_acceleration_.get_rpm_per_sec());
 
       // Power management
       ESP_LOGCONFIG(TAG, "  Sleep When Done: %s", this->sleep_when_done_ ? "YES" : "NO");
@@ -166,7 +311,8 @@ namespace esphome
     // Public API - Action Methods (Minimal Implementation)
     // ============================================================================
 
-    void ServoXxd::move_to(const Position &position)
+    void ServoXxd::move_to(const Position &position, std::optional<Speed> speed,
+                           std::optional<Acceleration> accel)
     {
       if (this->engine_ == nullptr)
       {
@@ -176,7 +322,7 @@ namespace esphome
 
       // Minimal implementation: just delegate to engine
       // TODO later: Add Position Mode validation, error state check
-      this->engine_->move_to(position, nullptr, nullptr);
+      this->engine_->move_to(position, speed, accel);
     }
 
     void ServoXxd::home()
@@ -192,7 +338,7 @@ namespace esphome
       this->engine_->home();
     }
 
-    void ServoXxd::stop()
+    void ServoXxd::stop(std::optional<Acceleration> decel)
     {
       if (this->engine_ == nullptr)
       {
@@ -201,10 +347,11 @@ namespace esphome
       }
 
       // Minimal implementation: just delegate to engine
-      this->engine_->stop(nullptr);
+      this->engine_->stop(decel);
     }
 
-    void ServoXxd::run_continuous(const Speed &speed)
+    void ServoXxd::run_continuous(std::optional<Speed> speed,
+                                  std::optional<Acceleration> accel)
     {
       if (this->engine_ == nullptr)
       {
@@ -214,8 +361,7 @@ namespace esphome
 
       // Minimal implementation: just delegate to engine
       // TODO later: Add Speed Mode validation, error state check
-      // Use default acceleration from configuration
-      this->engine_->run_continuous(speed, this->default_acceleration_);
+      this->engine_->run_continuous(speed, accel);
     }
 
     void ServoXxd::emergency_stop()

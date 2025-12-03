@@ -822,7 +822,9 @@ void test_arcminute_arcsecond_precision()
 
 int main()
 {
-  std::cout << "\n=== Position Class Unit Tests ===" << std::endl;
+  std::cout << "\n========================================" << std::endl;
+  std::cout << "Position Class Unit Tests" << std::endl;
+  std::cout << "========================================" << std::endl;
   std::cout << std::endl;
 
   // Basic tests
@@ -858,9 +860,9 @@ int main()
   test_nan_inf_steps_per_rev();
   test_arcminute_arcsecond_precision();
 
-  std::cout << std::endl;
-  std::cout << "✅ All Position tests passed!" << std::endl;
-  std::cout << std::endl;
+  std::cout << "\n========================================" << std::endl;
+  std::cout << "✅ All Position Tests Passed!" << std::endl;
+  std::cout << "========================================" << std::endl;
 
   return 0;
 }

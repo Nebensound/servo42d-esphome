@@ -1,5 +1,4 @@
 #include "servoxxd_command_queue.h"
-#include "servoxxd.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
 
@@ -10,112 +9,28 @@ namespace esphome
 
     static const char *const TAG = "servoxxd.queue";
 
-    CommandQueue::CommandQueue(ServoXxd *parent, uint32_t timeout_ms, uint8_t max_retries)
-        : parent_(parent), timeout_ms_(timeout_ms), max_retries_(max_retries)
+    CommandQueue::CommandQueue(ITransport *transport, uint32_t timeout_ms)
+        : transport_(transport), timeout_ms_(timeout_ms)
     {
-      ESP_LOGCONFIG(TAG, "CommandQueue initialized: timeout=%ums, max_retries=%u", timeout_ms_, max_retries_);
-    }
-
-    void CommandQueue::enqueue_read(uint16_t address, uint16_t count, CommandCallback callback, bool priority)
-    {
-      // From spec: "Deduplication: If identical read command exists, merge callbacks"
-      auto existing = find_duplicate_read(address, count);
-      if (existing != queue_.end())
+      ESP_LOGCONFIG(TAG, "CommandQueue initialized: timeout=%ums", timeout_ms_);
+      
+      // Register callbacks with transport layer
+      if (transport_)
       {
-        ESP_LOGD(TAG, "Deduplicating read command: addr=0x%04X, count=%u (merging callbacks)", address, count);
-        existing->callbacks.push_back(callback);
-        return;
+        transport_->set_response_callback(
+            [this](Command cmd, const std::vector<uint8_t> &data)
+            {
+              this->on_response(cmd, data);
+            });
+        
+        transport_->set_error_callback(
+            [this](Command cmd, ErrorCode error)
+            {
+              this->on_error(cmd, error);
+            });
+        
+        ESP_LOGD(TAG, "Registered callbacks with transport layer");
       }
-
-      // Create new read command (function code 0x04)
-      Command cmd(0x04, address, count, callback);
-
-      if (priority)
-      {
-        // From spec: "Priority commands insert at front (after in-flight)"
-        // If executing, insert at position 1 (after executing command at position 0)
-        // If not executing, insert at position 0
-        if (is_executing_ && !queue_.empty())
-        {
-          ESP_LOGD(TAG, "Enqueuing priority read: addr=0x%04X, count=%u (after executing command)", address, count);
-          queue_.insert(queue_.begin() + 1, cmd); // Insert after executing command
-        }
-        else
-        {
-          ESP_LOGD(TAG, "Enqueuing priority read: addr=0x%04X, count=%u (front of queue)", address, count);
-          queue_.push_front(cmd);
-        }
-      }
-      else
-      {
-        ESP_LOGD(TAG, "Enqueuing read: addr=0x%04X, count=%u (queue size: %zu)", address, count, queue_.size());
-        queue_.push_back(cmd);
-      }
-
-      // Try to execute immediately if idle
-      execute_next();
-    }
-
-    void CommandQueue::enqueue_write(uint16_t address, uint16_t value, CommandCallback callback, bool priority)
-    {
-      // Create write command (function code 0x06) - no deduplication for writes
-      Command cmd(0x06, address, value, callback);
-
-      if (priority)
-      {
-        // From spec: "Priority commands insert at front (after in-flight)"
-        if (is_executing_ && !queue_.empty())
-        {
-          ESP_LOGD(TAG, "Enqueuing priority write: addr=0x%04X, value=0x%04X (after executing command)", address, value);
-          queue_.insert(queue_.begin() + 1, cmd);
-        }
-        else
-        {
-          ESP_LOGD(TAG, "Enqueuing priority write: addr=0x%04X, value=0x%04X (front of queue)", address, value);
-          queue_.push_front(cmd);
-        }
-      }
-      else
-      {
-        ESP_LOGD(TAG, "Enqueuing write: addr=0x%04X, value=0x%04X (queue size: %zu)", address, value, queue_.size());
-        queue_.push_back(cmd);
-      }
-
-      // Try to execute immediately if idle
-      execute_next();
-    }
-
-    void CommandQueue::enqueue_multi_write(uint16_t address, const std::vector<uint16_t> &values,
-                                           CommandCallback callback, bool priority)
-    {
-      // Create multi-write command (function code 0x10) - no deduplication
-      Command cmd(0x10, address, values, callback);
-
-      if (priority)
-      {
-        // From spec: "Priority commands insert at front (after in-flight)"
-        if (is_executing_ && !queue_.empty())
-        {
-          ESP_LOGD(TAG, "Enqueuing priority multi-write: addr=0x%04X, count=%zu (after executing command)", address,
-                   values.size());
-          queue_.insert(queue_.begin() + 1, cmd);
-        }
-        else
-        {
-          ESP_LOGD(TAG, "Enqueuing priority multi-write: addr=0x%04X, count=%zu (front of queue)", address,
-                   values.size());
-          queue_.push_front(cmd);
-        }
-      }
-      else
-      {
-        ESP_LOGD(TAG, "Enqueuing multi-write: addr=0x%04X, count=%zu (queue size: %zu)", address, values.size(),
-                 queue_.size());
-        queue_.push_back(cmd);
-      }
-
-      // Try to execute immediately if idle
-      execute_next();
     }
 
     void CommandQueue::update()
@@ -123,338 +38,282 @@ namespace esphome
       // From spec: "Called each loop iteration to detect stuck commands"
       check_timeout();
 
-      // From spec: "Opportunistic execution: start next command if queue idle"
+      // Opportunistic execution: start next command if idle
+      if (!execution_guard_)
+      {
+        execute_next();
+      }
+    }
+
+    void CommandQueue::enqueue(Command cmd, const std::vector<uint8_t> &data,
+                               CommandCallback callback, bool priority)
+    {
+      // Check for EMERGENCY_STOP - clear all pending commands
+      if (cmd == Command::EMERGENCY_STOP)
+      {
+        ESP_LOGW(TAG, "EMERGENCY_STOP: clearing %zu pending commands", queue_.size());
+        clear();
+      }
+
+      QueuedCommand queued_cmd(cmd, data, callback);
+
+      if (priority)
+      {
+        // From spec: "Priority commands insert at front (after executing)"
+        if (execution_guard_ && !queue_.empty())
+        {
+          ESP_LOGD(TAG, "Enqueuing priority command 0x%02X (after executing)",
+                   static_cast<uint8_t>(cmd));
+          queue_.insert(queue_.begin() + 1, queued_cmd);
+        }
+        else
+        {
+          ESP_LOGD(TAG, "Enqueuing priority command 0x%02X (front)",
+                   static_cast<uint8_t>(cmd));
+          queue_.push_front(queued_cmd);
+        }
+      }
+      else
+      {
+        ESP_LOGD(TAG, "Enqueuing command 0x%02X (queue size: %zu)",
+                 static_cast<uint8_t>(cmd), queue_.size());
+        queue_.push_back(queued_cmd);
+      }
+
+      // Try to execute immediately if idle
       execute_next();
     }
 
-    void CommandQueue::on_response(const std::vector<uint8_t> &data)
+    void CommandQueue::enqueue_read(Command cmd, CommandCallback callback)
     {
-      // From spec: "Completes command, clears guard, calls execute_next()"
-
-      if (!is_executing_)
+      // From spec: "Deduplication: If identical read command exists, merge callbacks"
+      auto existing = find_duplicate_read(cmd);
+      if (existing != queue_.end())
       {
-        ESP_LOGW(TAG, "Received response but no command executing (unexpected response)");
+        ESP_LOGD(TAG, "Deduplicating read command 0x%02X (merging callbacks)",
+                 static_cast<uint8_t>(cmd));
+        existing->callbacks.push_back(callback);
         return;
       }
 
-      if (queue_.empty())
+      // No data needed for read commands
+      enqueue(cmd, std::vector<uint8_t>{}, callback, false);
+    }
+
+    void CommandQueue::on_response(Command cmd, const std::vector<uint8_t> &data)
+    {
+      if (queue_.empty() || !execution_guard_)
       {
-        ESP_LOGW(TAG, "Received response but queue is empty (should not happen)");
-        is_executing_ = false;
+        ESP_LOGW(TAG, "Unexpected response for command 0x%02X (no executing command)",
+                 static_cast<uint8_t>(cmd));
         return;
       }
 
-      // Get executing command (should be front of queue)
-      Command &cmd = queue_.front();
-
-      if (cmd.state != CommandState::EXECUTING)
+      auto &current_cmd = queue_.front();
+      if (current_cmd.command != cmd)
       {
-        ESP_LOGW(TAG, "Received response but front command not in EXECUTING state (state=%d)", (int)cmd.state);
-        is_executing_ = false;
+        ESP_LOGW(TAG, "Response mismatch: expected 0x%02X, got 0x%02X",
+                 static_cast<uint8_t>(current_cmd.command), static_cast<uint8_t>(cmd));
         return;
       }
 
-      // Transition to COMPLETED
-      cmd.state = CommandState::COMPLETED;
+      ESP_LOGD(TAG, "Command 0x%02X completed (%zu bytes)",
+               static_cast<uint8_t>(cmd), data.size());
+
+      // Invoke all callbacks (for deduplicated commands)
+      for (auto &cb : current_cmd.callbacks)
+      {
+        if (cb)
+        {
+          cb(true, data);
+        }
+      }
+
+      // Remove completed command
+      queue_.pop_front();
       commands_completed_++;
 
-      ESP_LOGD(TAG, "Command completed: fc=0x%02X, addr=0x%04X, time=%ums", cmd.function_code, cmd.address,
-               (uint32_t)(millis() - cmd.sent_time));
+      // CRITICAL: Clear execution guard to enable next command
+      execution_guard_ = false;
 
-      // Invoke all callbacks with success=true
-      for (auto &callback : cmd.callbacks)
-      {
-        if (callback)
-        {
-          callback(true, data);
-        }
-      }
-
-      // Remove completed command from queue
-      queue_.pop_front();
-
-      // Clear execution guard
-      is_executing_ = false;
-
-      // Process next command
+      // Tail-recursive processing: execute next command
       execute_next();
     }
 
-    void CommandQueue::on_error(uint8_t function_code, uint8_t exception_code)
+    void CommandQueue::on_error(Command cmd, ErrorCode error)
     {
-      // From spec: "Fails command, clears guard, continues"
-
-      if (!is_executing_)
+      if (queue_.empty() || !execution_guard_)
       {
-        ESP_LOGW(TAG, "Received error but no command executing (unexpected error)");
+        ESP_LOGW(TAG, "Unexpected error for command 0x%02X (no executing command)",
+                 static_cast<uint8_t>(cmd));
         return;
       }
 
-      if (queue_.empty())
+      auto &current_cmd = queue_.front();
+      if (current_cmd.command != cmd)
       {
-        ESP_LOGW(TAG, "Received error but queue is empty (should not happen)");
-        is_executing_ = false;
+        ESP_LOGW(TAG, "Error mismatch: expected 0x%02X, got 0x%02X",
+                 static_cast<uint8_t>(current_cmd.command), static_cast<uint8_t>(cmd));
         return;
       }
 
-      // Get executing command
-      Command &cmd = queue_.front();
+      ESP_LOGE(TAG, "Command 0x%02X failed: error %d",
+               static_cast<uint8_t>(cmd), static_cast<int>(error));
 
-      ESP_LOGE(TAG, "Command failed: fc=0x%02X, addr=0x%04X, exception=0x%02X, retry=%u/%u", cmd.function_code,
-               cmd.address, exception_code, cmd.retry_count, max_retries_);
-
-      // Check if we should retry
-      if (cmd.retry_count < max_retries_)
+      // Invoke all callbacks with failure
+      for (auto &cb : current_cmd.callbacks)
       {
-        cmd.retry_count++;
-        cmd.state = CommandState::PENDING; // Reset to pending for retry
-        is_executing_ = false;             // Clear guard for retry
-        ESP_LOGD(TAG, "Retrying command: retry %u/%u", cmd.retry_count, max_retries_);
-        execute_next(); // Try again immediately
-        return;
-      }
-
-      // Max retries reached - transition to FAILED
-      cmd.state = CommandState::FAILED;
-      commands_failed_++;
-
-      // Invoke all callbacks with success=false
-      std::vector<uint8_t> empty_data;
-      for (auto &callback : cmd.callbacks)
-      {
-        if (callback)
+        if (cb)
         {
-          callback(false, empty_data);
+          cb(false, std::vector<uint8_t>{});
         }
       }
 
-      // Remove failed command from queue
+      // Remove failed command
       queue_.pop_front();
+      commands_failed_++;
 
-      // Clear execution guard
-      is_executing_ = false;
+      // CRITICAL: Clear execution guard to enable recovery
+      execution_guard_ = false;
 
-      // Process next command
+      // Tail-recursive processing: continue with next command
       execute_next();
     }
 
     void CommandQueue::clear()
     {
       // From spec: "Clear all pending (non-executing) commands"
-      ESP_LOGW(TAG, "Clearing command queue (size: %zu, executing: %d)", queue_.size(), is_executing_);
-
-      // Invoke all callbacks with success=false (except executing command)
-      std::vector<uint8_t> empty_data;
-      size_t cleared = 0;
-
-      // If executing, skip first command (it must complete naturally)
-      auto start_it = queue_.begin();
-      if (is_executing_ && !queue_.empty())
+      if (queue_.empty())
       {
-        start_it++; // Skip executing command
+        return;
       }
 
-      // Clear all pending commands
-      for (auto it = start_it; it != queue_.end(); ++it)
+      // If executing, skip first command (it must complete/timeout naturally)
+      size_t start_index = execution_guard_ ? 1 : 0;
+
+      ESP_LOGW(TAG, "Clearing %zu pending commands", queue_.size() - start_index);
+
+      // Invoke callbacks for all cleared commands
+      for (size_t i = start_index; i < queue_.size(); i++)
       {
-        for (auto &callback : it->callbacks)
+        for (auto &cb : queue_[i].callbacks)
         {
-          if (callback)
+          if (cb)
           {
-            callback(false, empty_data);
+            cb(false, std::vector<uint8_t>{});
           }
         }
-        cleared++;
       }
 
-      // Erase pending commands (keep executing command if present)
-      if (is_executing_ && !queue_.empty())
+      // Remove pending commands (keep executing command if present)
+      if (start_index > 0)
       {
-        queue_.erase(start_it, queue_.end());
+        queue_.erase(queue_.begin() + 1, queue_.end());
       }
       else
       {
         queue_.clear();
       }
-
-      ESP_LOGD(TAG, "Cleared %zu pending commands", cleared);
     }
 
     void CommandQueue::execute_next()
     {
-      // From spec: "checks execution guard, sends next command if idle"
-
-      // Single-flight guarantee: only one command executing at a time
-      if (is_executing_)
+      // From spec: "Check execution guard - return immediately if set"
+      if (execution_guard_)
       {
-        return; // Already executing, wait for response/error/timeout
+        return; // Command already executing
       }
 
-      // Check if queue is empty
       if (queue_.empty())
       {
-        return; // Nothing to execute
+        return; // No commands to execute
       }
 
-      // Get next pending command
-      Command &cmd = queue_.front();
-
-      // Verify it's in PENDING state (should be, but check anyway)
-      if (cmd.state != CommandState::PENDING)
-      {
-        ESP_LOGW(TAG, "Front command not in PENDING state (state=%d), removing", (int)cmd.state);
-        queue_.pop_front();
-        execute_next(); // Try next command
-        return;
-      }
+      auto &cmd = queue_.front();
 
       // Transition to EXECUTING
       cmd.state = CommandState::EXECUTING;
       cmd.sent_time = millis();
-      is_executing_ = true; // Set execution guard
 
-      ESP_LOGD(TAG, "Executing command: fc=0x%02X, addr=0x%04X, count/value=%u (queue: %zu)", cmd.function_code,
-               cmd.address, cmd.count_or_value, queue_.size());
+      // Set execution guard (single-flight guarantee)
+      execution_guard_ = true;
 
-      // Send command to Modbus device
+      // Send via transport
       send_command(cmd);
+
+      ESP_LOGD(TAG, "Executing command 0x%02X (queue depth: %zu)",
+               static_cast<uint8_t>(cmd.command), queue_.size());
+
       commands_sent_++;
     }
 
-    void CommandQueue::send_command(Command &cmd)
+    void CommandQueue::send_command(QueuedCommand &cmd)
     {
-      // From spec: "Format payload based on function code (0x04, 0x06, 0x10)"
-
-      if (!parent_)
+      // Determine if read or write based on Command enum
+      if (is_read_command(cmd.command))
       {
-        ESP_LOGE(TAG, "Cannot send command: parent is null");
-        return;
+        transport_->read_command(cmd.command);
       }
-
-      // Format Modbus command based on function code
-      switch (cmd.function_code)
+      else
       {
-      case 0x04: // Read Input Registers
-      {
-        // Function: 0x04, Address: 2 bytes, Count: 2 bytes
-        ESP_LOGD(TAG, "Sending Read Input Registers: addr=0x%04X, count=%u", cmd.address, cmd.count_or_value);
-        parent_->send(cmd.function_code, cmd.address, cmd.count_or_value);
-        break;
-      }
-
-      case 0x06: // Write Single Register
-      {
-        // Function: 0x06, Address: 2 bytes, Value: 2 bytes
-        ESP_LOGD(TAG, "Sending Write Single Register: addr=0x%04X, value=0x%04X", cmd.address, cmd.count_or_value);
-        parent_->send(cmd.function_code, cmd.address, cmd.count_or_value);
-        break;
-      }
-
-      case 0x10: // Write Multiple Registers
-      {
-        // Function: 0x10, Address: 2 bytes, Count: 2 bytes, Byte count: 1 byte, Values: N*2 bytes
-        ESP_LOGD(TAG, "Sending Write Multiple Registers: addr=0x%04X, count=%zu", cmd.address,
-                 cmd.multi_values.size());
-
-        // Build raw payload for multi-write
-        std::vector<uint8_t> payload;
-        payload.push_back(cmd.function_code);                // Function code
-        payload.push_back((cmd.address >> 8) & 0xFF);        // Address high byte
-        payload.push_back(cmd.address & 0xFF);               // Address low byte
-        payload.push_back((cmd.count_or_value >> 8) & 0xFF); // Count high byte (number of registers)
-        payload.push_back(cmd.count_or_value & 0xFF);        // Count low byte
-        payload.push_back(cmd.count_or_value * 2);           // Byte count (2 bytes per register)
-
-        // Add register values (big-endian)
-        for (uint16_t value : cmd.multi_values)
-        {
-          payload.push_back((value >> 8) & 0xFF); // Value high byte
-          payload.push_back(value & 0xFF);        // Value low byte
-        }
-
-        parent_->send_raw(payload);
-        break;
-      }
-
-      default:
-        ESP_LOGE(TAG, "Unknown function code: 0x%02X", cmd.function_code);
-        break;
+        transport_->execute_command(cmd.command, cmd.data);
       }
     }
 
     void CommandQueue::check_timeout()
     {
-      // From spec: "Called periodically to detect stuck commands"
-
-      if (!is_executing_)
+      if (queue_.empty() || !execution_guard_)
       {
-        return; // No command executing, nothing to timeout
+        return; // No executing command
       }
 
-      if (queue_.empty())
-      {
-        // Should not happen, but handle gracefully
-        ESP_LOGW(TAG, "Executing flag set but queue is empty, clearing flag");
-        is_executing_ = false;
-        return;
-      }
+      auto &current_cmd = queue_.front();
+      uint32_t elapsed = millis() - current_cmd.sent_time;
 
-      // Get executing command
-      Command &cmd = queue_.front();
-
-      // Check if timeout exceeded
-      uint32_t elapsed = millis() - cmd.sent_time;
       if (elapsed > timeout_ms_)
       {
-        ESP_LOGW(TAG, "Command timeout: fc=0x%02X, addr=0x%04X, elapsed=%ums > timeout=%ums", cmd.function_code,
-                 cmd.address, elapsed, timeout_ms_);
+        ESP_LOGW(TAG, "Command 0x%02X timed out after %ums",
+                 static_cast<uint8_t>(current_cmd.command), elapsed);
 
-        // Transition to TIMEOUT
-        cmd.state = CommandState::TIMEOUT;
-        commands_timeout_++;
-
-        // Invoke all callbacks with success=false
-        std::vector<uint8_t> empty_data;
-        for (auto &callback : cmd.callbacks)
+        // Invoke callbacks with failure
+        for (auto &cb : current_cmd.callbacks)
         {
-          if (callback)
+          if (cb)
           {
-            callback(false, empty_data);
+            cb(false, std::vector<uint8_t>{});
           }
         }
 
-        // Remove timeout command from queue
+        // Remove timed-out command
         queue_.pop_front();
+        commands_timeout_++;
 
-        // Clear execution guard
-        is_executing_ = false;
+        // CRITICAL: Clear execution guard to prevent queue stall
+        execution_guard_ = false;
 
-        // Process next command
+        // Tail-recursive processing: continue with next command
         execute_next();
       }
     }
 
-    std::deque<CommandQueue::Command>::iterator CommandQueue::find_duplicate_read(uint16_t address, uint16_t count)
+    std::deque<CommandQueue::QueuedCommand>::iterator
+    CommandQueue::find_duplicate_read(Command cmd)
     {
-      // From spec: "Deduplication only for read commands (same address+count)"
+      // From spec: "Deduplication only for read commands (same Command enum)"
+      if (!is_read_command(cmd))
+      {
+        return queue_.end();
+      }
 
-      // Search queue for duplicate read command (including EXECUTING commands)
       for (auto it = queue_.begin(); it != queue_.end(); ++it)
       {
-        // Must be read command (0x04)
-        if (it->function_code != 0x04)
+        if (it->command == cmd && it->state == CommandState::PENDING)
         {
-          continue;
-        }
-
-        // Check address and count match
-        if (it->address == address && it->count_or_value == count)
-        {
-          return it; // Found duplicate (could be PENDING or EXECUTING)
+          return it;
         }
       }
 
-      return queue_.end(); // No duplicate found
+      return queue_.end();
     }
 
   } // namespace servoxxd
