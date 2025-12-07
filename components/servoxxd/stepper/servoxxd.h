@@ -36,9 +36,9 @@ namespace esphome
 
     enum class ControlMode : uint8_t
     {
-      SR_OPEN = 0,  // SR open loop mode
-      SR_CLOSE = 1, // SR closed loop mode
-      SR_VFOC = 2,  // SR vector FOC mode
+      SR_OPEN = 3,  // SR open loop mode (serial interface)
+      SR_CLOSE = 4, // SR closed loop mode (serial interface)
+      SR_VFOC = 5,  // SR vector FOC mode (serial interface)
     };
 
     enum class EnPinActive : uint8_t
@@ -116,8 +116,9 @@ namespace esphome
       EndstopTrigger endstop_trigger{EndstopTrigger::TRIGGER_LOW}; ///< For ENDSTOP mode
       uint16_t current_ma{0};                                      ///< For SENSORLESS mode (0 = use defaults)
 
-      // Constructor - don't initialize union member yet (will be done in ServoXxd constructor)
-      HomingConfig() : level(2) {} // Default to MEDIUM for VIRTUAL, will be overwritten for ENDSTOP/SENSORLESS
+      // Constructor - requires parent pointer for Speed initialization
+      // Note: Will be properly initialized in ServoXxd constructor
+      HomingConfig() : level(0) {} // Temporary - will be overwritten by ServoXxd constructor
 
       // Destructor - clean up Speed if that's the active member
       ~HomingConfig()
@@ -198,19 +199,22 @@ namespace esphome
     {
     public:
       // ==== Action-API Methoden (Stub, TODO: Implementierung) ====
-      void set_work_mode(OperatingMode mode); // TODO: Implement
-      // void set_microsteps(uint16_t microsteps); // bereits implementiert
-      // void set_working_current(uint16_t current_ma); // bereits implementiert
-      // void set_holding_current_percent(uint8_t percent); // bereits implementiert
+      void set_control_mode(ControlMode mode);          // Change control mode at runtime (sends Command 0x82)
       void set_speed(const Speed &speed);               // TODO: Implement
       void set_acceleration(const Acceleration &accel); // TODO: Implement
       void set_zero();                                  // TODO: Implement
       void report_position(const Position &pos);        // TODO: Implement
-      void release_protection();                        // TODO: Implement
-      void restart();                                   // TODO: Implement
-      void calibrate();                                 // TODO: Implement
-      void key_lock();                                  // TODO: Implement
-      void key_unlock();                                // TODO: Implement
+
+      // Position synchronization helpers (keep internal Position objects in sync with base class int32_t members)
+      void set_current_pos(const Position &pos);        ///< Update current_pos_ and sync base class current_position
+      void set_target_pos(const Position &pos);         ///< Update target_pos_ and sync base class target_position
+
+      // Pure delegation methods (inline)
+      void release_protection() { this->engine_->release_protection(); }  ///< Clear protection state
+      void restart() { this->engine_->restart(); }                        ///< Restart motor controller
+      void calibrate() { this->engine_->calibrate(); }                    ///< Start encoder calibration
+      void key_lock() { this->engine_->key_lock(); }                      ///< Lock physical buttons
+      void key_unlock() { this->engine_->key_unlock(); }                  ///< Unlock physical buttons
     public:
       ServoXxd();  // Implemented in .cpp to initialize homing_.speed with valid parent pointer
       ~ServoXxd(); // Implemented in .cpp to avoid incomplete type
@@ -282,18 +286,9 @@ namespace esphome
        *
        * Valid values: 1-256 (hardware supports any value in this range)
        * Affects Speed class hardware compensation (rpm_for_hardware).
+       * Critical setting - triggers motor restart if changed after setup.
        */
-      void set_microsteps(uint16_t microsteps)
-      {
-        // Validate microstepping value (1-256 per spec)
-        if (microsteps < 1 || microsteps > 256)
-        {
-          ESP_LOGE("servoxxd_modbus", "Invalid microsteps: %u (must be 1-256)", microsteps);
-          return;
-        }
-        microstepping_ = microsteps;
-        // TODO: Send to hardware via Modbus command
-      }
+      void set_microsteps(uint16_t microsteps);
 
       /**
        * @brief Get current microstepping mode
@@ -310,11 +305,142 @@ namespace esphome
       OperatingMode get_operating_mode() const { return operating_mode_; }
 
       /**
+       * @brief Get control mode (hardware loop type)
+       *
+       * Used by StepperEngine for setup commands.
+       */
+      ControlMode get_control_mode() const { return control_mode_; }
+
+      /**
+       * @brief Get working current in mA
+       *
+       * Used by StepperEngine for motor setup.
+       */
+      uint16_t get_working_current() const { return working_current_; }
+
+      /**
+       * @brief Get holding current percentage
+       *
+       * Used by StepperEngine for motor setup.
+       */
+      uint8_t get_holding_current_percent() const { return holding_current_percent_; }
+
+      /**
+       * @brief Get EN pin active mode
+       *
+       * Used by StepperEngine for motor setup.
+       */
+      EnPinActive get_en_pin_active() const { return en_pin_active_; }
+
+      /**
+       * @brief Get auto screen off setting
+       *
+       * Used by StepperEngine for motor setup.
+       */
+      bool get_auto_screen_off() const { return auto_screen_off_; }
+
+      /**
+       * @brief Get lock keys at startup setting
+       *
+       * Used by StepperEngine for motor setup.
+       */
+      bool get_lock_keys_at_startup() const { return lock_keys_at_startup_; }
+
+      /**
        * @brief Get homing configuration
        *
        * Used by StepperEngine for homing commands.
        */
       const HomingConfig &get_homing_config() const { return homing_; }
+
+      /**
+       * @brief Set homing mode (ENDSTOP, SENSORLESS, VIRTUAL)
+       *
+       * Called from Python/YAML. Destroys old union member and constructs new one.
+       */
+      void set_homing_mode(HomingMode mode)
+      {
+        if (homing_.mode == mode)
+          return; // No change
+
+        // Destroy old union member
+        if (homing_.mode != HomingMode::VIRTUAL)
+          homing_.speed.~Speed();
+
+        // Update mode
+        homing_.mode = mode;
+
+        // Construct new union member
+        if (mode == HomingMode::VIRTUAL)
+          homing_.level = 2; // Default to MEDIUM
+        else
+          new (&homing_.speed) Speed(100.0f, SpeedUnit::RPM, this); // Default speed
+      }
+
+      /**
+       * @brief Set homing at startup flag
+       */
+      void set_homing_at_startup(bool enable) { homing_.at_startup = enable; }
+
+      /**
+       * @brief Set homing direction (CW, CCW, NEAREST)
+       */
+      void set_homing_direction(HomingDirection dir) { homing_.direction = dir; }
+
+      /**
+       * @brief Set homing speed for ENDSTOP/SENSORLESS modes
+       *
+       * Called from Python/YAML with value and unit.
+       */
+      void set_homing_speed(float value, SpeedUnit unit)
+      {
+        if (homing_.mode == HomingMode::VIRTUAL)
+        {
+          ESP_LOGW("servoxxd", "set_homing_speed: ignored for VIRTUAL mode (use set_homing_speed_level)");
+          return;
+        }
+        // Reconstruct Speed object with new value
+        homing_.speed.~Speed();
+        new (&homing_.speed) Speed(value, unit, this);
+      }
+
+      /**
+       * @brief Set homing speed level for VIRTUAL mode (0-4)
+       *
+       * 0=SLOWEST, 1=SLOW, 2=MEDIUM, 3=FAST, 4=FASTEST
+       */
+      void set_homing_speed_level(uint8_t level)
+      {
+        if (homing_.mode != HomingMode::VIRTUAL)
+        {
+          ESP_LOGW("servoxxd", "set_homing_speed_level: ignored for non-VIRTUAL mode (use set_homing_speed)");
+          return;
+        }
+        if (level > 4)
+        {
+          ESP_LOGE("servoxxd", "Invalid homing speed level: %u (must be 0-4)", level);
+          return;
+        }
+        homing_.level = level;
+      }
+
+      /**
+       * @brief Set endstop trigger mode (HIGH, LOW) for ENDSTOP mode
+       */
+      void set_homing_endstop_trigger(EndstopTrigger trigger)
+      {
+        homing_.endstop_trigger = trigger;
+      }
+
+      /**
+       * @brief Set homing current threshold for SENSORLESS mode
+       *
+       * @param current_milliamps Current in mA (0-5200 depending on servo_type)
+       */
+      void set_homing_current(uint16_t current_milliamps)
+      {
+        homing_.current_ma = current_milliamps;
+      }
 
       /**
        * @brief Get default speed
@@ -349,7 +475,6 @@ namespace esphome
       // Configuration setters for motor parameters
       void set_address(uint8_t addr) { this->address_ = addr; }
       void set_servo_type(ServoType type) { /* Store servo type */ }
-      void set_control_mode(ControlMode mode) { /* Store control mode */ }
       void set_working_current(uint16_t ma) { working_current_ = ma; }
       void set_holding_current_percent(uint8_t percent)
       {
@@ -360,9 +485,9 @@ namespace esphome
         }
         holding_current_percent_ = percent;
       }
-      void set_en_pin_active(EnPinActive value) { /* Store EN pin setting */ }
-      void set_auto_screen_off(bool enable) { /* Store auto screen off */ }
-      void set_lock_keys_at_startup(bool lock) { /* Store key lock setting */ }
+      void set_en_pin_active(EnPinActive value) { en_pin_active_ = value; }
+      void set_auto_screen_off(bool enable) { auto_screen_off_ = enable; }
+      void set_lock_keys_at_startup(bool lock) { lock_keys_at_startup_ = lock; }
       void set_mode(OperatingMode mode) { operating_mode_ = mode; }
       void set_sleep_when_done(uint32_t ms) { /* Store sleep delay */ }
 
@@ -419,7 +544,7 @@ namespace esphome
        * Minimal implementation: Simply delegates to StepperEngine.
        * TODO later: Add Position Mode validation, error state check
        */
-      void home();
+      void home() { this->engine_->home(); }
 
       /**
        * @brief Stop motor with deceleration
@@ -427,7 +552,11 @@ namespace esphome
        * Minimal implementation: Simply delegates to StepperEngine.
        * Works in both Position and Speed modes.
        */
-      void stop(std::optional<Acceleration> decel = std::nullopt);
+      void stop(std::optional<Acceleration> decel = std::nullopt)
+      {
+        Acceleration actual_decel = decel.has_value() ? decel.value() : this->default_acceleration_;
+        this->engine_->stop(actual_decel);
+      }
 
       /**
        * @brief Run continuously at specified speed
@@ -436,28 +565,33 @@ namespace esphome
        * TODO later: Add Speed Mode validation, error state check
        */
       void run_continuous(std::optional<Speed> speed = std::nullopt,
-                          std::optional<Acceleration> accel = std::nullopt);
+                          std::optional<Acceleration> accel = std::nullopt)
+      {
+        Speed actual_speed = speed.has_value() ? speed.value() : this->default_speed_;
+        Acceleration actual_accel = accel.has_value() ? accel.value() : this->default_acceleration_;
+        this->engine_->run_continuous(actual_speed, actual_accel);
+      }
 
       /**
        * @brief Emergency stop (immediate halt, no deceleration)
        *
        * Minimal implementation: Simply delegates to StepperEngine.
        */
-      void emergency_stop();
+      void emergency_stop() { this->engine_->emergency_stop(); }
 
       /**
        * @brief Enable motor
        *
        * Minimal implementation: Simply delegates to StepperEngine.
        */
-      void enable();
+      void enable() { this->engine_->enable(); }
 
       /**
        * @brief Disable motor
        *
        * Minimal implementation: Simply delegates to StepperEngine.
        */
-      void disable();
+      void disable() { this->engine_->disable(); }
 
       // TODO: Add more public API methods:
       // - set_zero() - Set current position as zero
@@ -541,8 +675,10 @@ namespace esphome
       uint8_t holding_current_percent_{50}; ///< Holding current as % of working current (0-100)
 
       // Motor behavior
-      bool shaft_reversed_{false};     ///< Reverse shaft direction
-      bool en_pin_active_high_{false}; ///< EN pin polarity
+      bool shaft_reversed_{false};                     ///< Reverse shaft direction
+      EnPinActive en_pin_active_{EnPinActive::EN_LOW}; ///< EN pin active level (default: LOW)
+      bool auto_screen_off_{true};                     ///< Auto screen off after 15s (default: true)
+      bool lock_keys_at_startup_{false};               ///< Lock physical keys at startup (default: false)
 
       // Homing configuration
       HomingConfig homing_;
@@ -551,8 +687,19 @@ namespace esphome
       Speed default_speed_{100.0f, SpeedUnit::RPM, this};                               ///< Default/max speed for movements
       Acceleration default_acceleration_{1000.0f, AccelerationUnit::RPM_PER_SEC, this}; ///< Default acceleration
 
+      // Position tracking (internal Position objects - primary source of truth)
+      Position current_pos_{0.0f, PositionUnit::STEPS, this};     ///< Current position (raw encoder + offset)
+      Position target_pos_{0.0f, PositionUnit::STEPS, this};      ///< Target position for moves
+      Position position_offset_{0.0f, PositionUnit::STEPS, this}; ///< Offset for report_position() zeroing
+
       // Operating mode
       OperatingMode operating_mode_{OperatingMode::POSITION}; ///< Current operating mode (POSITION or SPEED)
+
+      // Control mode (hardware loop type)
+      ControlMode control_mode_{ControlMode::SR_OPEN}; ///< Control mode: SR_OPEN, SR_CLOSE, or SR_VFOC
+
+      // Setup state
+      bool is_setup_{false}; ///< True after setup() completes, enables runtime hardware updates
 
       // Sleep configuration
       bool sleep_when_done_{false}; ///< Enter sleep mode after motion complete

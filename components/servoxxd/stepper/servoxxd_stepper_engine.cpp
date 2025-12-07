@@ -58,6 +58,155 @@ namespace esphome
     }
 
     // ============================================================================
+    // Motor Setup
+    // ============================================================================
+
+    void StepperEngine::setup_motor()
+    {
+      if (!queue_)
+      {
+        ESP_LOGE(TAG_ENGINE, "Cannot setup motor: CommandQueue not initialized");
+        return;
+      }
+
+      ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor setup commands...");
+
+      // 1. Set microstepping (Command 0x84 SET_SUBDIVISION)
+      {
+        auto subdivision_data = ServoCommandCodec::encode_set_subdivision(parent_->get_microstepping());
+        auto subdivision_payload = std::vector<uint8_t>(subdivision_data.begin(), subdivision_data.end());
+
+        queue_->enqueue(Command::SET_SUBDIVISION, subdivision_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ Microstepping set to %u", parent_->get_microstepping());
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set microstepping");
+                          }
+                        });
+      }
+
+      // 2. Set EN pin active level (Command 0x85 SET_EN_PIN_ACTIVE)
+      {
+        auto en_pin_data = ServoCommandCodec::encode_set_en_pin_active(static_cast<uint8_t>(parent_->get_en_pin_active()));
+        auto en_pin_payload = std::vector<uint8_t>(en_pin_data.begin(), en_pin_data.end());
+
+        queue_->enqueue(Command::SET_EN_PIN_ACTIVE, en_pin_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            const char *mode_names[] = {"LOW", "HIGH", "ALWAYS"};
+                            ESP_LOGD(TAG_ENGINE, "✓ EN pin active: %s", mode_names[static_cast<uint8_t>(parent_->get_en_pin_active())]);
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN pin active level");
+                          }
+                        });
+      }
+
+      // 3. Set auto screen off (Command 0x87 SET_AUTO_SCREEN_OFF)
+      {
+        auto screen_data = ServoCommandCodec::encode_set_auto_screen_off(parent_->get_auto_screen_off());
+        auto screen_payload = std::vector<uint8_t>(screen_data.begin(), screen_data.end());
+
+        queue_->enqueue(Command::SET_AUTO_SCREEN_OFF, screen_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ Auto screen off: %s", parent_->get_auto_screen_off() ? "enabled" : "disabled");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set auto screen off");
+                          }
+                        });
+      }
+
+      // 4. Set key lock (Command 0x8F SET_LOCK_KEYS)
+      {
+        auto lock_data = ServoCommandCodec::encode_set_lock_keys(parent_->get_lock_keys_at_startup());
+        auto lock_payload = std::vector<uint8_t>(lock_data.begin(), lock_data.end());
+
+        queue_->enqueue(Command::SET_LOCK_KEYS, lock_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ Keys: %s", parent_->get_lock_keys_at_startup() ? "locked" : "unlocked");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set key lock");
+                          }
+                        });
+      }
+
+      // 5. Set control mode (Command 0x82 SET_WORK_MODE)
+      {
+        ControlMode control_mode = parent_->get_control_mode();
+
+        // Compute mode name for logging
+        const char *mode_name;
+        switch (control_mode)
+        {
+        case ControlMode::SR_OPEN:
+          mode_name = "SR_OPEN";
+          break;
+        case ControlMode::SR_CLOSE:
+          mode_name = "SR_CLOSE";
+          break;
+        case ControlMode::SR_VFOC:
+          mode_name = "SR_vFOC";
+          break;
+        }
+
+        queue_->enqueue(Command::SET_WORK_MODE,
+                        ServoCommandCodec::encode_set_control_mode(control_mode),
+                        [this, mode_name](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ Control mode set to %s", mode_name);
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set control mode");
+                          }
+                        });
+      }
+
+      // 6. Set zero position (Command 0x92 SET_ZERO)
+      // Note: Control mode is set via set_control_mode() called during component initialization
+      {
+        auto zero_payload = std::vector<uint8_t>();
+
+        queue_->enqueue(Command::SET_ZERO, zero_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ Position reset to 0");
+                            // Update internal tracking
+                            current_position_ = Position(0.0f, PositionUnit::STEPS, parent_);
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to reset position");
+                          }
+                        });
+      }
+
+      ESP_LOGCONFIG(TAG_ENGINE, "Setup: 6 commands enqueued (will execute via CommandQueue)");
+    }
+
+    // ============================================================================
     // Main Update Loop
     // ============================================================================
 
@@ -101,10 +250,10 @@ namespace esphome
         ESP_LOGD(TAG_ENGINE, "move_to(): Override current movement with new target");
         target_position_ = target;
 
-        // Send new target to hardware (Command 0xFD MOVE_POSITION_MODE_2)
+        // Send new target to hardware (Command 0xFE MOVE_POSITION_MODE_2)
         int32_t position_steps = static_cast<int32_t>(target.get_steps());
         uint16_t speed_units = speed.has_value() ? static_cast<uint16_t>(speed->rpm() * 16.0f) : 0;
-        uint8_t accel_units = accel.has_value() ? static_cast<uint8_t>(accel->get_rpm_per_sec() / 10.0f) : 0;
+        uint16_t accel_units = accel.has_value() ? static_cast<uint16_t>(accel->get_rpm_per_sec() / 10.0f) : 0;
         auto payload = ServoCommandCodec::encode_move_position_mode_2(position_steps, speed_units, accel_units);
         queue_->enqueue(Command::MOVE_POSITION_MODE_2, payload, nullptr);
         return;
@@ -123,11 +272,10 @@ namespace esphome
                speed.has_value() ? speed->rpm() : 0.0f,
                accel.has_value() ? accel->get_rpm_per_sec() : 0.0f);
 
-      // Send move command via queue (Command 0xFD MOVE_POSITION_MODE_2)
+      // Send move command via queue (Command 0xFE MOVE_POSITION_MODE_2)
       int32_t position_steps = static_cast<int32_t>(target.get_steps());
-      ESP_LOGD(TAG_ENGINE, "  >> Sending to motor: position_steps=%d (0x%08X)", position_steps, static_cast<unsigned int>(position_steps));
       uint16_t speed_units = speed.has_value() ? static_cast<uint16_t>(speed->rpm() * 16.0f) : 0;
-      uint8_t accel_units = accel.has_value() ? static_cast<uint8_t>(accel->get_rpm_per_sec() / 10.0f) : 0;
+      uint16_t accel_units = accel.has_value() ? static_cast<uint16_t>(accel->get_rpm_per_sec() / 10.0f) : 0;
       auto payload = ServoCommandCodec::encode_move_position_mode_2(position_steps, speed_units, accel_units);
       queue_->enqueue(Command::MOVE_POSITION_MODE_2, payload, nullptr);
 
@@ -331,24 +479,33 @@ namespace esphome
         return;
       }
 
-      ESP_LOGD(TAG_ENGINE, "set_zero(): Setting current position as zero");
+      ESP_LOGD(TAG_ENGINE, "set_zero(): Sending SET_ZERO command to hardware");
 
-      // Send set zero command via queue (Command 0x0A SET_ZERO)
+      // Send set zero command via queue (Command 0x92 SET_ZERO)
       std::vector<uint8_t> payload; // No payload
-      queue_->enqueue(Command::SET_ZERO, payload, nullptr);
-
-      // Update local position tracking
-      current_position_ = Position(0.0f, PositionUnit::STEPS, parent_);
-      encoder_carry_ = 0;
-      encoder_value_ = 0;
+      
+      // Update position tracking only after hardware confirms
+      queue_->enqueue(Command::SET_ZERO, payload, [this]() {
+        // Hardware confirmed - reset encoder position
+        current_position_ = Position(0.0f, PositionUnit::STEPS, parent_);
+        encoder_carry_ = 0;
+        encoder_value_ = 0;
+        
+        // Also reset parent's offset and position tracking
+        parent_->position_offset_ = Position(0.0f, PositionUnit::STEPS, parent_);
+        parent_->current_position = 0;
+        
+        ESP_LOGI(TAG_ENGINE, "set_zero: Hardware confirmed, encoder and offset reset to zero");
+      });
     }
 
     // ============================================================================
     // Status Queries
     // ============================================================================
 
-    Position StepperEngine::get_current_position() const
+    Position StepperEngine::get_raw_encoder_position() const
     {
+      // Return raw encoder position without any offset
       return current_position_;
     }
 

@@ -84,8 +84,20 @@ namespace esphome
       /// Set subdivision (microstepping: 1, 2, 4, 8, 16, 32, 64, etc.)
       SET_SUBDIVISION = 0x84,
 
+      /// Set EN pin active level (0=LOW, 1=HIGH, 2=ALWAYS/Hold)
+      SET_EN_PIN_ACTIVE = 0x85,
+
+      /// Set auto screen off (0=disabled, 1=enabled)
+      SET_AUTO_SCREEN_OFF = 0x87,
+
+      /// Set key lock (0=unlock, 1=lock)
+      SET_LOCK_KEYS = 0x8F,
+
+      /// Set holding current percentage (0-8 for 10%-90%)
+      SET_HOLDING_CURRENT_PERCENT = 0x9B,
+
       /// Set current encoder position as zero reference
-      SET_ZERO = 0x0A,
+      SET_ZERO = 0x92,
 
       /// Set homing current threshold for sensorless homing
       /// @see docs/specification/02-cpp-interface.md line 221

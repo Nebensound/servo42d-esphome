@@ -170,12 +170,19 @@ button:
 
   # Runtime configuration changes
   - platform: template
-    name: "Set Work Mode: SR_VFOC"
+    name: "Set Control Mode: SR_VFOC"
     on_press:
-      - stepper.set_work_mode:
+      - stepper.set_control_mode:
           id: my_stepper
-          mode: SR_VFOC
+          control_mode: SR_VFOC
 
+  - platform: template
+    name: "Set Control Mode: SR_CLOSE"
+    on_press:
+      - stepper.set_control_mode:
+          id: my_stepper
+          control_mode: SR_CLOSE
+  
   - platform: template
     name: "Set Working Current: 2000mA"
     on_press:

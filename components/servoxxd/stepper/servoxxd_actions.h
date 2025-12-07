@@ -108,6 +108,11 @@ namespace esphome
 
       void play(Ts... x) override
       {
+        if (parent_->get_operating_mode() != OperatingMode::POSITION)
+        {
+          ESP_LOGE("servoxxd.action", "set_target requires mode: POSITION");
+          return;
+        }
         float value = this->value_.value(x...);
         Position pos(value, unit_, parent_);
         parent_->move_to(pos);
@@ -139,6 +144,11 @@ namespace esphome
 
       void play(Ts... x) override
       {
+        if (parent_->get_operating_mode() != OperatingMode::SPEED)
+        {
+          ESP_LOGE("servoxxd.action", "run_continuous requires mode: SPEED");
+          return;
+        }
         float value = this->value_.value(x...);
         Speed speed(value, unit_, parent_);
         parent_->run_continuous(speed);
@@ -208,6 +218,11 @@ namespace esphome
 
       void play(Ts... x) override
       {
+        if (parent_->get_operating_mode() != OperatingMode::POSITION)
+        {
+          ESP_LOGE("servoxxd.action", "home requires mode: POSITION");
+          return;
+        }
         parent_->home();
       }
 
@@ -240,6 +255,11 @@ namespace esphome
 
       void play(Ts... x) override
       {
+        if (parent_->get_operating_mode() != OperatingMode::POSITION)
+        {
+          ESP_LOGE("servoxxd.action", "report_position requires mode: POSITION");
+          return;
+        }
         float value = this->value_.value(x...);
         Position pos(value, unit_, parent_);
         parent_->report_position(pos);
@@ -265,8 +285,12 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_zero in ServoXxd first
-        // parent_->set_zero();
+        if (parent_->get_operating_mode() != OperatingMode::POSITION)
+        {
+          ESP_LOGE("servoxxd.action", "set_zero requires mode: POSITION");
+          return;
+        }
+        parent_->set_zero();
       }
 
     protected:
@@ -390,28 +414,28 @@ namespace esphome
     // ============================================================================
 
     /**
-     * @brief Action: Change work mode
+     * @brief Action: Change control mode (SR_OPEN/SR_CLOSE/SR_VFOC)
      *
-     * YAML: `stepper.set_work_mode`
+     * YAML: `stepper.set_control_mode`
      *
-     * TODO: Implement play() method
-     * TODO: Define WorkMode enum
+     * Changes the hardware control loop type at runtime.
      */
     template <typename... Ts>
-    class SetWorkModeAction : public Action<Ts...>
+    class SetControlModeAction : public Action<Ts...>
     {
     public:
-      explicit SetWorkModeAction(ServoXxd *parent) : parent_(parent) {}
+      explicit SetControlModeAction(ServoXxd *parent) : parent_(parent) {}
 
-      TEMPLATABLE_VALUE(OperatingMode, mode)
+      void set_control_mode(ControlMode mode) { mode_ = mode; }
 
       void play(Ts... x) override
       {
-        parent_->set_work_mode(static_cast<OperatingMode>(this->mode_.value(x...)));
+        parent_->set_control_mode(mode_);
       }
 
     protected:
       ServoXxd *parent_;
+      ControlMode mode_{ControlMode::SR_VFOC};
     };
 
     /**

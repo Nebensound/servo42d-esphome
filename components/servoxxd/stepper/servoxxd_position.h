@@ -52,7 +52,7 @@ namespace esphome
       Position(int64_t value, PositionUnit unit, const ServoXxd *parent);
       Position(int32_t value, PositionUnit unit, const ServoXxd *parent);
       explicit Position(const ServoXxd *parent) : revs_(0), angle_ticks_(0), parent_(parent) {}
-      
+
       // Copy constructor (explicit for debugging)
       Position(const Position &other);
 

@@ -71,26 +71,26 @@ script:
       - lambda: 'ESP_LOGI("test", "TEST 2: Small Movement (200 steps forward)");'
       - lambda: 'ESP_LOGI("test", "==========================================");'
       - delay: 1s
-      
+
       - lambda: |-
           int start_pos = (int)id(test_motor).current_position;
           ESP_LOGI("test", "  -> Start position: %d steps", start_pos);
-      
+
       - lambda: |-
           // Direct C++ call to move_to() with runtime calculation
           float target_pos = id(test_motor).current_position + 200.0f;
           ESP_LOGI("test", "  -> Target position: %.0f steps", target_pos);
           ESP_LOGI("test", "  -> Starting movement...");
-          
+
           esphome::servoxxd::Position pos(target_pos, esphome::servoxxd::PositionUnit::STEPS, id(test_motor));
           id(test_motor)->move_to(pos);
-          
+
       - delay: 5s
-      
+
       - lambda: |-
           int final_pos = (int)id(test_motor).current_position;
           ESP_LOGI("test", "  -> Final position: %d steps", final_pos);
-          
+
       - lambda: 'ESP_LOGI("test", "  ✓ TEST 2 PASSED");'
       - delay: 1s
 
@@ -103,7 +103,7 @@ script:
       # Run TEST 1 (currently disabled)
       #- script.execute: test_1_enable_disable
       #- script.wait: test_1_enable_disable
-      
+
       # Run TEST 2 only
       - script.execute: test_2_small_movement
       - script.wait: test_2_small_movement

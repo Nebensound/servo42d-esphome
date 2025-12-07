@@ -47,45 +47,49 @@ void test_encode_move_position_mode_2()
 
   // Test basic encoding
   auto data = ServoCommandCodec::encode_move_position_mode_2(1000, 100, 50);
-  ASSERT_EQUAL(data.size(), 7u, "Payload size is 7 bytes");
-  ASSERT_EQUAL(data[0], 0x00, "Speed MSB");
-  ASSERT_EQUAL(data[1], 0x64, "Speed LSB = 100");
-  ASSERT_EQUAL(data[2], 50, "Accel = 50");
-  ASSERT_EQUAL(data[3], 0x00, "Position byte 0");
-  ASSERT_EQUAL(data[4], 0x00, "Position byte 1");
-  ASSERT_EQUAL(data[5], 0x03, "Position byte 2");
-  ASSERT_EQUAL(data[6], 0xE8, "Position byte 3 = 1000");
+  ASSERT_EQUAL(data.size(), 8u, "Payload size is 8 bytes (2+2+4)");
+  ASSERT_EQUAL(data[0], 0x00, "Accel MSB");
+  ASSERT_EQUAL(data[1], 0x32, "Accel LSB = 50");
+  ASSERT_EQUAL(data[2], 0x00, "Speed MSB");
+  ASSERT_EQUAL(data[3], 0x64, "Speed LSB = 100");
+  ASSERT_EQUAL(data[4], 0x00, "Position byte 0");
+  ASSERT_EQUAL(data[5], 0x00, "Position byte 1");
+  ASSERT_EQUAL(data[6], 0x03, "Position byte 2");
+  ASSERT_EQUAL(data[7], 0xE8, "Position byte 3 = 1000");
 
   // Test negative position
   data = ServoCommandCodec::encode_move_position_mode_2(-1000, 200, 100);
-  ASSERT_EQUAL(data.size(), 7u, "Negative position payload size");
-  ASSERT_EQUAL(data[0], 0x00, "Speed MSB");
-  ASSERT_EQUAL(data[1], 0xC8, "Speed LSB = 200");
-  ASSERT_EQUAL(data[2], 100, "Accel = 100");
-  ASSERT_EQUAL(data[3], 0xFF, "Negative position byte 0");
-  ASSERT_EQUAL(data[4], 0xFF, "Negative position byte 1");
-  ASSERT_EQUAL(data[5], 0xFC, "Negative position byte 2");
-  ASSERT_EQUAL(data[6], 0x18, "Negative position byte 3");
+  ASSERT_EQUAL(data.size(), 8u, "Negative position payload size");
+  ASSERT_EQUAL(data[0], 0x00, "Accel MSB");
+  ASSERT_EQUAL(data[1], 100, "Accel LSB = 100");
+  ASSERT_EQUAL(data[2], 0x00, "Speed MSB");
+  ASSERT_EQUAL(data[3], 0xC8, "Speed LSB = 200");
+  ASSERT_EQUAL(data[4], 0xFF, "Negative position byte 0");
+  ASSERT_EQUAL(data[5], 0xFF, "Negative position byte 1");
+  ASSERT_EQUAL(data[6], 0xFC, "Negative position byte 2");
+  ASSERT_EQUAL(data[7], 0x18, "Negative position byte 3");
 
   // Test zero values
   data = ServoCommandCodec::encode_move_position_mode_2(0, 0, 0);
-  ASSERT_EQUAL(data.size(), 7u, "Zero values payload size");
-  ASSERT_EQUAL(data[0], 0x00, "Speed MSB zero");
-  ASSERT_EQUAL(data[1], 0x00, "Speed LSB zero");
-  ASSERT_EQUAL(data[2], 0x00, "Accel zero");
-  ASSERT_EQUAL(data[3], 0x00, "Position byte 0 zero");
-  ASSERT_EQUAL(data[6], 0x00, "Position byte 3 zero");
+  ASSERT_EQUAL(data.size(), 8u, "Zero values payload size");
+  ASSERT_EQUAL(data[0], 0x00, "Accel MSB zero");
+  ASSERT_EQUAL(data[1], 0x00, "Accel LSB zero");
+  ASSERT_EQUAL(data[2], 0x00, "Speed MSB zero");
+  ASSERT_EQUAL(data[3], 0x00, "Speed LSB zero");
+  ASSERT_EQUAL(data[4], 0x00, "Position byte 0 zero");
+  ASSERT_EQUAL(data[7], 0x00, "Position byte 3 zero");
 
   // Test maximum values
   data = ServoCommandCodec::encode_move_position_mode_2(INT32_MAX, UINT16_MAX, 255);
-  ASSERT_EQUAL(data.size(), 7u, "Max values payload size");
-  ASSERT_EQUAL(data[0], 0xFF, "Max speed MSB");
-  ASSERT_EQUAL(data[1], 0xFF, "Max speed LSB");
-  ASSERT_EQUAL(data[2], 255, "Max accel");
-  ASSERT_EQUAL(data[3], 0x7F, "Max position byte 0");
-  ASSERT_EQUAL(data[4], 0xFF, "Max position byte 1");
-  ASSERT_EQUAL(data[5], 0xFF, "Max position byte 2");
-  ASSERT_EQUAL(data[6], 0xFF, "Max position byte 3");
+  ASSERT_EQUAL(data.size(), 8u, "Max values payload size");
+  ASSERT_EQUAL(data[0], 0x00, "Max accel MSB (255 as uint16)");
+  ASSERT_EQUAL(data[1], 0xFF, "Max accel LSB");
+  ASSERT_EQUAL(data[2], 0xFF, "Max speed MSB");
+  ASSERT_EQUAL(data[3], 0xFF, "Max speed LSB");
+  ASSERT_EQUAL(data[4], 0x7F, "Max position byte 0");
+  ASSERT_EQUAL(data[5], 0xFF, "Max position byte 1");
+  ASSERT_EQUAL(data[6], 0xFF, "Max position byte 2");
+  ASSERT_EQUAL(data[7], 0xFF, "Max position byte 3");
 }
 
 void test_encode_stop_position_mode_2()
@@ -149,6 +153,17 @@ void test_encode_config_commands()
 
   data = ServoCommandCodec::encode_enable_motor(false);
   ASSERT_EQUAL(data[0], 0x00, "Enable = false");
+
+  // Test control mode
+  data = ServoCommandCodec::encode_set_control_mode(ControlMode::SR_OPEN);
+  ASSERT_EQUAL(data.size(), 1u, "Control mode payload size");
+  ASSERT_EQUAL(data[0], 3, "SR_OPEN = 3");
+
+  data = ServoCommandCodec::encode_set_control_mode(ControlMode::SR_CLOSE);
+  ASSERT_EQUAL(data[0], 4, "SR_CLOSE = 4");
+
+  data = ServoCommandCodec::encode_set_control_mode(ControlMode::SR_VFOC);
+  ASSERT_EQUAL(data[0], 5, "SR_VFOC = 5");
 }
 
 void test_decode_current_speed()
@@ -321,17 +336,18 @@ void test_roundtrip_encoding()
   std::cout << "\n=== Round-Trip Encoding Tests ===" << std::endl;
 
   // Test move command encode → manual decode
+  // Format: [acc_hi] [acc_lo] [speed_hi] [speed_lo] [pos_b3] [pos_b2] [pos_b1] [pos_b0]
   auto encoded = ServoCommandCodec::encode_move_position_mode_2(12345, 999, 128);
-  int32_t pos = (static_cast<int32_t>(encoded[0]) << 24) |
-                (static_cast<int32_t>(encoded[1]) << 16) |
-                (static_cast<int32_t>(encoded[2]) << 8) |
-                static_cast<int32_t>(encoded[3]);
-  uint16_t spd = (static_cast<uint16_t>(encoded[4]) << 8) | encoded[5];
-  uint8_t acc = encoded[6];
+  uint16_t acc = (static_cast<uint16_t>(encoded[0]) << 8) | encoded[1];
+  uint16_t spd = (static_cast<uint16_t>(encoded[2]) << 8) | encoded[3];
+  int32_t pos = (static_cast<int32_t>(encoded[4]) << 24) |
+                (static_cast<int32_t>(encoded[5]) << 16) |
+                (static_cast<int32_t>(encoded[6]) << 8) |
+                static_cast<int32_t>(encoded[7]);
 
-  ASSERT_EQUAL(pos, 12345, "Round-trip position");
-  ASSERT_EQUAL(spd, 999, "Round-trip speed");
   ASSERT_EQUAL(acc, 128, "Round-trip accel");
+  ASSERT_EQUAL(spd, 999, "Round-trip speed");
+  ASSERT_EQUAL(pos, 12345, "Round-trip position");
 
   // Test current reading encode → decode
   std::vector<uint8_t> speed_data = {0x01, 0xF4}; // 500 RPM

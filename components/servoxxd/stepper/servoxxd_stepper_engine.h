@@ -79,6 +79,20 @@ namespace esphome
       ~StepperEngine();
 
       /**
+       * @brief Initialize motor with configuration from parent
+       *
+       * Enqueues setup commands to CommandQueue:
+       * - SET_SUBDIVISION (microstepping)
+       * - SET_WORKING_CURRENT
+       * - SET_WORK_MODE (position/speed)
+       * - SET_ZERO (reset position to 0)
+       *
+       * Must be called after construction, before any movement commands.
+       * Commands are executed asynchronously through CommandQueue.
+       */
+      void setup_motor();
+
+      /**
        * @brief Update method called cyclically from main loop
        *
        * Responsibilities:
@@ -228,13 +242,14 @@ namespace esphome
       // ============================================================================
 
       /**
-       * @brief Get current motor position
+       * @brief Get raw encoder position
        *
-       * Returns last known encoder position (updated via polling or event-triggered queries).
+       * Returns last known encoder position from hardware (without offset).
+       * Use parent->get_current_position() for position with offset applied.
        *
-       * @return Current position with unit
+       * @return Raw encoder position
        */
-      Position get_current_position() const;
+      Position get_raw_encoder_position() const;
 
       /**
        * @brief Get current state
@@ -329,7 +344,7 @@ namespace esphome
       bool emergency_flag_; ///< Emergency stop flag (requires restart)
 
       // Position tracking
-      Position current_position_; ///< Last known encoder position
+      Position current_position_; ///< Last known raw encoder position
       Position target_position_;  ///< Target position for move_to()
       int32_t encoder_carry_;     ///< Encoder carry value (for multi-turn tracking)
       uint16_t encoder_value_;    ///< Encoder value (0-16383, one revolution)

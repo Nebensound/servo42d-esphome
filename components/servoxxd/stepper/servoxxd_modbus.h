@@ -67,6 +67,12 @@ namespace esphome
        */
       bool is_waiting_write() const;
 
+      /**
+       * @brief Manually reset transport state to IDLE
+       * @note Used during setup() when callbacks are not yet active
+       */
+      void reset_state() { state_ = State::IDLE; }
+
     private:
       enum class State
       {

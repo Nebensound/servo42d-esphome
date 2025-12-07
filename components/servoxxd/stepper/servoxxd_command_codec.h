@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cstdint>
+#include "servoxxd.h"
 
 namespace esphome
 {
@@ -11,18 +12,24 @@ namespace esphome
     class ServoCommandCodec
     {
     public:
-      // Movement encoders (minimal placeholders)
-      static std::vector<uint8_t> encode_move_position_mode_2(int32_t position_steps, uint16_t speed_units, uint8_t accel_units)
+      // Movement encoders
+      // Modbus Register Layout for 0xFE (Position Mode 2):
+      // Bytes: [acc_hi] [acc_lo] [speed_hi] [speed_lo] [pos_b3] [pos_b2] [pos_b1] [pos_b0]
+      static std::vector<uint8_t> encode_move_position_mode_2(int32_t position_steps, uint16_t speed_units, uint16_t accel_units)
       {
         std::vector<uint8_t> data;
-        data.reserve(7);
+        data.reserve(8);
+        // Acceleration (uint16_t) - FIRST
+        data.push_back(static_cast<uint8_t>((accel_units >> 8) & 0xFF));
+        data.push_back(static_cast<uint8_t>(accel_units & 0xFF));
+        // Speed (uint16_t) - SECOND
+        data.push_back(static_cast<uint8_t>((speed_units >> 8) & 0xFF));
+        data.push_back(static_cast<uint8_t>(speed_units & 0xFF));
+        // Position (int32_t, big-endian) - THIRD
         data.push_back(static_cast<uint8_t>((position_steps >> 24) & 0xFF));
         data.push_back(static_cast<uint8_t>((position_steps >> 16) & 0xFF));
         data.push_back(static_cast<uint8_t>((position_steps >> 8) & 0xFF));
         data.push_back(static_cast<uint8_t>(position_steps & 0xFF));
-        data.push_back(static_cast<uint8_t>((speed_units >> 8) & 0xFF));
-        data.push_back(static_cast<uint8_t>(speed_units & 0xFF));
-        data.push_back(accel_units);
         return data;
       }
 
@@ -50,6 +57,42 @@ namespace esphome
       static std::vector<uint8_t> encode_enable_motor(bool enable)
       {
         return {static_cast<uint8_t>(enable ? 0x01 : 0x00)};
+      }
+
+      static std::vector<uint8_t> encode_set_holding_current_percent(uint8_t percent)
+      {
+        // Hardware expects: 0=10%, 1=20%, ..., 8=90%
+        // Convert 0-100% to 0-8 range: value = (percent / 10) - 1
+        // Clamp to valid range
+        uint8_t hw_value = 0;
+        if (percent >= 90)
+          hw_value = 8;
+        else if (percent >= 20)
+          hw_value = (percent / 10) - 1;
+        // else hw_value = 0 (10%)
+        return {hw_value};
+      }
+
+      static std::vector<uint8_t> encode_set_en_pin_active(uint8_t mode)
+      {
+        // 0=LOW, 1=HIGH, 2=ALWAYS (Hold mode)
+        return {mode};
+      }
+
+      static std::vector<uint8_t> encode_set_auto_screen_off(bool enable)
+      {
+        return {static_cast<uint8_t>(enable ? 0x01 : 0x00)};
+      }
+
+      static std::vector<uint8_t> encode_set_lock_keys(bool lock)
+      {
+        return {static_cast<uint8_t>(lock ? 0x01 : 0x00)};
+      }
+
+      static std::vector<uint8_t> encode_set_control_mode(ControlMode mode)
+      {
+        // ControlMode enum values: SR_OPEN=3, SR_CLOSE=4, SR_VFOC=5
+        return {static_cast<uint8_t>(mode)};
       }
 
       // Response decoders (minimal validation)

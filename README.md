@@ -35,8 +35,9 @@ stepper:
 - **modbus_id** (*Optional*, [ID](https://esphome.io/guides/configuration-types.html#config-id)): The ID of the Modbus controller. Only needed when you have multiple Modbus controllers.
 - **address** (*Optional*, int): The Modbus device address. Defaults to `0x01`. Range: 1-247.
 - **steps_per_revolution** (**Required**, float): The number of steps for one full rotation. Example: `3200` (200 steps × 16 microsteps).
-  > [!TIP]
-  > Set this precisely; wrong values will cause incorrect position and speed calculations.
+
+> [!TIP]
+> Set this precisely; wrong values will cause incorrect position and speed calculations.
 
 - **microsteps** (*Optional*, int): Microstepping (aka step mode). Typical values: `1`=full, `2`=half, `4`=quarter, then `8`, `16`, `32`, … Range `1-256`. Defaults to `16`.
 
@@ -57,14 +58,15 @@ stepper:
     - `speed: "15 deg/h"`                  # Degrees per hour (astronomical tracking)
     - `speed: { value: 2000, unit: RPM }`
     - `max_speed: 2000 RPM`                # Alternative name (exact same meaning)
-  > [!NOTE]
-  > `speed` and `max_speed` are aliases - use one or the other, not both. Multiple unit string formats are accepted (e.g., `rpm`, `RPM`, `rev/min` all work).
   
-  > [!TIP]
-  > **Use Cases for Angular Velocity Units:**
-  > - **High-speed rotation:** `steps/s`, `RPM`, `rev/s`, `deg/s` - For fast movements and robotics
-  > - **Moderate rotation:** `deg/min` - For slow continuous rotation (display turntables, camera pans)
-  > - **Astronomical tracking:** `deg/h` - For telescope mounts following celestial objects (Earth rotates 15°/hour)
+> [!NOTE]
+> `speed` and `max_speed` are aliases - use one or the other, not both. Multiple unit string formats are accepted (e.g., `rpm`, `RPM`, `rev/min` all work).
+
+> [!TIP]
+> **Use Cases for Angular Velocity Units:**
+> - **High-speed rotation:** `steps/s`, `RPM`, `rev/s`, `deg/s` - For fast movements and robotics
+> - **Moderate rotation:** `deg/min` - For slow continuous rotation (display turntables, camera pans)
+> - **Astronomical tracking:** `deg/h` - For telescope mounts following celestial objects (Earth rotates 15°/hour)
 
 - **acceleration** (*Optional*): Acceleration in `steps/s²` (ESPHome stepper compatibility). Default: `inf` (instant).
   - Supported forms:
@@ -73,8 +75,8 @@ stepper:
     - `acceleration: "60 rev/min/s"`       # Alternative: rev/min/s = RPM/s
     - `acceleration: "1.5 rev/s²"`         # Revolutions per second squared
     - `acceleration: { value: 100, unit: RPM_PER_SEC }`
-  > [!IMPORTANT]
-  > **Hardware Limitation:** The motor controller does not support separate acceleration and deceleration values. Specifying a `deceleration` field will cause a **validation error**. Use `acceleration` only, which affects both acceleration and deceleration rates.
+> [!IMPORTANT]
+> **Hardware Limitation:** The motor controller does not support separate acceleration and deceleration values. Specifying a `deceleration` field will cause a **validation error**. Use `acceleration` only, which affects both acceleration and deceleration rates.
 
 - **working_current** (*Optional*, [Current](https://esphome.io/guides/configuration-types.html#config-current)): Working current. Accepts units: `mA` or `A` (e.g., `1500`, `1500mA`, `1.5A`). Defaults and maximums depend on `servo_type`:
   - Defaults: `0.6A` (28D), `0.8A` (35D), `1.6A` (42D), `3.2A` (57D)
@@ -140,8 +142,8 @@ stepper:
     - `ENDSTOP`: Real homing using an endstop (limit switch).
     - `SENSORLESS`: Sensorless homing using stall detection.
     - `VIRTUAL`: Return-to-zero using stored angle (0_Mode, no endstop).
-      > [!NOTE]
-      > Position to move to may be set at least once with `stepper.set_zero` before using virtual homing. After that it may be stored permanently within the controller of the stepper.
+> [!NOTE]
+> Position to move to may be set at least once with `stepper.set_zero` before using virtual homing. After that it may be stored permanently within the controller of the stepper.
   - **direction** (*Optional*, enum): `CW` clockwise, `CCW` counter-clockwise and `NEAREST`. Default: `CW`. `NEAREST` may only be used with `mode: VIRTUAL`.
   - **speed**: (*Optional*, string): Homing speed. Supports units: `RPM` or `steps/s`. Default: `1 RPM`.
     > [!NOTE]
@@ -210,12 +212,12 @@ on_...:
   - **Arcminutes:** `arcmin`, `arcminute`, `'`, `amin` (1° = 60 arcminutes)
   - **Arcseconds:** `arcsec`, `arcsecond`, `"`, `asec` (1° = 3600 arcseconds)
   
-  > [!TIP]
-  > **Use Cases for Position Units:**
-  > - **Motor control:** `steps` - Direct motor steps for ESPHome compatibility
-  > - **Mechanical systems:** `revolutions` - Natural unit for rotating mechanisms
-  > - **Angular positioning:** `degrees`, `radians` - Standard engineering units
-  > - **High-precision optics:** `arcminutes`, `arcseconds` - Sub-degree positioning for microscopes, telescopes, laser alignment systems
+> [!TIP]
+> **Use Cases for Position Units:**
+> - **Motor control:** `steps` - Direct motor steps for ESPHome compatibility
+> - **Mechanical systems:** `revolutions` - Natural unit for rotating mechanisms
+> - **Angular positioning:** `degrees`, `radians` - Standard engineering units
+> - **High-precision optics:** `arcminutes`, `arcseconds` - Sub-degree positioning for microscopes, telescopes, laser alignment systems
     - `value` is templatable (can be lambda)
     - `unit` is static enum (not templatable)
 

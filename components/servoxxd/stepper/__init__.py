@@ -49,7 +49,7 @@ DisableAction = servoxxd_ns.class_("DisableAction", automation.Action)
 # Configuration actions
 SetSpeedAction = servoxxd_ns.class_("SetSpeedAction", automation.Action)
 SetAccelerationAction = servoxxd_ns.class_("SetAccelerationAction", automation.Action)
-SetWorkModeAction = servoxxd_ns.class_("SetWorkModeAction", automation.Action)
+SetControlModeAction = servoxxd_ns.class_("SetControlModeAction", automation.Action)
 SetWorkingCurrentAction = servoxxd_ns.class_("SetWorkingCurrentAction", automation.Action)
 SetHoldingCurrentPercentAction = servoxxd_ns.class_("SetHoldingCurrentPercentAction", automation.Action)
 SetMicrosteppingAction = servoxxd_ns.class_("SetMicrosteppingAction", automation.Action)
@@ -820,11 +820,10 @@ async def to_code(config):
             cg.add(var.set_homing_direction(homing[CONF_HOMING_DIRECTION]))
             
             # Homing speed - depends on mode
-            # set_homing_speed() is overloaded: accepts both (float, SpeedUnit) and (uint8_t level)
             homing_speed = homing[CONF_HOMING_SPEED]
             if "level" in homing_speed:
-                # ZeroingSpeed level for VIRTUAL mode (0-4) - calls set_homing_speed(uint8_t)
-                cg.add(var.set_homing_speed(homing_speed["level"]))
+                # ZeroingSpeed level for VIRTUAL mode (0-4) - calls set_homing_speed_level(uint8_t)
+                cg.add(var.set_homing_speed_level(homing_speed["level"]))
             else:
                 # Regular speed for ENDSTOP/SENSORLESS - calls set_homing_speed(float, SpeedUnit)
                 await set_homing_speed_from_dict(var, homing_speed, config[CONF_STEPS_PER_REVOLUTION])
@@ -1163,18 +1162,18 @@ async def stepper_restart_to_code(config, action_id, template_arg, args):
 # ============================================================================
 
 @automation.register_action(
-    "stepper.set_work_mode",
-    SetWorkModeAction,
+    "stepper.set_control_mode",
+    SetControlModeAction,
     cv.Schema({
         cv.Required(CONF_ID): cv.use_id(ServoXxd),
-        cv.Required(CONF_WORK_MODE): cv.enum(OPERATING_MODES, upper=True),
+        cv.Required(CONF_CONTROL_MODE): cv.enum(CONTROL_MODES, upper=True),
     })
 )
-async def stepper_set_work_mode_to_code(config, action_id, template_arg, args):
-    """Change motor control mode at runtime."""
+async def stepper_set_control_mode_to_code(config, action_id, template_arg, args):
+    """Change control mode (SR_OPEN/SR_CLOSE/SR_VFOC) at runtime."""
     parent = await cg.get_variable(config[CONF_ID])
     var = cg.new_Pvariable(action_id, template_arg, parent)
-    cg.add(var.set_mode(config[CONF_WORK_MODE]))
+    cg.add(var.set_control_mode(config[CONF_CONTROL_MODE]))
     return var
 
 
