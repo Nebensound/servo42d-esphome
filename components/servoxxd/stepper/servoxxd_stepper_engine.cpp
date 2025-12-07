@@ -92,7 +92,7 @@ namespace esphome
     // Movement Commands
     // ============================================================================
 
-    void StepperEngine::move_to(Position target, std::optional<Speed> speed,
+    void StepperEngine::move_to(const Position &target, std::optional<Speed> speed,
                                 std::optional<Acceleration> accel)
     {
       // Target override behavior: allowed in Moving/Stopping states
@@ -118,13 +118,14 @@ namespace esphome
 
       target_position_ = target;
 
-      ESP_LOGD(TAG_ENGINE, "move_to(): target=%.2f steps, speed=%.2f RPM, accel=%.2f RPM/s",
-               target.get_steps(),
+      ESP_LOGD(TAG_ENGINE, "move_to(): target=%lld steps, speed=%.2f RPM, accel=%.2f RPM/s",
+               static_cast<long long>(target.get_steps()),
                speed.has_value() ? speed->rpm() : 0.0f,
                accel.has_value() ? accel->get_rpm_per_sec() : 0.0f);
 
       // Send move command via queue (Command 0xFD MOVE_POSITION_MODE_2)
       int32_t position_steps = static_cast<int32_t>(target.get_steps());
+      ESP_LOGD(TAG_ENGINE, "  >> Sending to motor: position_steps=%d (0x%08X)", position_steps, static_cast<unsigned int>(position_steps));
       uint16_t speed_units = speed.has_value() ? static_cast<uint16_t>(speed->rpm() * 16.0f) : 0;
       uint8_t accel_units = accel.has_value() ? static_cast<uint8_t>(accel->get_rpm_per_sec() / 10.0f) : 0;
       auto payload = ServoCommandCodec::encode_move_position_mode_2(position_steps, speed_units, accel_units);

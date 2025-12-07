@@ -52,6 +52,21 @@ namespace esphome
        */
       void set_timeout(uint32_t timeout_ms) { timeout_ms_ = timeout_ms; }
 
+      /**
+       * @brief Handle Modbus read response (called by ESPHome Modbus callback)
+       */
+      void handle_read_response(const std::vector<uint8_t> &data);
+
+      /**
+       * @brief Handle Modbus write response (called by ESPHome Modbus callback)
+       */
+      void handle_write_response();
+
+      /**
+       * @brief Check if transport is waiting for a write response
+       */
+      bool is_waiting_write() const;
+
     private:
       enum class State
       {
@@ -82,16 +97,6 @@ namespace esphome
        * @brief Check for timeout and invoke error callback
        */
       bool check_timeout();
-
-      /**
-       * @brief Handle Modbus read response
-       */
-      void handle_read_response(const std::vector<uint8_t> &data);
-
-      /**
-       * @brief Handle Modbus write response
-       */
-      void handle_write_response();
     };
 
   } // namespace servoxxd

@@ -23,19 +23,30 @@ namespace esphome
       uint16_t register_address = command_to_register(cmd);
 
       // Modbus send() is void - we assume success and handle errors via callbacks
+      // NOTE: ESPHome's send() for Function 0x06 ignores the third parameter (number_of_entities)
+      // and expects the value in the payload parameter as 2 bytes (big-endian)!
       if (data.empty())
       {
         // Write single register with value 0 (enable/disable, stop, etc.)
-        device_->send(0x06, register_address, 0x0000, 0, nullptr);
+        uint8_t payload[2] = {0x00, 0x00};
+        device_->send(0x06, register_address, 0, 2, payload);
       }
       else if (data.size() <= 2)
       {
         // Write single register (Function 0x06)
-        uint16_t value = (data.size() == 2)
-                             ? ((static_cast<uint16_t>(data[0]) << 8) | data[1])
-                             : data[0];
-
-        device_->send(0x06, register_address, value, 0, nullptr);
+        // Value must be passed as payload, not as number_of_entities!
+        uint8_t payload[2];
+        if (data.size() == 2)
+        {
+          payload[0] = data[0]; // High byte
+          payload[1] = data[1]; // Low byte
+        }
+        else
+        {
+          payload[0] = 0x00;    // High byte = 0
+          payload[1] = data[0]; // Low byte = value
+        }
+        device_->send(0x06, register_address, 0, 2, payload);
       }
       else
       {
@@ -104,6 +115,11 @@ namespace esphome
     bool ModbusTransport::is_busy() const
     {
       return state_ != State::IDLE;
+    }
+
+    bool ModbusTransport::is_waiting_write() const
+    {
+      return state_ == State::WAITING_WRITE;
     }
 
     void ModbusTransport::update()

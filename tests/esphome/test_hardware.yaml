@@ -51,7 +51,7 @@ stepper:
   - platform: servoxxd
     id: test_motor
     modbus_id: modbus_bus
-    address: 0x01 # Adjust to your motor's address
+    address: 0x02 # Motor address (default factory setting)
     servo_type: SERVO42D
     mode: POSITION
     steps_per_revolution: 3200 # 200 * 16 microsteps

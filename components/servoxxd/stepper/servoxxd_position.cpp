@@ -77,16 +77,25 @@ namespace esphome
         return;
       }
 
-      // Copy result
+      // Copy result (parent_ is already set in constructor initializer list)
       revs_ = temp.revs_;
       angle_ticks_ = temp.angle_ticks_;
+      // Note: parent_ pointer is preserved from constructor parameter, not from temp
 
-      ESP_LOGV(TAG, "Position created: value=%.3f %s → revs=%d, angle_ticks=%u",
-               value, unit_to_string(unit), revs_, angle_ticks_);
+      ESP_LOGV(TAG, "Position created: value=%.3f %s → revs=%d, angle_ticks=%u, parent=%p",
+               value, unit_to_string(unit), revs_, angle_ticks_, static_cast<const void*>(parent_));
     }
 
     Position::Position(float value, PositionUnit unit, const ServoXxd *parent)
         : Position(static_cast<double>(value), unit, parent) {}
+
+    // Copy constructor
+    Position::Position(const Position &other)
+        : revs_(other.revs_), angle_ticks_(other.angle_ticks_), parent_(other.parent_)
+    {
+      ESP_LOGD(TAG, "Copy constructor: revs=%d, angle_ticks=%u, parent=%p (from %p)",
+               revs_, angle_ticks_, static_cast<const void*>(parent_), static_cast<const void*>(other.parent_));
+    }
 
     Position::Position(int64_t value, PositionUnit unit, const ServoXxd *parent)
         : Position(static_cast<double>(value), unit, parent) {}
@@ -262,13 +271,17 @@ namespace esphome
       {
         if (!parent_)
         {
-          ESP_LOGE(TAG, "get_steps: parent_ is nullptr - cannot get steps_per_rev");
+          ESP_LOGE(TAG, "get_steps: parent_ is nullptr (this=%p, revs=%d, angle_ticks=%u)",
+                   static_cast<const void*>(this), revs_, angle_ticks_);
           return 0;
         }
         float steps_per_rev = parent_->get_steps_per_revolution();
-        // steps = revs * steps_per_rev + (angle_ticks * steps_per_rev / 16384)
-        return static_cast<int64_t>(revs_) * static_cast<int64_t>(steps_per_rev) +
-               (static_cast<int64_t>(angle_ticks_) * static_cast<int64_t>(steps_per_rev)) / static_cast<int64_t>(TICKS_PER_REV);
+        int64_t result = static_cast<int64_t>(revs_) * static_cast<int64_t>(steps_per_rev) +
+                         (static_cast<int64_t>(angle_ticks_) * static_cast<int64_t>(steps_per_rev)) / static_cast<int64_t>(TICKS_PER_REV);
+        ESP_LOGD(TAG, "get_steps: this=%p, parent=%p, revs=%d, angle_ticks=%u, steps_per_rev=%.0f → result=%lld",
+                 static_cast<const void*>(this), static_cast<const void*>(parent_),
+                 revs_, angle_ticks_, steps_per_rev, static_cast<long long>(result));
+        return result;
       }
 
       case PositionUnit::ARCMINUTES:

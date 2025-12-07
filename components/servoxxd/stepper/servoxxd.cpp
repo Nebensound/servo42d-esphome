@@ -289,22 +289,36 @@ namespace esphome
 
     void ServoXxd::on_modbus_data(const std::vector<uint8_t> &data)
     {
-      // TODO: Implementation required
-      // - Parse response data
-      // - Delegate to StepperEngine for processing
-      // - Update internal state based on response
-
-      ESP_LOGW(TAG, "on_modbus_data() not yet implemented - received %zu bytes", data.size());
+      // Forward response data to transport layer
+      if (this->transport_ != nullptr)
+      {
+        // Check if transport is waiting for read response
+        if (this->transport_->is_busy() && !this->transport_->is_waiting_write())
+        {
+          this->transport_->handle_read_response(data);
+        }
+        else if (this->transport_->is_waiting_write())
+        {
+          // Write command completed (motor acknowledged the write)
+          this->transport_->handle_write_response();
+        }
+        else
+        {
+          ESP_LOGW(TAG, "Received unsolicited Modbus data: %zu bytes", data.size());
+        }
+      }
+      else
+      {
+        ESP_LOGW(TAG, "on_modbus_data() called but transport is null - received %zu bytes", data.size());
+      }
     }
 
     void ServoXxd::on_modbus_error(uint8_t function_code, uint8_t exception_code)
     {
-      // TODO: Implementation required
-      // - Log error details
-      // - Delegate to StepperEngine for error handling
-      // - Potentially transition to Error state
-
       ESP_LOGE(TAG, "Modbus error - Function: 0x%02X, Exception: 0x%02X", function_code, exception_code);
+
+      // TODO: Forward error to transport/engine for proper error handling
+      // For now, just log the error
     }
 
     // ============================================================================
@@ -320,9 +334,13 @@ namespace esphome
         return;
       }
 
+      // Use default values if not provided
+      Speed actual_speed = speed.has_value() ? speed.value() : this->default_speed_;
+      Acceleration actual_accel = accel.has_value() ? accel.value() : this->default_acceleration_;
+
       // Minimal implementation: just delegate to engine
       // TODO later: Add Position Mode validation, error state check
-      this->engine_->move_to(position, speed, accel);
+      this->engine_->move_to(position, actual_speed, actual_accel);
     }
 
     void ServoXxd::home()
@@ -346,8 +364,11 @@ namespace esphome
         return;
       }
 
+      // Use default acceleration if not provided
+      Acceleration actual_decel = decel.has_value() ? decel.value() : this->default_acceleration_;
+
       // Minimal implementation: just delegate to engine
-      this->engine_->stop(decel);
+      this->engine_->stop(actual_decel);
     }
 
     void ServoXxd::run_continuous(std::optional<Speed> speed,
@@ -359,9 +380,13 @@ namespace esphome
         return;
       }
 
+      // Use default values if not provided
+      Speed actual_speed = speed.has_value() ? speed.value() : this->default_speed_;
+      Acceleration actual_accel = accel.has_value() ? accel.value() : this->default_acceleration_;
+
       // Minimal implementation: just delegate to engine
       // TODO later: Add Speed Mode validation, error state check
-      this->engine_->run_continuous(speed, accel);
+      this->engine_->run_continuous(actual_speed, actual_accel);
     }
 
     void ServoXxd::emergency_stop()

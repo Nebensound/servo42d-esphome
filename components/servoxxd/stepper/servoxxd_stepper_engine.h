@@ -109,7 +109,7 @@ namespace esphome
        *
        * State transition: Idle → Moving
        */
-      void move_to(Position target, std::optional<Speed> speed = std::nullopt,
+      void move_to(const Position &target, std::optional<Speed> speed = std::nullopt,
                    std::optional<Acceleration> accel = std::nullopt);
 
       /**

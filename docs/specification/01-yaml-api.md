@@ -823,21 +823,30 @@ Enable pin logic level polarity.
 
 - **Type:** `enum`
 - **Required:** ❌ Optional
-- **Default:** `ALWAYS`
+- **Default:** `LOW`
 - **Values:**
-  - `LOW` - Motor enabled when pin is LOW
+  - `LOW` - Motor enabled when pin is LOW (recommended for software enable/disable)
   - `HIGH` - Motor enabled when pin is HIGH
-  - `ALWAYS` - Motor always enabled (ignore EN pin)
+  - `ALWAYS` - Motor always enabled, ignores EN pin AND software enable/disable commands
+
+> [!IMPORTANT]
+> **For software enable/disable to work**, `en_pin_active` must be set to `LOW` or `HIGH`. 
+> If set to `ALWAYS` (Hold mode), the motor will ignore `stepper.enable` and `stepper.disable` actions!
+> 
+> Default is `LOW` which allows software control via `stepper.enable` and `stepper.disable`.
 
 **Example:**
 
 ```yaml
 stepper:
   - platform: servoxxd
-    en_pin_active: ALWAYS  # Ignore EN pin (default)
+    en_pin_active: LOW     # Enable software control (default, recommended)
     
   - platform: servoxxd
-    en_pin_active: LOW     # Enable when pin is LOW
+    en_pin_active: HIGH    # Enable when pin is HIGH (alternative)
+    
+  - platform: servoxxd
+    en_pin_active: ALWAYS  # Motor always on, ignores enable/disable commands
 ```
 
 #### `auto_screen_off`

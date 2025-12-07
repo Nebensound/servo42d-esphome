@@ -645,7 +645,7 @@ CONFIG_SCHEMA = cv.All(
         # Motor configuration
         cv.Optional(CONF_WORKING_CURRENT): validate_current,
         cv.Optional(CONF_HOLDING_CURRENT_PERCENT, default=0.50): cv.percentage,
-        cv.Optional(CONF_EN_PIN_ACTIVE, default="ALWAYS"): cv.enum(EN_PIN_ACTIVE_VALUES, upper=True),
+        cv.Optional(CONF_EN_PIN_ACTIVE, default="LOW"): cv.enum(EN_PIN_ACTIVE_VALUES, upper=True),
         cv.Optional(CONF_AUTO_SCREEN_OFF, default=True): cv.boolean,
         cv.Optional(CONF_LOCK_KEYS_AT_STARTUP, default=False): cv.boolean,
         
