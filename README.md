@@ -16,7 +16,7 @@ external_components:
 ```
 
 > [!TIP]
-> To use a specific version, add `ref: v1.0.0` (replace with desired version/tag) or `ref: main` for the latest release.
+> To use a specific branch or tag, add it after `@`: `github://Nebensound/servoxxd-esphome@main` or `github://Nebensound/servoxxd-esphome@v1.0.0`
 
 ## Configuration
 
