@@ -71,10 +71,9 @@ namespace esphome
        * @param parent Pointer to parent ServoXxd component (configuration, helpers)
        * @param transport Pointer to ITransport for Layer 3 integration
        * @param command_timeout_ms Timeout for commands (default: 1000ms)
-       * @param poll_interval_ms Polling interval for status updates (default: 200ms)
        */
       StepperEngine(ServoXxd *parent, ITransport *transport = nullptr,
-                    uint32_t command_timeout_ms = 1000, uint32_t poll_interval_ms = 200);
+                    uint32_t command_timeout_ms = 4000);
 
       ~StepperEngine();
 
@@ -89,6 +88,12 @@ namespace esphome
        *
        * Must be called after construction, before any movement commands.
        * Commands are executed asynchronously through CommandQueue.
+       *
+       * TODO: Add initial motor state query
+       * - Query encoder position (0x36)
+       * - Query motor status (0x3A)
+       * - Query protection status (0x3E)
+       * - Query current speed (0x32)
        */
       void setup_motor();
 
@@ -98,10 +103,11 @@ namespace esphome
        * Responsibilities:
        * - Process state machine transitions
        * - Execute CommandQueue update (timeouts, next command)
-       * - Trigger status polling if interval elapsed
        * - Check for state-specific timeouts
+       * - Process buffered commands
        *
        * Must be called regularly (e.g., every 10-50ms) for responsive operation.
+       * Note: Hardware polling is triggered externally via poll_hardware().
        */
       void update();
 
@@ -229,6 +235,23 @@ namespace esphome
       void restart();
 
       /**
+       * @brief Calibrate encoder
+       *
+       * Starts encoder calibration sequence.
+       */
+      void calibrate();
+
+      /**
+       * @brief Lock physical keys on motor controller
+       */
+      void key_lock();
+
+      /**
+       * @brief Unlock physical keys on motor controller
+       */
+      void key_unlock();
+
+      /**
        * @brief Set current position as zero reference
        *
        * Validation:
@@ -238,18 +261,48 @@ namespace esphome
       void set_zero();
 
       // ============================================================================
-      // Status Queries
+      // Hardware Polling Methods (called from parent's set_interval)
       // ============================================================================
 
       /**
-       * @brief Get raw encoder position
+       * @brief Poll all hardware status values
        *
-       * Returns last known encoder position from hardware (without offset).
-       * Use parent->get_current_position() for position with offset applied.
-       *
-       * @return Raw encoder position
+       * Queries encoder position, speed, motor status, and protection status.
+       * Should be called periodically from parent component's set_interval().
        */
-      Position get_raw_encoder_position() const;
+      void poll_hardware();
+
+      /**
+       * @brief Poll motor speed from hardware
+       *
+       * Sends Command 0x32 to read real-time RPM.
+       * Used for state transitions (e.g., Moving → Idle when speed reaches 0).
+       */
+      void poll_motor_speed();
+
+      /**
+       * @brief Poll motor status (enabled/disabled)
+       *
+       * Sends Command 0x3A to read motor enable state.
+       * Monitors sleep_when_done behavior.
+       */
+      void poll_motor_status();
+
+      /**
+       * @brief Poll protection status
+       *
+       * Sends Command 0x3E to read locked-rotor protection.
+       * Non-zero value triggers Error state transition.
+       */
+      void poll_protection_status();
+
+      /**
+       * @brief Query encoder position (Command 0x30)
+       *
+       * Reads encoder carry + value, calculates absolute position.
+       * @param callback Optional callback to receive position result
+       */
+      void poll_encoder_position(std::function<void(const Position &)> callback = nullptr);
 
       /**
        * @brief Get current state
@@ -343,20 +396,12 @@ namespace esphome
       State state_;         ///< Current state machine state
       bool emergency_flag_; ///< Emergency stop flag (requires restart)
 
-      // Position tracking
-      Position current_position_; ///< Last known raw encoder position
-      Position target_position_;  ///< Target position for move_to()
-      int32_t encoder_carry_;     ///< Encoder carry value (for multi-turn tracking)
-      uint16_t encoder_value_;    ///< Encoder value (0-16383, one revolution)
-
       // Status tracking
       Speed current_speed_;       ///< Last known motor speed (RPM)
       bool motor_enabled_;        ///< Motor enabled status
       bool protection_triggered_; ///< Protection triggered flag
 
-      // Polling
-      uint32_t poll_interval_ms_; ///< Polling interval for status updates
-      uint32_t last_poll_time_;   ///< Last poll timestamp (millis)
+      // State timing
       uint32_t state_enter_time_; ///< State entry timestamp for timeout tracking
 
       // Callbacks
@@ -399,46 +444,6 @@ namespace esphome
       void check_state_timeouts();
 
       // ============================================================================
-      // Private Methods - Polling
-      // ============================================================================
-
-      /**
-       * @brief Execute status polling cycle
-       *
-       * Queries encoder position, speed, motor status, protection status.
-       * Called from update() when poll interval elapsed.
-       */
-      void execute_polling();
-
-      /**
-       * @brief Query encoder position (Command 0x30)
-       *
-       * Reads encoder carry + value, calculates absolute position.
-       */
-      void poll_encoder_position();
-
-      /**
-       * @brief Query motor speed (Command 0x32)
-       *
-       * Reads current speed in RPM (positive = CCW, negative = CW).
-       */
-      void poll_motor_speed();
-
-      /**
-       * @brief Query motor status (Command 0x3A)
-       *
-       * Reads motor enabled/disabled state.
-       */
-      void poll_motor_status();
-
-      /**
-       * @brief Query protection status (Command 0x3E)
-       *
-       * Reads locked-rotor protection state. Triggers Error state if protected.
-       */
-      void poll_protection_status();
-
-      // ============================================================================
       // Private Methods - Event Processing
       // ============================================================================
 
@@ -447,19 +452,18 @@ namespace esphome
        *
        * Updates current_position_, checks target reached, invokes callback.
        *
-       * @param carry Encoder carry (int32_t)
-       * @param value Encoder value (uint16_t, 0-16383)
+       * @param position The encoder position from hardware
        */
-      void process_encoder_update(int32_t carry, uint16_t value);
+      void process_encoder_update(const Position &position);
 
       /**
        * @brief Process speed update
        *
        * Updates current_speed_, checks standstill, invokes callback.
        *
-       * @param speed_rpm Speed in RPM (int16_t)
+       * @param speed The current speed from hardware
        */
-      void process_speed_update(int16_t speed_rpm);
+      void process_speed_update(const Speed &speed);
 
       /**
        * @brief Process motor status update

@@ -17,20 +17,14 @@ namespace esphome
     // ============================================================================
 
     StepperEngine::StepperEngine(ServoXxd *parent, ITransport *transport,
-                                 uint32_t command_timeout_ms, uint32_t poll_interval_ms)
+                                 uint32_t command_timeout_ms)
         : parent_(parent),
           queue_(nullptr),
           state_(State::Disabled),
           emergency_flag_(false),
-          current_position_(0.0f, PositionUnit::STEPS, parent),
-          target_position_(0.0f, PositionUnit::STEPS, parent),
-          encoder_carry_(0),
-          encoder_value_(0),
           current_speed_(0.0f, SpeedUnit::RPM, parent),
           motor_enabled_(false),
           protection_triggered_(false),
-          poll_interval_ms_(poll_interval_ms),
-          last_poll_time_(0),
           state_enter_time_(0),
           disable_pending_(false)
     {
@@ -39,8 +33,8 @@ namespace esphome
       if (transport != nullptr)
       {
         queue_ = new CommandQueue(transport, command_timeout_ms);
-        ESP_LOGD(TAG_ENGINE, "StepperEngine initialized with transport: timeout=%ums, poll=%ums",
-                 command_timeout_ms, poll_interval_ms);
+        ESP_LOGD(TAG_ENGINE, "StepperEngine initialized with transport: timeout=%ums",
+                 command_timeout_ms);
       }
       else
       {
@@ -58,6 +52,47 @@ namespace esphome
     }
 
     // ============================================================================
+    // Hardware Polling Methods
+    // ============================================================================
+
+    void StepperEngine::poll_motor_speed()
+    {
+      // Enqueue read command for motor speed (Command 0x32 READ_CURRENT_SPEED)
+      // Expected response: speed_rpm (int16_t) = 2 bytes
+      queue_->enqueue_read(Command::READ_CURRENT_SPEED, [this](bool success, const std::vector<uint8_t> &data)
+                           {
+        if (success && data.size() >= 2) {
+          Speed speed = ServoCommandCodec::decode_current_speed(data);
+          process_speed_update(speed);
+        } });
+    }
+
+    void StepperEngine::poll_motor_status()
+    {
+      // Enqueue read command for motor status (Command 0x3A READ_MOTOR_STATUS)
+      // Expected response: status (uint8_t, 0=STOP, 1=MOVING, 2=HOMING) = 2 bytes (1 register)
+      queue_->enqueue_read(Command::READ_MOTOR_STATUS, [this](bool success, const std::vector<uint8_t> &data)
+                           {
+        if (success && !data.empty()) {
+          auto status = ServoCommandCodec::decode_motor_status(data);
+          bool enabled = (status.state != ServoCommandCodec::MotorStatus::STOP);
+          process_motor_status_update(enabled);
+        } });
+    }
+
+    void StepperEngine::poll_protection_status()
+    {
+      // Enqueue read command for protection status (Command 0x3E READ_PROTECTION_STATUS)
+      // Expected response: protection (uint8_t, 0 = OK, 1 = protected) = 2 bytes (1 register)
+      queue_->enqueue_read(Command::READ_PROTECTION_STATUS, [this](bool success, const std::vector<uint8_t> &data)
+                           {
+        if (success && !data.empty()) {
+          auto ps = ServoCommandCodec::decode_protection_status(data);
+          process_protection_update(ps.protected_state ? 1 : 0);
+        } });
+    }
+
+    // ============================================================================
     // Motor Setup
     // ============================================================================
 
@@ -69,14 +104,20 @@ namespace esphome
         return;
       }
 
-      ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor setup commands...");
+      ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor restart...");
+
+      // 0. Restart motor to ensure clean state (Command 0x41 RESTART)
+      // Motor needs ~3s to reboot before accepting configuration commands
+      {
+        std::vector<uint8_t> restart_payload; // No payload for restart
+
+        restart();
+      }
 
       // 1. Set microstepping (Command 0x84 SET_SUBDIVISION)
       {
-        auto subdivision_data = ServoCommandCodec::encode_set_subdivision(parent_->get_microstepping());
-        auto subdivision_payload = std::vector<uint8_t>(subdivision_data.begin(), subdivision_data.end());
-
-        queue_->enqueue(Command::SET_SUBDIVISION, subdivision_payload,
+        queue_->enqueue(Command::SET_SUBDIVISION,
+                        ServoCommandCodec::encode_set_subdivision(parent_->get_microstepping()),
                         [this](bool success, const std::vector<uint8_t> &)
                         {
                           if (success)
@@ -92,10 +133,8 @@ namespace esphome
 
       // 2. Set EN pin active level (Command 0x85 SET_EN_PIN_ACTIVE)
       {
-        auto en_pin_data = ServoCommandCodec::encode_set_en_pin_active(static_cast<uint8_t>(parent_->get_en_pin_active()));
-        auto en_pin_payload = std::vector<uint8_t>(en_pin_data.begin(), en_pin_data.end());
-
-        queue_->enqueue(Command::SET_EN_PIN_ACTIVE, en_pin_payload,
+        queue_->enqueue(Command::SET_EN_PIN_ACTIVE,
+                        ServoCommandCodec::encode_set_en_pin_active(parent_->get_en_pin_active()),
                         [this](bool success, const std::vector<uint8_t> &)
                         {
                           if (success)
@@ -112,10 +151,8 @@ namespace esphome
 
       // 3. Set auto screen off (Command 0x87 SET_AUTO_SCREEN_OFF)
       {
-        auto screen_data = ServoCommandCodec::encode_set_auto_screen_off(parent_->get_auto_screen_off());
-        auto screen_payload = std::vector<uint8_t>(screen_data.begin(), screen_data.end());
-
-        queue_->enqueue(Command::SET_AUTO_SCREEN_OFF, screen_payload,
+        queue_->enqueue(Command::SET_AUTO_SCREEN_OFF,
+                        ServoCommandCodec::encode_set_auto_screen_off(parent_->get_auto_screen_off()),
                         [this](bool success, const std::vector<uint8_t> &)
                         {
                           if (success)
@@ -131,10 +168,8 @@ namespace esphome
 
       // 4. Set key lock (Command 0x8F SET_LOCK_KEYS)
       {
-        auto lock_data = ServoCommandCodec::encode_set_lock_keys(parent_->get_lock_keys_at_startup());
-        auto lock_payload = std::vector<uint8_t>(lock_data.begin(), lock_data.end());
-
-        queue_->enqueue(Command::SET_LOCK_KEYS, lock_payload,
+        queue_->enqueue(Command::SET_LOCK_KEYS,
+                        ServoCommandCodec::encode_set_lock_keys(parent_->get_lock_keys_at_startup()),
                         [this](bool success, const std::vector<uint8_t> &)
                         {
                           if (success)
@@ -182,26 +217,9 @@ namespace esphome
                         });
       }
 
-      // 6. Set zero position (Command 0x92 SET_ZERO)
-      // Note: Control mode is set via set_control_mode() called during component initialization
-      {
-        auto zero_payload = std::vector<uint8_t>();
-
-        queue_->enqueue(Command::SET_ZERO, zero_payload,
-                        [this](bool success, const std::vector<uint8_t> &)
-                        {
-                          if (success)
-                          {
-                            ESP_LOGD(TAG_ENGINE, "✓ Position reset to 0");
-                            // Update internal tracking
-                            current_position_ = Position(0.0f, PositionUnit::STEPS, parent_);
-                          }
-                          else
-                          {
-                            ESP_LOGW(TAG_ENGINE, "✗ Failed to reset position");
-                          }
-                        });
-      }
+      // Note: SET_ZERO command is NOT called here during setup.
+      // Position zeroing should be done explicitly via set_zero() or during homing.
+      // Automatically resetting position during motor initialization could cause unexpected behavior.
 
       ESP_LOGCONFIG(TAG_ENGINE, "Setup: 6 commands enqueued (will execute via CommandQueue)");
     }
@@ -221,20 +239,25 @@ namespace esphome
       // 2. Check state-specific timeouts
       check_state_timeouts();
 
-      // 3. Execute polling if interval elapsed
-      uint32_t now = millis();
-      if (now - last_poll_time_ >= poll_interval_ms_)
-      {
-        execute_polling();
-        last_poll_time_ = now;
-      }
-
-      // 4. Process buffered commands
+      // 3. Process buffered commands
       if (disable_pending_ && state_ == State::Idle)
       {
         disable_pending_ = false;
         disable(); // Execute buffered disable
       }
+    }
+
+    // ============================================================================
+    // Hardware Polling
+    // ============================================================================
+
+    void StepperEngine::poll_hardware()
+    {
+      // Poll all status values in sequence
+      poll_encoder_position();
+      poll_motor_speed();
+      poll_motor_status();
+      poll_protection_status();
     }
 
     // ============================================================================
@@ -244,41 +267,29 @@ namespace esphome
     void StepperEngine::move_to(const Position &target, std::optional<Speed> speed,
                                 std::optional<Acceleration> accel)
     {
-      // Target override behavior: allowed in Moving/Stopping states
-      if (state_ == State::Moving || state_ == State::Stopping)
-      {
-        ESP_LOGD(TAG_ENGINE, "move_to(): Override current movement with new target");
-        target_position_ = target;
-
-        // Send new target to hardware (Command 0xFE MOVE_POSITION_MODE_2)
-        int32_t position_steps = static_cast<int32_t>(target.get_steps());
-        uint16_t speed_units = speed.has_value() ? static_cast<uint16_t>(speed->rpm() * 16.0f) : 0;
-        uint16_t accel_units = accel.has_value() ? static_cast<uint16_t>(accel->get_rpm_per_sec() / 10.0f) : 0;
-        auto payload = ServoCommandCodec::encode_move_position_mode_2(position_steps, speed_units, accel_units);
-        queue_->enqueue(Command::MOVE_POSITION_MODE_2, payload, nullptr);
-        return;
-      }
+      // Use default values if not provided
+      Speed speed_units = speed.has_value() ? speed.value() : parent_->get_default_speed();
+      Acceleration accel_units = accel.has_value() ? accel.value() : parent_->get_default_acceleration();
 
       // Validation: only allowed in Idle state (Position Mode)
-      if (!validate_command("move_to", {State::Idle}))
+      if (!validate_command("move_to", {State::Idle, State::Moving, State::Stopping}))
       {
         return;
       }
-
-      target_position_ = target;
-
       ESP_LOGD(TAG_ENGINE, "move_to(): target=%lld steps, speed=%.2f RPM, accel=%.2f RPM/s",
                static_cast<long long>(target.get_steps()),
-               speed.has_value() ? speed->rpm() : 0.0f,
-               accel.has_value() ? accel->get_rpm_per_sec() : 0.0f);
+               speed_units.rpm(),
+               accel_units.get_rpm_per_sec());
 
-      // Send move command via queue (Command 0xFE MOVE_POSITION_MODE_2)
-      int32_t position_steps = static_cast<int32_t>(target.get_steps());
-      uint16_t speed_units = speed.has_value() ? static_cast<uint16_t>(speed->rpm() * 16.0f) : 0;
-      uint16_t accel_units = accel.has_value() ? static_cast<uint16_t>(accel->get_rpm_per_sec() / 10.0f) : 0;
-      auto payload = ServoCommandCodec::encode_move_position_mode_2(position_steps, speed_units, accel_units);
+      // Note: target_pos_ already updated by caller (ServoXxd::move_to or set_target_pos)
+      // Simply send new move command - hardware will update mid-movement
+      auto payload = ServoCommandCodec::encode_move_position_mode_2(target, speed_units, accel_units);
       queue_->enqueue(Command::MOVE_POSITION_MODE_2, payload, nullptr);
 
+      if (state_ == State::Moving || state_ == State::Stopping)
+      {
+        return;
+      }
       transition_to(State::Moving);
     }
 
@@ -299,7 +310,7 @@ namespace esphome
       ESP_LOGD(TAG_ENGINE, "stop(): decel=%.2f RPM/s", decel.has_value() ? decel->get_rpm_per_sec() : 0.0f);
 
       // Send stop command via queue (Command 0xFE STOP_POSITION_MODE_2)
-      uint8_t decel_units = decel.has_value() ? static_cast<uint8_t>(decel->get_rpm_per_sec() / 10.0f) : 0;
+      Acceleration decel_units = decel.has_value() ? decel.value() : parent_->get_default_acceleration();
       auto payload = ServoCommandCodec::encode_stop_position_mode_2(decel_units);
       queue_->enqueue(Command::STOP_POSITION_MODE_2, payload, nullptr);
 
@@ -337,11 +348,67 @@ namespace esphome
         return;
       }
 
-      ESP_LOGD(TAG_ENGINE, "home(): Starting homing sequence");
+      // Get homing configuration from parent
+      auto &homing = parent_->homing_;
 
-      // Send homing command via queue (Command 0x9A START_HOMING)
-      std::vector<uint8_t> payload; // No payload for basic homing
-      queue_->enqueue(Command::START_HOMING, payload, nullptr);
+      ESP_LOGD(TAG_ENGINE, "home(): Starting homing sequence (mode=%d, direction=%d)",
+               static_cast<int>(homing.mode), static_cast<int>(homing.direction));
+
+      switch (homing.mode)
+      {
+      case HomingMode::VIRTUAL:
+      {
+        // Virtual homing: Return to stored zero position via motor restart
+        // Speed level (0-4), direction, and "set zero" flag
+        ZeroingSpeed speed_level = static_cast<ZeroingSpeed>(homing.level);
+        Direction dir = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
+
+        // Step 1: Configure zero mode parameters (Command 0x9A SET_ZERO_MODE)
+        auto payload = ServoCommandCodec::encode_set_zero_mode(
+            homing.direction, // mode (CW=DirMode, CCW=DirMode, NEAREST=NearMode)
+            true,             // enable = true (set zero)
+            speed_level,      // speed level 0-4 (VERY_SLOW..VERY_FAST)
+            dir);             // direction (only used for DirMode)
+
+        queue_->enqueue(Command::START_HOMING, payload, nullptr);
+
+        ESP_LOGD(TAG_ENGINE, "  Virtual homing: level=%d, dir=%d - will restart motor",
+                 homing.level, static_cast<int>(dir));
+
+        // Step 2: Restart motor to execute virtual homing (Command 0x0F RESTART)
+        // This makes the motor return to the stored zero position
+        std::vector<uint8_t> restart_payload;
+        queue_->enqueue(Command::RESTART, restart_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ Virtual homing: Motor restarting to zero position");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Virtual homing: Failed to restart motor");
+                          }
+                        });
+        break;
+      }
+
+      case HomingMode::ENDSTOP:
+      case HomingMode::SENSORLESS:
+      {
+        // Real homing (ENDSTOP or SENSORLESS): Not yet fully implemented
+        // These modes require additional hardware commands and configuration
+
+        ESP_LOGE(TAG_ENGINE, "home(): ENDSTOP and SENSORLESS modes not yet implemented!");
+        ESP_LOGE(TAG_ENGINE, "  Required: Hardware commands for endstop detection or stall sensing");
+        ESP_LOGE(TAG_ENGINE, "  Use VIRTUAL mode for now, or implement hardware-specific homing");
+        return;
+      }
+
+      default:
+        ESP_LOGE(TAG_ENGINE, "home(): Invalid homing mode: %d", static_cast<int>(homing.mode));
+        return;
+      }
 
       transition_to(State::Homing);
     }
@@ -356,17 +423,14 @@ namespace esphome
       }
 
       // Use default values if not provided (requires parent defaults)
-      float speed_rpm = speed.has_value() ? speed->rpm() : parent_->get_default_speed().rpm();
-      float accel_rpm_s = accel.has_value() ? accel->get_rpm_per_sec() : parent_->get_default_acceleration().get_rpm_per_sec();
+      Speed speed_obj = speed.has_value() ? speed.value() : parent_->get_default_speed();
+      Acceleration accel_obj = accel.has_value() ? accel.value() : parent_->get_default_acceleration();
 
       ESP_LOGD(TAG_ENGINE, "run_continuous(): speed=%.2f RPM, accel=%.2f RPM/s",
-               speed_rpm, accel_rpm_s);
+               speed_obj.rpm(), accel_obj.get_rpm_per_sec());
 
       // Send speed command via queue (Command 0xF6 MOVE_SPEED_MODE)
-      uint16_t speed_units = static_cast<uint16_t>(std::abs(speed_rpm) * 16.0f);
-      uint8_t accel_units = static_cast<uint8_t>(accel_rpm_s / 10.0f);
-      uint8_t direction = (speed_rpm >= 0.0f) ? 0x00 : 0x01; // 0=CW, 1=CCW
-      auto payload = ServoCommandCodec::encode_move_speed_mode(speed_units, accel_units, direction);
+      auto payload = ServoCommandCodec::encode_move_speed_mode(speed_obj, accel_obj);
       queue_->enqueue(Command::MOVE_SPEED_MODE, payload, nullptr);
 
       transition_to(State::Running);
@@ -448,11 +512,6 @@ namespace esphome
 
     void StepperEngine::restart()
     {
-      if (!validate_command("restart", {State::Disabled, State::Idle, State::Error}))
-      {
-        return;
-      }
-
       ESP_LOGD(TAG_ENGINE, "restart(): Full motor restart");
 
       // Clear all errors
@@ -469,7 +528,36 @@ namespace esphome
       std::vector<uint8_t> payload; // No payload
       queue_->enqueue(Command::RESTART, payload, nullptr);
 
-      transition_to(State::Disabled);
+      delay(3000); // Wait 3s for motor to reboot
+
+      transition_to(State::Idle);
+    }
+
+    void StepperEngine::calibrate()
+    {
+      ESP_LOGD(TAG_ENGINE, "calibrate(): Starting encoder calibration");
+
+      // Send calibrate encoder command via queue (Command 0x80 CALIBRATE_ENCODER)
+      auto payload = ServoCommandCodec::encode_calibrate_encoder();
+      queue_->enqueue(Command::CALIBRATE_ENCODER, payload, nullptr);
+    }
+
+    void StepperEngine::key_lock()
+    {
+      ESP_LOGD(TAG_ENGINE, "key_lock(): Locking physical keys");
+
+      // Send key lock command via queue (Command 0x8F SET_LOCK_KEYS)
+      auto payload = ServoCommandCodec::encode_set_lock_keys(true);
+      queue_->enqueue(Command::SET_LOCK_KEYS, payload, nullptr);
+    }
+
+    void StepperEngine::key_unlock()
+    {
+      ESP_LOGD(TAG_ENGINE, "key_unlock(): Unlocking physical keys");
+
+      // Send key unlock command via queue (Command 0x8F SET_LOCK_KEYS)
+      auto payload = ServoCommandCodec::encode_set_lock_keys(false);
+      queue_->enqueue(Command::SET_LOCK_KEYS, payload, nullptr);
     }
 
     void StepperEngine::set_zero()
@@ -483,31 +571,25 @@ namespace esphome
 
       // Send set zero command via queue (Command 0x92 SET_ZERO)
       std::vector<uint8_t> payload; // No payload
-      
+
       // Update position tracking only after hardware confirms
-      queue_->enqueue(Command::SET_ZERO, payload, [this]() {
-        // Hardware confirmed - reset encoder position
-        current_position_ = Position(0.0f, PositionUnit::STEPS, parent_);
-        encoder_carry_ = 0;
-        encoder_value_ = 0;
+      queue_->enqueue(Command::SET_ZERO, payload, [this](bool success, const std::vector<uint8_t> &)
+                      {
+        if (!success) {
+          ESP_LOGW(TAG_ENGINE, "set_zero: Hardware command failed");
+          return;
+        }
         
-        // Also reset parent's offset and position tracking
+        // Hardware confirmed - reset parent's offset and position tracking
         parent_->position_offset_ = Position(0.0f, PositionUnit::STEPS, parent_);
         parent_->current_position = 0;
         
-        ESP_LOGI(TAG_ENGINE, "set_zero: Hardware confirmed, encoder and offset reset to zero");
-      });
+        ESP_LOGI(TAG_ENGINE, "set_zero: Hardware confirmed, encoder and offset reset to zero"); });
     }
 
     // ============================================================================
     // Status Queries
     // ============================================================================
-
-    Position StepperEngine::get_raw_encoder_position() const
-    {
-      // Return raw encoder position without any offset
-      return current_position_;
-    }
 
     bool StepperEngine::is_moving() const
     {
@@ -575,14 +657,14 @@ namespace esphome
       {
       case Command::READ_ENCODER_CARRY:
       {
-        auto ev = ServoCommandCodec::decode_encoder_carry(data);
-        process_encoder_update(ev.carry, ev.value);
+        auto position = ServoCommandCodec::decode_encoder_carry(data);
+        process_encoder_update(position);
         break;
       }
 
       case Command::READ_CURRENT_SPEED:
       {
-        int16_t speed = ServoCommandCodec::decode_current_speed(data);
+        auto speed = ServoCommandCodec::decode_current_speed(data);
         process_speed_update(speed);
         break;
       }
@@ -657,7 +739,7 @@ namespace esphome
 
       case State::Idle:
         // Reset target position
-        target_position_ = current_position_;
+        parent_->target_pos_ = parent_->current_pos_;
         break;
 
       case State::Error:
@@ -731,65 +813,29 @@ namespace esphome
       }
     }
 
-    // ============================================================================
-    // Private Methods - Polling
-    // ============================================================================
-
-    void StepperEngine::execute_polling()
-    {
-      // Poll all status values in sequence
-      poll_encoder_position();
-      poll_motor_speed();
-      poll_motor_status();
-      poll_protection_status();
-    }
-
-    void StepperEngine::poll_encoder_position()
+    void StepperEngine::poll_encoder_position(std::function<void(const Position &)> callback)
     {
       // Enqueue read command for encoder position (Command 0x30 READ_ENCODER_CARRY)
       // Expected response: carry (int32_t) + value (uint16_t) = 6 bytes
-      queue_->enqueue_read(Command::READ_ENCODER_CARRY, [this](bool success, const std::vector<uint8_t> &data)
+      queue_->enqueue_read(Command::READ_ENCODER_CARRY, [this, callback](bool success, const std::vector<uint8_t> &data)
                            {
         if (success && data.size() >= 6) {
-          auto ev = ServoCommandCodec::decode_encoder_carry(data);
-          process_encoder_update(ev.carry, ev.value);
-        } });
-    }
+          auto position = ServoCommandCodec::decode_encoder_carry(data, parent_);
+          process_encoder_update(position);
+        
 
-    void StepperEngine::poll_motor_speed()
-    {
-      // Enqueue read command for motor speed (Command 0x32 READ_CURRENT_SPEED)
-      // Expected response: speed_rpm (int16_t) = 2 bytes
-      queue_->enqueue_read(Command::READ_CURRENT_SPEED, [this](bool success, const std::vector<uint8_t> &data)
-                           {
-        if (success && data.size() >= 2) {
-          int16_t speed = ServoCommandCodec::decode_current_speed(data);
-          process_speed_update(speed);
-        } });
-    }
-
-    void StepperEngine::poll_motor_status()
-    {
-      // Enqueue read command for motor status (Command 0x3A READ_MOTOR_STATUS)
-      // Expected response: status (uint8_t, 0=STOP, 1=MOVING, 2=HOMING) = 2 bytes (1 register)
-      queue_->enqueue_read(Command::READ_MOTOR_STATUS, [this](bool success, const std::vector<uint8_t> &data)
-                           {
-        if (success && !data.empty()) {
-          auto status = ServoCommandCodec::decode_motor_status(data);
-          bool enabled = (status.state != ServoCommandCodec::MotorStatus::STOP);
-          process_motor_status_update(enabled);
-        } });
-    }
-
-    void StepperEngine::poll_protection_status()
-    {
-      // Enqueue read command for protection status (Command 0x3E READ_PROTECTION_STATUS)
-      // Expected response: protection (uint8_t, 0 = OK, 1 = protected) = 2 bytes (1 register)
-      queue_->enqueue_read(Command::READ_PROTECTION_STATUS, [this](bool success, const std::vector<uint8_t> &data)
-                           {
-        if (success && !data.empty()) {
-          auto ps = ServoCommandCodec::decode_protection_status(data);
-          process_protection_update(ps.protected_state ? 1 : 0);
+        // Check if target reached (in Moving state)
+        if (state_ == State::Moving && is_target_reached())
+        {
+          ESP_LOGD(TAG_ENGINE, "Target position reached");
+          transition_to(State::Idle);
+        } 
+        parent_->set_current_pos(position);
+        
+        // Invoke user callback if provided
+        if (callback) {
+          callback(position);
+        }
         } });
     }
 
@@ -797,17 +843,10 @@ namespace esphome
     // Private Methods - Event Processing
     // ============================================================================
 
-    void StepperEngine::process_encoder_update(int32_t carry, uint16_t value)
+    void StepperEngine::process_encoder_update(const Position &position)
     {
-      encoder_carry_ = carry;
-      encoder_value_ = value;
-
-      // Calculate absolute position from carry + value
-      // Position formula: position = (carry * 16384) + value (in encoder steps)
-      int32_t total_encoder_steps = (carry * 16384) + static_cast<int32_t>(value);
-
-      Position old_position = current_position_;
-      current_position_ = Position(static_cast<float>(total_encoder_steps), PositionUnit::STEPS, parent_);
+      Position old_position = parent_->current_pos_;
+      parent_->set_current_pos(position);
 
       // Check if target reached (in Moving state)
       if (state_ == State::Moving && is_target_reached())
@@ -817,27 +856,27 @@ namespace esphome
       }
 
       // Invoke callback if position changed significantly (threshold: 10 steps)
-      float delta = std::abs(current_position_.get_steps() - old_position.get_steps());
+      float delta = std::abs(parent_->current_pos_.get_steps() - old_position.get_steps());
       if (delta >= 10.0f && position_callback_)
       {
-        position_callback_(current_position_);
+        position_callback_(parent_->current_pos_);
       }
     }
 
-    void StepperEngine::process_speed_update(int16_t speed_rpm)
+    void StepperEngine::process_speed_update(const Speed &speed)
     {
       Speed old_speed = current_speed_;
-      current_speed_ = Speed(static_cast<float>(speed_rpm), SpeedUnit::RPM, parent_);
+      current_speed_ = speed;
 
       // Check if standstill reached (in Stopping state)
-      if (state_ == State::Stopping && speed_rpm == 0)
+      if (state_ == State::Stopping && speed.rpm() == 0)
       {
         ESP_LOGD(TAG_ENGINE, "Standstill reached");
         transition_to(State::Idle);
       }
 
       // Invoke callback if speed changed
-      if (speed_rpm != static_cast<int16_t>(old_speed.rpm()) && speed_callback_)
+      if (speed.rpm() != old_speed.rpm() && speed_callback_)
       {
         speed_callback_(current_speed_);
       }
@@ -877,7 +916,7 @@ namespace esphome
     {
       // Check if current position is within tolerance of target
       float tolerance = 5.0f; // steps
-      float delta = std::abs(current_position_.get_steps() - target_position_.get_steps());
+      float delta = std::abs(parent_->current_pos_.get_steps() - parent_->target_pos_.get_steps());
       return delta <= tolerance;
     }
 

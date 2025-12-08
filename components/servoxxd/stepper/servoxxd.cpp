@@ -79,12 +79,15 @@ namespace esphome
     {
       // Calculate offset: offset = desired_position - raw_encoder_position
       // So that: current_position = raw_encoder + offset = desired_position
-      Position raw_encoder = this->engine_->get_raw_encoder_position();
-      this->position_offset_ = pos - raw_encoder;
-      set_current_pos(pos);
 
-      ESP_LOGD(TAG, "report_position: Raw=%.2f, Desired=%.2f, Offset=%.2f",
-               raw_encoder.get_steps(), pos.get_steps(), this->position_offset_.get_steps());
+      // Poll encoder asynchronously and calculate offset in callback
+      this->engine_->poll_encoder_position([this, pos](const Position &raw_encoder)
+                                           {
+        this->position_offset_ = pos - raw_encoder;
+        set_current_pos(pos);
+
+        ESP_LOGD(TAG, "report_position: Raw=%.2f, Desired=%.2f, Offset=%.2f",
+                 raw_encoder.get_steps(), pos.get_steps(), this->position_offset_.get_steps()); });
     }
 
     // ============================================================================
@@ -109,11 +112,7 @@ namespace esphome
 
     ServoXxd::ServoXxd()
     {
-      // Initialize homing_.speed union member with valid parent pointer
-      // Default mode in HomingConfig is ENDSTOP, so we need to initialize Speed member
-      // (Python setters will override this if homing is configured in YAML)
-      new (&homing_.speed) Speed(100.0f, SpeedUnit::RPM, this);
-
+      // Note: homing_ union will be initialized by Python setters from YAML configuration
       // Note: transport_ and engine_ are created in setup() after all setters have run
     }
 
@@ -132,6 +131,95 @@ namespace esphome
     }
 
     // ============================================================================
+    // Pure Delegation Methods (Action-API)
+    // ============================================================================
+
+    void ServoXxd::release_protection()
+    {
+      if (this->engine_ != nullptr)
+        this->engine_->release_protection();
+    }
+
+    void ServoXxd::restart()
+    {
+      if (this->engine_ != nullptr)
+        this->engine_->restart();
+    }
+
+    void ServoXxd::calibrate()
+    {
+      if (this->engine_ != nullptr)
+        this->engine_->calibrate();
+    }
+
+    void ServoXxd::key_lock()
+    {
+      if (this->engine_ != nullptr)
+        this->engine_->key_lock();
+    }
+
+    void ServoXxd::key_unlock()
+    {
+      if (this->engine_ != nullptr)
+        this->engine_->key_unlock();
+    }
+
+    void ServoXxd::home()
+    {
+      if (this->operating_mode_ != OperatingMode::POSITION)
+      {
+        ESP_LOGE(TAG, "home: Only valid in POSITION mode (current mode: SPEED)");
+        return;
+      }
+      if (this->engine_ != nullptr)
+        this->engine_->home();
+    }
+
+    void ServoXxd::stop(std::optional<Acceleration> decel)
+    {
+      if (this->engine_ == nullptr)
+        return;
+
+      Acceleration actual_decel = decel.has_value() ? decel.value() : this->default_acceleration_;
+      this->engine_->stop(actual_decel);
+    }
+
+    void ServoXxd::run_continuous(std::optional<Speed> speed, std::optional<Acceleration> accel)
+    {
+      // Speed Mode validation
+      if (this->operating_mode_ != OperatingMode::SPEED)
+      {
+        ESP_LOGE(TAG, "run_continuous: Only valid in SPEED mode (current mode: POSITION)");
+        return;
+      }
+
+      if (this->engine_ == nullptr)
+        return;
+
+      Speed actual_speed = speed.has_value() ? speed.value() : this->default_speed_;
+      Acceleration actual_accel = accel.has_value() ? accel.value() : this->default_acceleration_;
+      this->engine_->run_continuous(actual_speed, actual_accel);
+    }
+
+    void ServoXxd::emergency_stop()
+    {
+      if (this->engine_ != nullptr)
+        this->engine_->emergency_stop();
+    }
+
+    void ServoXxd::enable()
+    {
+      if (this->engine_ != nullptr)
+        this->engine_->enable();
+    }
+
+    void ServoXxd::disable()
+    {
+      if (this->engine_ != nullptr)
+        this->engine_->disable();
+    }
+
+    // ============================================================================
     // Component Lifecycle
     // ============================================================================
 
@@ -143,7 +231,7 @@ namespace esphome
       if (this->steps_per_revolution_ <= 0.0f)
       {
         ESP_LOGE(TAG, "Invalid steps_per_revolution: %.1f (must be > 0)", this->steps_per_revolution_);
-        // this->mark_failed();  // TODO: Uncomment when Component base is properly accessible
+        this->mark_failed();
         return;
       }
 
@@ -152,6 +240,7 @@ namespace esphome
       if (this->transport_ == nullptr)
       {
         ESP_LOGE(TAG, "Failed to allocate ModbusTransport");
+        this->mark_failed();
         return;
       }
 
@@ -160,6 +249,7 @@ namespace esphome
       if (this->engine_ == nullptr)
       {
         ESP_LOGE(TAG, "Failed to allocate StepperEngine");
+        this->mark_failed();
         return;
       }
 
@@ -169,59 +259,72 @@ namespace esphome
 
       ESP_LOGCONFIG(TAG, "  Steps per Revolution: %.1f", this->steps_per_revolution_);
       ESP_LOGCONFIG(TAG, "  Microstepping: %u", this->microstepping_);
-      ESP_LOGCONFIG(TAG, "  Working Current: %u mA", this->working_current_);
-      ESP_LOGCONFIG(TAG, "  Holding Current: %u%%", this->holding_current_percent_);
 
-      // TODO: Query initial motor state from hardware
-      // - Read enabled state
-      // - Read protection status
-      // - Sync with StepperEngine
+      // Current settings (only in SR_OPEN and SR_CLOSE modes, ignored in SR_VFOC)
+      if (this->control_mode_ != ControlMode::SR_VFOC)
+      {
+        ESP_LOGCONFIG(TAG, "  Working Current: %u mA", this->working_current_);
+        ESP_LOGCONFIG(TAG, "  Holding Current: %u%% of working", this->holding_current_percent_);
+      }
 
       // Mark setup as complete - setters can now update hardware
       this->is_setup_ = true;
+
+      // Setup periodic hardware polling (encoder, speed, status, protection)
+      this->set_interval("hardware_poll", 200, [this]()
+                         {
+        if (this->engine_ != nullptr)
+        {
+          this->engine_->poll_hardware();
+        } });
 
       ESP_LOGCONFIG(TAG, "ServoXxd Modbus setup complete");
     }
 
     void ServoXxd::loop()
     {
-      // Call StepperEngine state machine update
+      // Lightweight loop: State machine updates only
+      // Position sync: set_interval (100ms) - updates ESPHome base class
+      // Hardware polling: Engine::update() - manages own timing (poll_interval_ms_)
       if (this->engine_ != nullptr)
       {
+        // State machine update (high frequency for smooth motion control)
+        // Also handles hardware polling with configurable interval (default 200ms)
         this->engine_->update();
-
-        // Sync current position from hardware (raw encoder + offset)
-        Position current_pos = this->engine_->get_raw_encoder_position() + this->position_offset_;
-        if (current_pos != this->current_pos_)
-        {
-          set_current_pos(current_pos);
-        }
 
         // Check if target_position was changed externally (via ESPHome action)
         if (this->target_position != static_cast<int32_t>(this->target_pos_.get_steps()))
         {
-          set_target_pos(Position(this->target_position, PositionUnit::STEPS, this));
-          // TODO: Sync to StepperEngine if needed
+          Position position(this->target_position, PositionUnit::STEPS, this);
+          set_target_pos(position);
+          move_to(position);
         }
-
-        // Check if target_position was changed externally (via ESPHome action)
-        // and sync to StepperEngine if needed
-        // Note: Polling is handled inside StepperEngine::update()
       }
     }
 
     void ServoXxd::dump_config()
     {
       ESP_LOGCONFIG(TAG, "ServoXxd Modbus Stepper:");
-      // LOG_STEPPER(this);  // TODO: Use proper ESPHome macro when available
+      LOG_STEPPER(this);
+
+      // Operating mode (determines available features)
+      const char *op_modes[] = {"POSITION", "SPEED"};
+      ESP_LOGCONFIG(TAG, "  Operating Mode: %s", op_modes[static_cast<uint8_t>(this->operating_mode_)]);
+
+      // Control mode (hardware loop type)
+      const char *ctrl_modes[] = {"", "", "", "SR_OPEN", "SR_CLOSE", "SR_VFOC"};
+      ESP_LOGCONFIG(TAG, "  Control Mode: %s", ctrl_modes[static_cast<uint8_t>(this->control_mode_)]);
 
       // Motor configuration
       ESP_LOGCONFIG(TAG, "  Steps per Revolution: %.1f", this->steps_per_revolution_);
       ESP_LOGCONFIG(TAG, "  Microstepping: %u", this->microstepping_);
 
-      // Current settings
-      ESP_LOGCONFIG(TAG, "  Working Current: %u mA", this->working_current_);
-      ESP_LOGCONFIG(TAG, "  Holding Current: %u%% of working", this->holding_current_percent_);
+      // Current settings (only effective in SR_OPEN and SR_CLOSE modes)
+      if (this->control_mode_ != ControlMode::SR_VFOC)
+      {
+        ESP_LOGCONFIG(TAG, "  Working Current: %u mA", this->working_current_);
+        ESP_LOGCONFIG(TAG, "  Holding Current: %u%% of working", this->holding_current_percent_);
+      }
 
       // Motor behavior
       ESP_LOGCONFIG(TAG, "  Shaft Direction: %s", this->shaft_reversed_ ? "Reversed" : "Normal");
@@ -230,33 +333,76 @@ namespace esphome
       ESP_LOGCONFIG(TAG, "  Auto Screen Off: %s", this->auto_screen_off_ ? "enabled" : "disabled");
       ESP_LOGCONFIG(TAG, "  Lock Keys at Startup: %s", this->lock_keys_at_startup_ ? "yes" : "no");
 
-      // Homing configuration
-      ESP_LOGCONFIG(TAG, "  Home Direction: %s", "Unknown");
-      ESP_LOGCONFIG(TAG, "  Home Speed: %s", "Unknown");
+      // Homing configuration (only in POSITION mode)
+      if (this->operating_mode_ == OperatingMode::POSITION)
+      {
+        const char *homing_modes[] = {"SENSORLESS", "ENDSTOP", "VIRTUAL"};
+        ESP_LOGCONFIG(TAG, "  Homing Mode: %s", homing_modes[static_cast<uint8_t>(this->homing_.mode)]);
+        ESP_LOGCONFIG(TAG, "  Homing at Startup: %s", this->homing_.at_startup ? "YES" : "NO");
 
-      // Motion parameters
-      ESP_LOGCONFIG(TAG, "  Default Acceleration: %.1f RPM/s", this->default_acceleration_.get_rpm_per_sec());
+        const char *homing_dirs[] = {"CW", "CCW", "NEAREST"};
+        ESP_LOGCONFIG(TAG, "  Homing Direction: %s", homing_dirs[static_cast<uint8_t>(this->homing_.direction)]);
 
-      // Power management
-      ESP_LOGCONFIG(TAG, "  Sleep When Done: %s", this->sleep_when_done_ ? "YES" : "NO");
+        // Speed formatting depends on mode
+        if (this->homing_.mode == HomingMode::VIRTUAL)
+        {
+          const char *speed_levels[] = {"VERY_SLOW", "SLOW", "MEDIUM", "FAST", "VERY_FAST"};
+          ESP_LOGCONFIG(TAG, "  Homing Speed: %s (level %u)", speed_levels[this->homing_.level], this->homing_.level);
+        }
+        else
+        {
+          ESP_LOGCONFIG(TAG, "  Homing Speed: %.1f RPM", this->homing_.speed.rpm());
+        }
+
+        // Mode-specific settings
+        if (this->homing_.mode == HomingMode::ENDSTOP)
+        {
+          const char *endstop_triggers[] = {"LOW", "HIGH"};
+          ESP_LOGCONFIG(TAG, "  Endstop Trigger: %s", endstop_triggers[static_cast<uint8_t>(this->homing_.endstop_trigger)]);
+        }
+        else if (this->homing_.mode == HomingMode::SENSORLESS)
+        {
+          ESP_LOGCONFIG(TAG, "  Homing Current: %u mA", this->homing_.current_ma);
+        }
+      }
+
+      // Default motion parameters
+      ESP_LOGCONFIG(TAG, "  Default Speed: %.1f RPM (%.0f steps/s)",
+                    this->default_speed_.rpm(), this->default_speed_.steps_per_sec());
+      ESP_LOGCONFIG(TAG, "  Default Acceleration: %.1f RPM/s (%.0f steps/s^2)",
+                    this->default_acceleration_.get_rpm_per_sec(), this->default_acceleration_.get_steps_per_sec2());
+
+      // Motion parameters (from Stepper base class)
+      ESP_LOGCONFIG(TAG, "  Base Class Acceleration: %.0f steps/s^2", this->acceleration_);
+      ESP_LOGCONFIG(TAG, "  Base Class Deceleration: %.0f steps/s^2", this->deceleration_);
+      ESP_LOGCONFIG(TAG, "  Base Class Max Speed: %.0f steps/s", this->max_speed_);
+
+      // Power management (only in POSITION mode)
+      if (this->operating_mode_ == OperatingMode::POSITION)
+      {
+        ESP_LOGCONFIG(TAG, "  Sleep When Done: %s", this->sleep_when_done_ ? "YES" : "NO");
+      }
+
+      // Current state
+      ESP_LOGCONFIG(TAG, "  Current Position: %d steps (%.2f rev)",
+                    this->current_position, this->current_pos_.revolutions());
+      ESP_LOGCONFIG(TAG, "  Target Position: %d steps (%.2f rev)",
+                    this->target_position, this->target_pos_.revolutions());
+      ESP_LOGCONFIG(TAG, "  Position Offset: %.0f steps (%.2f rev)",
+                    this->position_offset_.get_steps(), this->position_offset_.revolutions());
+      ESP_LOGCONFIG(TAG, "  Current Speed: %.1f steps/s (%.1f RPM)",
+                    this->current_speed_, this->current_speed_ * 60.0f / this->steps_per_revolution_);
 
       // Engine state
       if (this->engine_ != nullptr)
       {
-        ESP_LOGCONFIG(TAG, "  Current State: %s", this->engine_->state_to_string(this->engine_->get_state()));
+        ESP_LOGCONFIG(TAG, "  Engine State: %s", this->engine_->state_to_string(this->engine_->get_state()));
         ESP_LOGCONFIG(TAG, "  Is Moving: %s", this->engine_->is_moving() ? "YES" : "NO");
       }
       else
       {
         ESP_LOGCONFIG(TAG, "  StepperEngine: Not initialized");
       }
-
-      // TODO: Add more detailed state info
-      // - Current position in various units
-      // - Current speed
-      // - Target position (if moving)
-      // - Protection status
-      // - Work mode
     }
 
     // ============================================================================
@@ -304,16 +450,19 @@ namespace esphome
     void ServoXxd::move_to(const Position &position, std::optional<Speed> speed,
                            std::optional<Acceleration> accel)
     {
+      // Position Mode validation
+      if (this->operating_mode_ != OperatingMode::POSITION)
+      {
+        ESP_LOGE(TAG, "move_to: Only valid in POSITION mode (current mode: SPEED)");
+        return;
+      }
+
       // Use default values if not provided
       Speed actual_speed = speed.has_value() ? speed.value() : this->default_speed_;
       Acceleration actual_accel = accel.has_value() ? accel.value() : this->default_acceleration_;
 
-      // Minimal implementation: just delegate to engine
-      // TODO later: Add Position Mode validation, error state check
       this->engine_->move_to(position, actual_speed, actual_accel);
     }
-
-
 
   } // namespace servoxxd
 } // namespace esphome

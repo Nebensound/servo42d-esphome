@@ -51,6 +51,25 @@ namespace esphome
       static Acceleration from_rev_per_sec2(float value, const ServoXxd *parent);
       static Acceleration from_degrees_per_sec2(float value, const ServoXxd *parent);
       static Acceleration from_radians_per_sec2(float value, const ServoXxd *parent);
+      
+      /**
+       * @brief Direct hardware value factory (for testing/low-level control)
+       * 
+       * Creates an Acceleration object with a direct hardware value (0-255).
+       * - acc = 0: Instant acceleration (no ramp)
+       * - acc = 1-255: Higher values = faster acceleration
+       *   Time per ±1 RPM change: Δt = (256 - acc) × 50μs
+       * 
+       * Example: acc=236 → Δt = 20×50μs = 1ms per RPM (≈1000 RPM/s)
+       * 
+       * @param acc_value Hardware acceleration value (0-255)
+       * @return Acceleration object with direct hardware value
+       */
+      static Acceleration from_internal(uint8_t acc_value) {
+        Acceleration accel(nullptr);
+        accel.acc_ = acc_value;
+        return accel;
+      }
 
       // Direct accessor to internal representation
       uint8_t acc_internal() const { return acc_; }

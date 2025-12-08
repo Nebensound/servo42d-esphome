@@ -183,38 +183,27 @@ namespace esphome
      * - Public API for actions (move_to, home, stop, run_continuous, etc.)
      * - Modbus communication setup
      * - Helper methods for unit conversions (steps ↔ ticks)
-     *
-     * TODO: Implementation required
-     * - [ ] Constructor and configuration setters
-     * - [ ] setup() - Initialize hardware, validate config
-     * - [ ] loop() - Call StepperEngine::update()
-     * - [ ] dump_config() - Log configuration
-     * - [ ] Public API methods (move_to, home, stop, etc.)
-     * - [ ] Helper methods (get_steps_per_revolution, get_microstepping, etc.)
-     * - [ ] Modbus callback handlers (response, error, timeout)
-     * - [ ] Synchronization with base class (update current_position, target_position)
-     * - [ ] Operating mode management (Position Mode vs Speed Mode)
      */
-    class ServoXxd : public stepper::Stepper, public modbus::ModbusDevice, public Component
+    class ServoXxd : public Component, public stepper::Stepper, public modbus::ModbusDevice
     {
     public:
-      // ==== Action-API Methoden (Stub, TODO: Implementierung) ====
+      // ==== Action-API Methods ====
       void set_control_mode(ControlMode mode);          // Change control mode at runtime (sends Command 0x82)
-      void set_speed(const Speed &speed);               // TODO: Implement
-      void set_acceleration(const Acceleration &accel); // TODO: Implement
-      void set_zero();                                  // TODO: Implement
-      void report_position(const Position &pos);        // TODO: Implement
+      void set_speed(const Speed &speed);               // Update default speed for movements
+      void set_acceleration(const Acceleration &accel); // Update default acceleration
+      void set_zero();                                  // Store current position as zero (VIRTUAL homing)
+      void report_position(const Position &pos);        // Set position offset for zeroing
 
       // Position synchronization helpers (keep internal Position objects in sync with base class int32_t members)
-      void set_current_pos(const Position &pos);        ///< Update current_pos_ and sync base class current_position
-      void set_target_pos(const Position &pos);         ///< Update target_pos_ and sync base class target_position
+      void set_current_pos(const Position &pos); ///< Update current_pos_ and sync base class current_position
+      void set_target_pos(const Position &pos);  ///< Update target_pos_ and sync base class target_position
 
-      // Pure delegation methods (inline)
-      void release_protection() { this->engine_->release_protection(); }  ///< Clear protection state
-      void restart() { this->engine_->restart(); }                        ///< Restart motor controller
-      void calibrate() { this->engine_->calibrate(); }                    ///< Start encoder calibration
-      void key_lock() { this->engine_->key_lock(); }                      ///< Lock physical buttons
-      void key_unlock() { this->engine_->key_unlock(); }                  ///< Unlock physical buttons
+      // Pure delegation methods (declared here, implemented in .cpp to avoid incomplete type errors)
+      void release_protection(); ///< Clear protection state
+      void restart();            ///< Restart motor controller
+      void calibrate();          ///< Start encoder calibration
+      void key_lock();           ///< Lock physical buttons
+      void key_unlock();         ///< Unlock physical buttons
     public:
       ServoXxd();  // Implemented in .cpp to initialize homing_.speed with valid parent pointer
       ~ServoXxd(); // Implemented in .cpp to avoid incomplete type
@@ -226,31 +215,31 @@ namespace esphome
       /**
        * @brief Initialize the component
        *
-       * TODO:
-       * - Validate configuration (steps_per_rev > 0, microstepping valid, etc.)
-       * - Initialize StepperEngine
-       * - Query initial motor state (enabled, position, speed, protection)
-       * - Set default values to hardware if needed
+       * - Validates configuration (steps_per_rev > 0)
+       * - Creates ModbusTransport and StepperEngine
+       * - Enqueues initial configuration commands
+       * - Sets up periodic position synchronization
        */
       void setup() override;
 
       /**
        * @brief Called repeatedly by ESPHome
        *
-       * TODO:
-       * - Call StepperEngine::update() to process state machine
-       * - Handle polling intervals
-       * - Update base class position if changed
+       * - Calls StepperEngine::update() for state machine and hardware polling
+       * - Checks for external target_position changes
+       * - Position sync handled via set_interval (100ms)
        */
       void loop() override;
 
       /**
        * @brief Log configuration to console
        *
-       * TODO:
-       * - Log all configuration parameters
-       * - Log current motor state
-       * - Log operating mode (Position vs Speed)
+       * Logs:
+       * - Operating mode (POSITION/SPEED) and control mode (SR_OPEN/SR_CLOSE/SR_VFOC)
+       * - Motor configuration (steps/rev, microstepping, currents)
+       * - Homing configuration (mode-specific settings)
+       * - Motion parameters (speed, acceleration)
+       * - Current state (position, speed, engine state)
        */
       void dump_config() override;
 
@@ -491,40 +480,6 @@ namespace esphome
       void set_mode(OperatingMode mode) { operating_mode_ = mode; }
       void set_sleep_when_done(uint32_t ms) { /* Store sleep delay */ }
 
-      // Homing configuration setters - grouped together
-      void set_homing_mode(HomingMode mode) { homing_.mode = mode; }
-      void set_homing_at_startup(bool enable) { homing_.at_startup = enable; }
-      void set_homing_direction(HomingDirection direction) { homing_.direction = direction; }
-
-      /**
-       * @brief Set homing speed for ENDSTOP/SENSORLESS modes
-       * Overload for regular Speed type with value and unit
-       */
-      void set_homing_speed(float value, SpeedUnit unit)
-      {
-        // Destroy old Speed if needed, construct new one
-        if (homing_.mode != HomingMode::VIRTUAL)
-          homing_.speed.~Speed();
-        new (&homing_.speed) Speed(value, unit, this);
-      }
-
-      /**
-       * @brief Set homing speed level for VIRTUAL mode
-       * Overload for ZeroingSpeed enum (0-4)
-       */
-      void set_homing_speed(uint8_t level)
-      {
-        if (level > 4)
-        {
-          ESP_LOGE("servoxxd_modbus", "Invalid homing speed level: %u (must be 0-4)", level);
-          return;
-        }
-        homing_.level = level;
-      }
-
-      void set_homing_endstop_trigger(EndstopTrigger trigger) { homing_.endstop_trigger = trigger; }
-      void set_homing_current(uint16_t ma) { homing_.current_ma = ma; }
-
       // ============================================================================
       // Public API (called from Actions)
       // ============================================================================
@@ -532,8 +487,8 @@ namespace esphome
       /**
        * @brief Move to absolute position
        *
-       * Minimal implementation: Simply delegates to StepperEngine.
-       * TODO later: Add Position Mode validation, error state check
+       * Delegates to StepperEngine with default values if parameters not provided.
+       * Only valid in POSITION mode.
        */
       void move_to(const Position &position, std::optional<Speed> speed = std::nullopt,
                    std::optional<Acceleration> accel = std::nullopt);
@@ -541,68 +496,41 @@ namespace esphome
       /**
        * @brief Start homing sequence
        *
-       * Minimal implementation: Simply delegates to StepperEngine.
-       * TODO later: Add Position Mode validation, error state check
+       * Delegates to StepperEngine. Behavior depends on homing_.mode configuration.
+       * Only valid in POSITION mode.
        */
-      void home() { this->engine_->home(); }
+      void home();
 
       /**
        * @brief Stop motor with deceleration
        *
-       * Minimal implementation: Simply delegates to StepperEngine.
        * Works in both Position and Speed modes.
        */
-      void stop(std::optional<Acceleration> decel = std::nullopt)
-      {
-        Acceleration actual_decel = decel.has_value() ? decel.value() : this->default_acceleration_;
-        this->engine_->stop(actual_decel);
-      }
+      void stop(std::optional<Acceleration> decel = std::nullopt);
 
       /**
        * @brief Run continuously at specified speed
        *
-       * Minimal implementation: Simply delegates to StepperEngine.
-       * TODO later: Add Speed Mode validation, error state check
+       * Delegates to StepperEngine with default values if parameters not provided.
+       * Only valid in SPEED mode.
        */
       void run_continuous(std::optional<Speed> speed = std::nullopt,
-                          std::optional<Acceleration> accel = std::nullopt)
-      {
-        Speed actual_speed = speed.has_value() ? speed.value() : this->default_speed_;
-        Acceleration actual_accel = accel.has_value() ? accel.value() : this->default_acceleration_;
-        this->engine_->run_continuous(actual_speed, actual_accel);
-      }
+                          std::optional<Acceleration> accel = std::nullopt);
 
       /**
        * @brief Emergency stop (immediate halt, no deceleration)
-       *
-       * Minimal implementation: Simply delegates to StepperEngine.
        */
-      void emergency_stop() { this->engine_->emergency_stop(); }
+      void emergency_stop();
 
       /**
        * @brief Enable motor
-       *
-       * Minimal implementation: Simply delegates to StepperEngine.
        */
-      void enable() { this->engine_->enable(); }
+      void enable();
 
       /**
        * @brief Disable motor
-       *
-       * Minimal implementation: Simply delegates to StepperEngine.
        */
-      void disable() { this->engine_->disable(); }
-
-      // TODO: Add more public API methods:
-      // - set_zero() - Set current position as zero
-      // - release_protection() - Clear error state
-      // - restart() - Restart motor controller
-      // - calibrate() - Run motor calibration
-      // - key_lock() / key_unlock() - Physical button lock
-      // - set_work_mode() - Switch between modes
-      // - set_speed() - Update speed for next movement
-      // - set_acceleration() - Update acceleration
-      // - etc.
+      void disable();
 
       // ============================================================================
       // Modbus Callbacks (called by ModbusDevice base class)
@@ -611,18 +539,14 @@ namespace esphome
       /**
        * @brief Handle Modbus response
        *
-       * TODO:
-       * - Parse response data
-       * - Delegate to StepperEngine for processing
+       * Forwards response to ModbusTransport for command completion.
        */
       void on_modbus_data(const std::vector<uint8_t> &data) override;
 
       /**
        * @brief Handle Modbus error
        *
-       * TODO:
-       * - Log error
-       * - Delegate to StepperEngine for error handling
+       * Logs error details.
        */
       void on_modbus_error(uint8_t function_code, uint8_t exception_code) override;
 
@@ -703,12 +627,6 @@ namespace esphome
 
       // Sleep configuration
       bool sleep_when_done_{false}; ///< Enter sleep mode after motion complete
-
-      // TODO: Add more configuration as needed:
-      // - Protection thresholds
-      // - Calibration parameters
-      // - Polling intervals
-      // - Timeout values
 
       friend class Speed;
       friend class Acceleration;

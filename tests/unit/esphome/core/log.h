@@ -37,3 +37,6 @@ namespace esphome
 #define ESP_LOGCONFIG(tag, ...) ((void)0)
 #define ESP_LOGV(tag, ...) ((void)0)
 #define ESP_LOGVV(tag, ...) ((void)0)
+
+// LOG_STEPPER macro for stepper components
+#define LOG_STEPPER(obj) ((void)0)

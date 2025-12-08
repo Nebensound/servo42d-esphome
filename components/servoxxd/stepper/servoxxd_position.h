@@ -58,6 +58,7 @@ namespace esphome
 
       // Factory methods - direct unit conversion
       static Position from_ticks(int64_t ticks);
+      static Position from_ticks(int64_t ticks, const ServoXxd *parent);
       static Position from_steps(int64_t steps, const ServoXxd *parent);
       static Position from_revolutions(double revolutions);
       static Position from_degrees(double deg);

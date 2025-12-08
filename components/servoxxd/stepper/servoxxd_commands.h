@@ -146,9 +146,9 @@ namespace esphome
       /// This is intentional per the hardware protocol specification.
       RELEASE_PROTECTION = 0x0E,
 
-      /// Restart/reset the motor controller
-      /// Note: This command uses 0x0F, which is outside the standard command range.
-      RESTART = 0x0F,
+      /// Restart/reset the motor controller (Command 0x41 per V1.0.5 manual section 5.6)
+      /// Note: This command uses 0x41, which is outside the standard command range.
+      RESTART = 0x41,
     };
 
   } // namespace servoxxd

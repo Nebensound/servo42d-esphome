@@ -5,6 +5,21 @@ The `servoxxd` stepper platform allows you to control MKS ServoXXD closed-loop s
 > [!NOTE]
 > Support for direct Serial communication may be added in the future.
 
+## Installation
+
+Add this external component to your ESPHome configuration:
+
+```yaml
+external_components:
+  - source: github://Nebensound/servoxxd-esphome
+    components: [ servoxxd ]
+```
+
+> [!TIP]
+> To use a specific version, add `ref: v1.0.0` (replace with desired version/tag) or `ref: main` for the latest release.
+
+## Configuration
+
 ```yaml
 # Base setup shared by both profiles
 
@@ -146,8 +161,8 @@ stepper:
 > Position to move to may be set at least once with `stepper.set_zero` before using virtual homing. After that it may be stored permanently within the controller of the stepper.
   - **direction** (*Optional*, enum): `CW` clockwise, `CCW` counter-clockwise and `NEAREST`. Default: `CW`. `NEAREST` may only be used with `mode: VIRTUAL`.
   - **speed**: (*Optional*, string): Homing speed. Supports units: `RPM` or `steps/s`. Default: `1 RPM`.
-    > [!NOTE]
-    > In `mode: VIRTUAL`, the speed may only be provided in five discrete levels. Use `VERY_SLOW`, `SLOW`, `MEDIUM`, `FAST` or `VERY_FAST` in this mode to set the speed.
+> [!NOTE]
+> In `mode: VIRTUAL`, the speed may only be provided in five discrete levels. Use `VERY_SLOW`, `SLOW`, `MEDIUM`, `FAST` or `VERY_FAST` in this mode to set the speed.
     Examples for ENDSTOP/SENSORLESS:
     - `speed: 1`                 # steps/s (default unit)
     - `speed: "50 RPM"`

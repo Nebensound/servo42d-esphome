@@ -63,7 +63,11 @@ test_stepper_engine: test_stepper_engine.cpp $(ENGINE_SOURCES)
 	@echo "Building $@..."
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-test_command_codec: test_command_codec.cpp
+test_command_codec: test_command_codec.cpp $(COMPONENT_DIR)/servoxxd_speed.cpp $(COMPONENT_DIR)/servoxxd_acceleration.cpp $(COMPONENT_DIR)/servoxxd_position.cpp
+	@echo "Building $@..."
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+test_command_codec_extended: test_command_codec_extended.cpp
 	@echo "Building $@..."
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 

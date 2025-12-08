@@ -10,6 +10,9 @@ namespace esphome
   namespace modbus
   {
 
+    // Modbus function codes
+    constexpr uint8_t FUNC_PRESET_MULTIPLE_REGISTERS = 0x10;
+
     class ModbusDevice
     {
     public:

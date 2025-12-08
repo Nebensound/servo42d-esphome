@@ -46,7 +46,11 @@ void test_encode_move_position_mode_2()
   std::cout << "\n=== encode_move_position_mode_2 Tests ===" << std::endl;
 
   // Test basic encoding
-  auto data = ServoCommandCodec::encode_move_position_mode_2(1000, 100, 50);
+  // Use from_ticks() which is hardware-native (encoder counts)
+  Position pos1 = Position::from_ticks(1000);  // 1000 encoder ticks
+  Speed spd1 = Speed::from_rpm(100, nullptr);
+  Acceleration acc1 = Acceleration::from_internal(50); // Direct hardware value
+  auto data = ServoCommandCodec::encode_move_position_mode_2(pos1, spd1, acc1);
   ASSERT_EQUAL(data.size(), 8u, "Payload size is 8 bytes (2+2+4)");
   ASSERT_EQUAL(data[0], 0x00, "Accel MSB");
   ASSERT_EQUAL(data[1], 0x32, "Accel LSB = 50");
@@ -58,7 +62,10 @@ void test_encode_move_position_mode_2()
   ASSERT_EQUAL(data[7], 0xE8, "Position byte 3 = 1000");
 
   // Test negative position
-  data = ServoCommandCodec::encode_move_position_mode_2(-1000, 200, 100);
+  Position pos2 = Position::from_ticks(-1000);
+  Speed spd2 = Speed::from_rpm(200, nullptr);
+  Acceleration acc2 = Acceleration::from_internal(100);
+  data = ServoCommandCodec::encode_move_position_mode_2(pos2, spd2, acc2);
   ASSERT_EQUAL(data.size(), 8u, "Negative position payload size");
   ASSERT_EQUAL(data[0], 0x00, "Accel MSB");
   ASSERT_EQUAL(data[1], 100, "Accel LSB = 100");
@@ -70,7 +77,10 @@ void test_encode_move_position_mode_2()
   ASSERT_EQUAL(data[7], 0x18, "Negative position byte 3");
 
   // Test zero values
-  data = ServoCommandCodec::encode_move_position_mode_2(0, 0, 0);
+  Position pos3 = Position::from_ticks(0);
+  Speed spd3 = Speed::from_rpm(0, nullptr);
+  Acceleration acc3 = Acceleration::from_internal(0);
+  data = ServoCommandCodec::encode_move_position_mode_2(pos3, spd3, acc3);
   ASSERT_EQUAL(data.size(), 8u, "Zero values payload size");
   ASSERT_EQUAL(data[0], 0x00, "Accel MSB zero");
   ASSERT_EQUAL(data[1], 0x00, "Accel LSB zero");
@@ -80,12 +90,15 @@ void test_encode_move_position_mode_2()
   ASSERT_EQUAL(data[7], 0x00, "Position byte 3 zero");
 
   // Test maximum values
-  data = ServoCommandCodec::encode_move_position_mode_2(INT32_MAX, UINT16_MAX, 255);
+  Position pos4 = Position::from_ticks(INT32_MAX);
+  Speed spd4 = Speed::from_rpm(1000, nullptr);
+  Acceleration acc4 = Acceleration::from_internal(255);
+  data = ServoCommandCodec::encode_move_position_mode_2(pos4, spd4, acc4);
   ASSERT_EQUAL(data.size(), 8u, "Max values payload size");
   ASSERT_EQUAL(data[0], 0x00, "Max accel MSB (255 as uint16)");
   ASSERT_EQUAL(data[1], 0xFF, "Max accel LSB");
-  ASSERT_EQUAL(data[2], 0xFF, "Max speed MSB");
-  ASSERT_EQUAL(data[3], 0xFF, "Max speed LSB");
+  ASSERT_EQUAL(data[2], 0x03, "Max speed MSB");
+  ASSERT_EQUAL(data[3], 0xE8, "Max speed LSB");
   ASSERT_EQUAL(data[4], 0x7F, "Max position byte 0");
   ASSERT_EQUAL(data[5], 0xFF, "Max position byte 1");
   ASSERT_EQUAL(data[6], 0xFF, "Max position byte 2");
@@ -96,14 +109,17 @@ void test_encode_stop_position_mode_2()
 {
   std::cout << "\n=== encode_stop_position_mode_2 Tests ===" << std::endl;
 
-  auto data = ServoCommandCodec::encode_stop_position_mode_2(128);
+  Acceleration decel1 = Acceleration::from_internal(128);
+  auto data = ServoCommandCodec::encode_stop_position_mode_2(decel1);
   ASSERT_EQUAL(data.size(), 1u, "Stop payload size is 1 byte");
   ASSERT_EQUAL(data[0], 128, "Decel value = 128");
 
-  data = ServoCommandCodec::encode_stop_position_mode_2(0);
+  Acceleration decel2 = Acceleration::from_internal(0);
+  data = ServoCommandCodec::encode_stop_position_mode_2(decel2);
   ASSERT_EQUAL(data[0], 0, "Zero decel (instant stop)");
 
-  data = ServoCommandCodec::encode_stop_position_mode_2(255);
+  Acceleration decel3 = Acceleration::from_internal(255);
+  data = ServoCommandCodec::encode_stop_position_mode_2(decel3);
   ASSERT_EQUAL(data[0], 255, "Max decel value");
 }
 
@@ -111,15 +127,19 @@ void test_encode_move_speed_mode()
 {
   std::cout << "\n=== encode_move_speed_mode Tests ===" << std::endl;
 
-  auto data = ServoCommandCodec::encode_move_speed_mode(1000, 50, 1);
+  Speed spd1 = Speed::from_rpm(1000, nullptr); // Direction embedded in Speed (positive = CW)
+  Acceleration acc1 = Acceleration::from_internal(50);
+  auto data = ServoCommandCodec::encode_move_speed_mode(spd1, acc1);
   ASSERT_EQUAL(data.size(), 4u, "Speed mode payload size is 4 bytes");
-  ASSERT_EQUAL(data[0], 1, "Direction = 1 (forward)");
+  ASSERT_EQUAL(data[0], 1, "Direction = 1 (CW/forward)");
   ASSERT_EQUAL(data[1], 0x03, "Speed MSB");
   ASSERT_EQUAL(data[2], 0xE8, "Speed LSB = 1000");
   ASSERT_EQUAL(data[3], 50, "Accel = 50");
 
-  data = ServoCommandCodec::encode_move_speed_mode(500, 100, 0);
-  ASSERT_EQUAL(data[0], 0, "Direction = 0 (reverse)");
+  Speed spd2 = Speed::from_rpm(-500, nullptr); // Negative speed = CCW
+  Acceleration acc2 = Acceleration::from_internal(100);
+  data = ServoCommandCodec::encode_move_speed_mode(spd2, acc2);
+  ASSERT_EQUAL(data[0], 0, "Direction = 0 (CCW/reverse)");
   ASSERT_EQUAL(data[1], 0x01, "Speed MSB");
   ASSERT_EQUAL(data[2], 0xF4, "Speed LSB = 500");
 }
@@ -172,38 +192,38 @@ void test_decode_current_speed()
 
   // Positive speed
   std::vector<uint8_t> data = {0x00, 0x64}; // 100 RPM
-  int16_t speed = ServoCommandCodec::decode_current_speed(data);
-  ASSERT_EQUAL(speed, 100, "Decode 100 RPM");
+  Speed speed = ServoCommandCodec::decode_current_speed(data);
+  ASSERT_EQUAL(speed.rpm_internal(), 100, "Decode 100 RPM");
 
   // Negative speed (two's complement)
   data = {0xFF, 0x9C}; // -100
   speed = ServoCommandCodec::decode_current_speed(data);
-  ASSERT_EQUAL(speed, -100, "Decode -100 RPM");
+  ASSERT_EQUAL(speed.rpm_internal(), -100, "Decode -100 RPM");
 
   // Zero speed
   data = {0x00, 0x00};
   speed = ServoCommandCodec::decode_current_speed(data);
-  ASSERT_EQUAL(speed, 0, "Decode 0 RPM");
+  ASSERT_EQUAL(speed.rpm_internal(), 0, "Decode 0 RPM");
 
-  // Maximum positive
-  data = {0x7F, 0xFF}; // INT16_MAX
+  // Maximum hardware speed (3000 RPM is hardware limit)
+  data = {0x0B, 0xB8}; // 3000
   speed = ServoCommandCodec::decode_current_speed(data);
-  ASSERT_EQUAL(speed, 32767, "Decode max positive speed");
+  ASSERT_EQUAL(speed.rpm_internal(), 3000, "Decode max hardware speed (3000 RPM)");
 
-  // Maximum negative
-  data = {0x80, 0x00}; // INT16_MIN
+  // Minimum hardware speed (-3000 RPM)
+  data = {0xF4, 0x48}; // -3000
   speed = ServoCommandCodec::decode_current_speed(data);
-  ASSERT_EQUAL(speed, -32768, "Decode max negative speed");
+  ASSERT_EQUAL(speed.rpm_internal(), -3000, "Decode min hardware speed (-3000 RPM)");
 
   // Insufficient data
   data = {0x00};
   speed = ServoCommandCodec::decode_current_speed(data);
-  ASSERT_EQUAL(speed, 0, "Insufficient data returns 0");
+  ASSERT_EQUAL(speed.rpm_internal(), 0, "Insufficient data returns 0");
 
   // Empty data
   data.clear();
   speed = ServoCommandCodec::decode_current_speed(data);
-  ASSERT_EQUAL(speed, 0, "Empty data returns 0");
+  ASSERT_EQUAL(speed.rpm_internal(), 0, "Empty data returns 0");
 }
 
 void test_decode_pulse_count()
@@ -212,68 +232,69 @@ void test_decode_pulse_count()
 
   // Positive count
   std::vector<uint8_t> data = {0x00, 0x00, 0x03, 0xE8}; // 1000
-  int32_t count = ServoCommandCodec::decode_pulse_count(data);
-  ASSERT_EQUAL(count, 1000, "Decode 1000 pulses");
+  Position count = ServoCommandCodec::decode_pulse_count(data);
+  ASSERT_EQUAL(count.get_ticks(), 1000, "Decode 1000 ticks");
 
   // Negative count
   data = {0xFF, 0xFF, 0xFC, 0x18}; // -1000
   count = ServoCommandCodec::decode_pulse_count(data);
-  ASSERT_EQUAL(count, -1000, "Decode -1000 pulses");
+  ASSERT_EQUAL(count.get_ticks(), -1000, "Decode -1000 ticks");
 
   // Zero
   data = {0x00, 0x00, 0x00, 0x00};
   count = ServoCommandCodec::decode_pulse_count(data);
-  ASSERT_EQUAL(count, 0, "Decode 0 pulses");
+  ASSERT_EQUAL(count.get_ticks(), 0, "Decode 0 ticks");
 
   // Large positive
   data = {0x00, 0x0F, 0x42, 0x40}; // 1,000,000
   count = ServoCommandCodec::decode_pulse_count(data);
-  ASSERT_EQUAL(count, 1000000, "Decode 1,000,000 pulses");
+  ASSERT_EQUAL(count.get_ticks(), 1000000, "Decode 1,000,000 ticks");
 
   // Maximum positive
   data = {0x7F, 0xFF, 0xFF, 0xFF}; // INT32_MAX
   count = ServoCommandCodec::decode_pulse_count(data);
-  ASSERT_EQUAL(count, INT32_MAX, "Decode INT32_MAX");
+  ASSERT_EQUAL(count.get_ticks(), INT32_MAX, "Decode INT32_MAX");
 
   // Insufficient data
   data = {0x00, 0x00, 0x03};
   count = ServoCommandCodec::decode_pulse_count(data);
-  ASSERT_EQUAL(count, 0, "Insufficient data returns 0");
+  ASSERT_EQUAL(count.get_ticks(), 0, "Insufficient data returns 0");
 }
 
 void test_decode_encoder_carry()
 {
   std::cout << "\n=== decode_encoder_carry Tests ===" << std::endl;
 
-  // Normal encoder value
-  std::vector<uint8_t> data = {0x00, 0x00, 0x00, 0x05, 0x12, 0x34}; // carry=5, value=0x1234
-  auto ev = ServoCommandCodec::decode_encoder_carry(data);
-  ASSERT_EQUAL(ev.carry, 5, "Carry = 5");
-  ASSERT_EQUAL(ev.value, 0x1234, "Value = 0x1234");
+  // Normal encoder value: carry=5, value=0x1234 → position = 5×0x4000 + 0x1234 = 0x15234 = 86580
+  std::vector<uint8_t> data = {0x00, 0x00, 0x00, 0x05, 0x12, 0x34};
+  Position pos = ServoCommandCodec::decode_encoder_carry(data);
+  ASSERT_EQUAL(pos.get_ticks(), 86580, "Position from carry=5, value=0x1234");
 
   // Zero values
   data = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-  ev = ServoCommandCodec::decode_encoder_carry(data);
-  ASSERT_EQUAL(ev.carry, 0, "Zero carry");
-  ASSERT_EQUAL(ev.value, 0, "Zero value");
+  pos = ServoCommandCodec::decode_encoder_carry(data);
+  ASSERT_EQUAL(pos.get_ticks(), 0, "Zero position");
 
-  // Negative carry
-  data = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // carry=-1, value=0xFFFF
-  ev = ServoCommandCodec::decode_encoder_carry(data);
-  ASSERT_EQUAL(ev.carry, -1, "Negative carry");
-  ASSERT_EQUAL(ev.value, 0xFFFF, "Max value");
+  // One full rotation: carry=1, value=0 → position = 0x4000 = 16384
+  data = {0x00, 0x00, 0x00, 0x01, 0x00, 0x00};
+  pos = ServoCommandCodec::decode_encoder_carry(data);
+  ASSERT_EQUAL(pos.get_ticks(), 16384, "One rotation (carry=1, value=0)");
 
-  // Large carry
-  data = {0x00, 0x00, 0x27, 0x10, 0x3F, 0xFF}; // carry=10000, value=16383
-  ev = ServoCommandCodec::decode_encoder_carry(data);
-  ASSERT_EQUAL(ev.carry, 10000, "Large carry");
-  ASSERT_EQUAL(ev.value, 16383, "Max angle value");
+  // Negative carry: carry=-1, value=0x3FF0 → position = -0x4000 + 0x3FF0 = -16
+  data = {0xFF, 0xFF, 0xFF, 0xFF, 0x3F, 0xF0};
+  pos = ServoCommandCodec::decode_encoder_carry(data);
+  ASSERT_EQUAL(pos.get_ticks(), -16, "Negative carry position");
+
+  // Large carry: carry=10000, value=0x3FFF → position = 10000×0x4000 + 0x3FFF = 163856383
+  data = {0x00, 0x00, 0x27, 0x10, 0x3F, 0xFF};
+  pos = ServoCommandCodec::decode_encoder_carry(data);
+  int64_t expected = (10000LL * 0x4000LL) + 0x3FFF;
+  ASSERT_EQUAL(pos.get_ticks(), expected, "Large carry position");
 
   // Insufficient data
   data = {0x00, 0x00, 0x00, 0x05};
-  ev = ServoCommandCodec::decode_encoder_carry(data);
-  ASSERT_EQUAL(ev.carry, 0, "Insufficient data: carry = 0");
-  ASSERT_EQUAL(ev.value, 0, "Insufficient data: value = 0");
+  pos = ServoCommandCodec::decode_encoder_carry(data);
+  ASSERT_EQUAL(pos.get_ticks(), 0, "Insufficient data returns zero position");
 }
 
 void test_decode_motor_status()
@@ -337,7 +358,10 @@ void test_roundtrip_encoding()
 
   // Test move command encode → manual decode
   // Format: [acc_hi] [acc_lo] [speed_hi] [speed_lo] [pos_b3] [pos_b2] [pos_b1] [pos_b0]
-  auto encoded = ServoCommandCodec::encode_move_position_mode_2(12345, 999, 128);
+  Position pos_obj = Position::from_ticks(12345);
+  Speed spd_obj = Speed::from_rpm(999, nullptr);
+  Acceleration acc_obj = Acceleration::from_internal(128);
+  auto encoded = ServoCommandCodec::encode_move_position_mode_2(pos_obj, spd_obj, acc_obj);
   uint16_t acc = (static_cast<uint16_t>(encoded[0]) << 8) | encoded[1];
   uint16_t spd = (static_cast<uint16_t>(encoded[2]) << 8) | encoded[3];
   int32_t pos = (static_cast<int32_t>(encoded[4]) << 24) |
@@ -351,13 +375,13 @@ void test_roundtrip_encoding()
 
   // Test current reading encode → decode
   std::vector<uint8_t> speed_data = {0x01, 0xF4}; // 500 RPM
-  int16_t decoded_speed = ServoCommandCodec::decode_current_speed(speed_data);
-  ASSERT_EQUAL(decoded_speed, 500, "Round-trip current speed");
+  Speed decoded_speed = ServoCommandCodec::decode_current_speed(speed_data);
+  ASSERT_EQUAL(decoded_speed.rpm_internal(), 500, "Round-trip current speed");
 
   // Test pulse count encode → decode
-  std::vector<uint8_t> pulse_data = {0x00, 0x01, 0x86, 0xA0}; // 100,000
-  int32_t decoded_pulses = ServoCommandCodec::decode_pulse_count(pulse_data);
-  ASSERT_EQUAL(decoded_pulses, 100000, "Round-trip pulse count");
+  std::vector<uint8_t> pulse_data = {0x00, 0x01, 0x86, 0xA0}; // 100,000 ticks
+  Position decoded_pulses = ServoCommandCodec::decode_pulse_count(pulse_data);
+  ASSERT_EQUAL(decoded_pulses.get_ticks(), 100000, "Round-trip pulse count");
 }
 
 int main()
