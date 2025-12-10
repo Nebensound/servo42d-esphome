@@ -822,11 +822,11 @@ async def to_code(config):
             # Homing speed - depends on mode
             homing_speed = homing[CONF_HOMING_SPEED]
             if "level" in homing_speed:
-                # ZeroingSpeed level for VIRTUAL mode (0-4) - calls set_homing_speed_level(uint8_t)
-                cg.add(var.set_homing_speed_level(homing_speed["level"]))
+                # ZeroingSpeed level for VIRTUAL mode - calls set_homing_speed_level(ZeroingSpeed)
+                cg.add(var.set_homing_speed_level(ZEROING_SPEEDS[homing_speed["level"]]))
             else:
-                # Regular speed for ENDSTOP/SENSORLESS - calls set_homing_speed(float, SpeedUnit)
-                await set_homing_speed_from_dict(var, homing_speed, config[CONF_STEPS_PER_REVOLUTION])
+                # Regular Speed object for ENDSTOP/SENSORLESS - reuse set_speed_from_dict
+                await set_speed_from_dict(var, homing_speed, config[CONF_STEPS_PER_REVOLUTION], "set_homing_speed")
             
             if homing[CONF_HOMING_MODE] == "ENDSTOP":
                 cg.add(var.set_homing_endstop_trigger(homing[CONF_ENDSTOP_TRIGGER]))
@@ -837,21 +837,28 @@ async def to_code(config):
             cg.add(var.set_homing_at_startup(homing[CONF_AT_STARTUP]))
 
 
-async def set_speed_from_dict(var, speed_dict, steps_per_rev):
+async def set_speed_from_dict(var, speed_dict, steps_per_rev, method_name="set_speed"):
     """
-    Pass speed value and unit to C++ for runtime conversion.
-    C++ will handle the conversion based on steps_per_revolution.
+    Create Speed object from dict and pass to C++ method.
+    
+    Args:
+        var: Component variable
+        speed_dict: {"value": float, "unit": "RPM"} dictionary
+        steps_per_rev: Steps per revolution (unused, kept for compatibility)
+        method_name: Name of method to call (set_speed or set_homing_speed)
     """
     value = speed_dict["value"]
     unit = speed_dict["unit"]
     
-    # Always pass both value and unit to C++ - conversion happens there
+    # Create Speed object in C++
     if isinstance(value, cv.Lambda):
         template = await cg.templatable(value, [], cg.float_)
     else:
         template = value
     
-    cg.add(var.set_speed(template, SPEED_UNITS[unit]))
+    # Create Speed object and pass to specified method
+    speed_obj = cg.RawExpression(f"esphome::servoxxd::Speed({template}, esphome::servoxxd::SpeedUnit::{unit}, {var})")
+    cg.add(getattr(var, method_name)(speed_obj))
 
 
 async def set_acceleration_from_dict(var, accel_dict, steps_per_rev):
@@ -869,24 +876,6 @@ async def set_acceleration_from_dict(var, accel_dict, steps_per_rev):
         template = value
     
     cg.add(var.set_acceleration(template, ACCELERATION_UNITS[unit]))
-
-
-async def set_homing_speed_from_dict(var, speed_dict, steps_per_rev):
-    """
-    Pass homing speed value and unit to C++ for runtime conversion.
-    C++ will handle the conversion based on steps_per_revolution.
-    """
-    value = speed_dict["value"]
-    unit = speed_dict["unit"]
-    
-    # Always pass both value and unit to C++ - conversion happens there
-    if isinstance(value, cv.Lambda):
-        template = await cg.templatable(value, [], cg.float_)
-    else:
-        template = value
-    
-    cg.add(var.set_homing_speed(template, SPEED_UNITS[unit]))
-
 
 # ============================================================================
 # ACTIONS IMPLEMENTATION

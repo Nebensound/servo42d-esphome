@@ -7,11 +7,29 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace esphome
 {
   namespace servoxxd
   {
+
+    /**
+     * @brief Command priority levels
+     *
+     * Time-penalty based scheduling with automatic age-promotion:
+     * - CRITICAL: Emergency stop (effective_time = 0, always first)
+     * - NORMAL: Movements, configuration (effective_time = enqueued_time, FIFO)
+     * - BACKGROUND: Important status reads like position (effective_time = enqueued_time + penalty)
+     * - IDLE: Debug/UI data like temperature (effective_time = enqueued_time + penalty)
+     */
+    enum class Priority : uint8_t
+    {
+      CRITICAL = 0,   // Emergency - always first (no penalty)
+      NORMAL = 1,     // Standard - FIFO (no penalty)
+      BACKGROUND = 2, // Important reads - penalty configured
+      IDLE = 3        // Debug/UI reads - penalty configured
+    };
 
     /**
      * @brief Command state for state machine
@@ -84,20 +102,15 @@ namespace esphome
        * @param cmd Command enum value
        * @param data Command payload (encoded by ServoCommandCodec)
        * @param callback Callback to invoke when command completes
-       * @param priority If true, add to front of queue (emergency)
+       * @param priority Command priority (CRITICAL/NORMAL/BACKGROUND/IDLE, default: NORMAL)
+       * @param delay_before_next_ms Delay in milliseconds before executing next command (default: 0)
+       *                             Used for commands that need recovery time (e.g. RESTART needs 4000ms)
+       * @param deduplicate Optional: true=force dedup, false=force no dedup, nullopt=auto (default: nullopt)
+       *                    Auto mode: BACKGROUND commands are deduplicated, others are not
        */
       void enqueue(Command cmd, const std::vector<uint8_t> &data, CommandCallback callback,
-                   bool priority = false);
-
-      /**
-       * @brief Enqueue a read command
-       *
-       * From spec: "Deduplication: If identical read command exists, merge callbacks"
-       *
-       * @param cmd Command enum value (READ_*)
-       * @param callback Callback to invoke when command completes
-       */
-      void enqueue_read(Command cmd, CommandCallback callback);
+                   Priority priority = Priority::NORMAL, uint32_t delay_before_next_ms = 0,
+                   std::optional<bool> deduplicate = std::nullopt);
 
       /**
        * @brief Handle command response (from ITransport callback)
@@ -139,41 +152,49 @@ namespace esphome
        */
       size_t size() const { return queue_.size(); }
 
+      /**
+       * @brief Get transport instance
+       * @return Pointer to transport layer
+       */
+      ITransport *get_transport() const { return transport_; }
+
     private:
       /**
        * @brief Command structure with state machine
        */
       struct QueuedCommand
       {
-        Command command;                        // Command enum value
-        std::vector<uint8_t> data;              // Command payload
-        std::vector<CommandCallback> callbacks; // Multiple callbacks for deduplicated commands
-        CommandState state;                     // State machine state
-        uint32_t sent_time;                     // millis() when sent (for timeout)
+        Command command;               // Command enum value
+        std::vector<uint8_t> data;     // Command payload
+        CommandCallback callback;      // Callback for command completion
+        CommandState state;            // State machine state
+        Priority priority;             // Command priority (for time-penalty scheduling)
+        uint32_t enqueued_time;        // millis() when enqueued (for age-based scheduling)
+        uint32_t sent_time;            // millis() when sent (for timeout)
+        uint32_t delay_before_next_ms; // Delay before next command (e.g. motor restart)
 
-        QueuedCommand(Command cmd, const std::vector<uint8_t> &payload, CommandCallback cb)
+        QueuedCommand(Command cmd, const std::vector<uint8_t> &payload, CommandCallback cb, Priority prio, uint32_t delay, uint32_t enqueued)
             : command(cmd),
               data(payload),
+              callback(cb),
               state(CommandState::PENDING),
-              sent_time(0)
+              priority(prio),
+              enqueued_time(enqueued),
+              sent_time(0),
+              delay_before_next_ms(delay)
         {
-          callbacks.push_back(cb);
         }
       };
 
       // Queue and execution state
-      std::deque<QueuedCommand> queue_; // FIFO queue (deque for front insertion)
-      bool execution_guard_{false};     // Single-flight execution guard
+      std::deque<QueuedCommand> queue_; // FIFO queue (deque for efficient reordering)
       ITransport *transport_{nullptr};  // Transport layer interface
+      uint32_t delay_until_ms_{0};      // Delay until this time before executing next command
 
       // Configuration
-      uint32_t timeout_ms_{1000}; // Default timeout (1 second)
-
-      // Statistics (for debugging)
-      uint32_t commands_sent_{0};
-      uint32_t commands_completed_{0};
-      uint32_t commands_failed_{0};
-      uint32_t commands_timeout_{0};
+      uint32_t timeout_ms_{1000};                              // Default timeout (1 second)
+      static constexpr uint32_t BACKGROUND_PENALTY_MS = 10000; // BACKGROUND commands delayed by 10s
+      static constexpr uint32_t IDLE_PENALTY_MS = 60000;       // IDLE commands delayed by 60s
 
       /**
        * @brief Execute next pending command (if not already executing)
@@ -187,16 +208,6 @@ namespace esphome
       void execute_next();
 
       /**
-       * @brief Send a command via transport
-       *
-       * @param cmd Queued command to send
-       * - Determine if read or write based on Command enum
-       * - Call transport->execute_command() or transport->read_command()
-       * - Set sent_time for timeout tracking
-       */
-      void send_command(QueuedCommand &cmd);
-
-      /**
        * @brief Check for timeout on executing command
        *
        * From spec: "Called periodically in update() to detect stuck commands"
@@ -206,13 +217,46 @@ namespace esphome
       void check_timeout();
 
       /**
-       * @brief Check if a read command is a duplicate
+       * @brief Find duplicate command for deduplication
        *
-       * From spec: "Deduplication only for read commands (same Command enum)"
-       * - Compare Command enum values
-       * - Returns iterator to existing command if duplicate, queue_.end() otherwise
+       * Requirements:
+       * - Same Command enum value
+       * - PENDING state (not EXECUTING or completed)
+       * - Skips EXECUTING command at front of queue
+       *
+       * Priority comparison happens in enqueue():
+       * - Higher priority (lower value) → Replace old command
+       * - Same/Lower priority → Keep both
+       *
+       * @param cmd Command enum to search for
+       * @return Iterator to existing command if found, queue_.end() otherwise
        */
-      std::deque<QueuedCommand>::iterator find_duplicate_read(Command cmd);
+      std::deque<QueuedCommand>::iterator find_duplicate(Command cmd);
+
+      /**
+       * @brief Prepare next command for execution with time-penalty scheduling
+       *
+       * Implements age-based fairness policy:
+       * - CRITICAL (Priority 0): effective_time = 0 (always first)
+       * - NORMAL (Priority 1): effective_time = enqueued_time (FIFO after CRITICAL)
+       * - BACKGROUND (Priority 2): effective_time = enqueued_time + BACKGROUND_PENALTY_MS
+       * - IDLE (Priority 3): effective_time = enqueued_time + IDLE_PENALTY_MS
+       *
+       * Automatic age-promotion: Old low-priority commands eventually overtake newer high-priority ones
+       * Example: Old BACKGROUND commands can execute before newer NORMAL commands
+       *
+       * Side-effect: Moves command with lowest effective_time to front of queue
+       */
+      void prepare_next_command();
+
+      /**
+       * @brief Calculate effective execution time for a command
+       *
+       * @param cmd Command to calculate for
+       * @param now Current time (millis())
+       * @return Effective time (lower values execute first)
+       */
+      uint32_t calculate_effective_time(const QueuedCommand &cmd, uint32_t now);
 
       /**
        * @brief Check if a Command is a read operation
@@ -226,7 +270,7 @@ namespace esphome
                cmd == Command::READ_IO_STATUS ||
                cmd == Command::READ_ANGLE_ERROR ||
                cmd == Command::READ_MOTOR_STATUS ||
-               cmd == Command::READ_HOMING_STATUS ||
+               cmd == Command::READ_ZERO_RETURN_STATUS ||
                cmd == Command::READ_PROTECTION_STATUS;
       }
     };

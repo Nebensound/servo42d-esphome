@@ -1,261 +1,352 @@
-# Hardware Test Configuration
-# This config performs automated tests on real Servo42D hardware
-# Connect motor before uploading!
+substitutions:
+  full_steps: 200
+  microsteps: 16
 
 esphome:
-  name: servo42d-hw-test
-  friendly_name: "Servo42D Hardware Test"
+  name: servo42d-test
+  friendly_name: Servo42D Setup Test
   on_boot:
-    priority: -100 # Run after everything is initialized
+    priority: -100
     then:
-      - script.execute: comprehensive_hardware_test
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - lambda: 'ESP_LOGI("test", "  SERVO42D HARDWARE FUNCTION TEST");'
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - delay: 3s
+
+      # SETUP: Clear any error states and prepare motor
+      - lambda: 'ESP_LOGI("test", "SETUP: Initializing motor hardware...");'
+      - lambda: 'ESP_LOGI("test", "  -> Clearing any error states...");'
+      - lambda: |-
+          id(test_motor)->release_protection();
+      - delay: 1s
+      - lambda: 'ESP_LOGI("test", "  -> Enabling motor...");'
+      - stepper.enable: test_motor
+      - delay: 1s
+
+      - lambda: |-
+          ESP_LOGI("test", "  -> Motor ready at position: %d", (int)id(test_motor).current_position);
+      - lambda: 'ESP_LOGI("test", "  SETUP COMPLETE");'
+      - delay: 2s
+
+      # Run main test sequence
+      - script.execute: run_all_tests
+
+# Test Scripts - Each test is separate
+script:
+  # ========================================
+  # TEST 1: Basic Enable/Disable Test
+  # ========================================
+  - id: test_1_enable_disable
+    mode: single
+    then:
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - lambda: 'ESP_LOGI("test", "TEST 1: Motor Enable/Disable");'
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - delay: 1s
+
+      # Test disable
+      - lambda: 'ESP_LOGI("test", "  -> Disabling motor...");'
+      - stepper.disable: test_motor
+      - delay: 2s
+      - lambda: 'ESP_LOGI("test", "  -> Motor disabled (shaft should move freely)");'
+      - delay: 2s
+
+      # Test enable
+      - lambda: 'ESP_LOGI("test", "  -> Enabling motor...");'
+      - stepper.enable: test_motor
+      - delay: 2s
+      - lambda: 'ESP_LOGI("test", "  -> Motor enabled (you should feel holding torque)");'
+      - delay: 2s
+
+      - lambda: 'ESP_LOGI("test", "  ✓ TEST 1 PASSED");'
+      - delay: 1s
+
+  # ========================================
+  # TEST 2: Small Movement Test (200 steps)
+  # ========================================
+  - id: test_2_small_movement
+    mode: single
+    then:
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - lambda: 'ESP_LOGI("test", "TEST 2: Small Movement (200 steps forward)");'
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - delay: 1s
+
+      - lambda: |-
+          int start_pos = (int)id(test_motor).current_position;
+          ESP_LOGI("test", "  -> Start position: %d steps", start_pos);
+
+      - lambda: |-
+          // Direct C++ call to move_to() with runtime calculation
+          float target_pos = id(test_motor).current_position + 200.0f;
+          ESP_LOGI("test", "  -> Target position: %.0f steps", target_pos);
+          ESP_LOGI("test", "  -> Starting movement...");
+
+          esphome::servoxxd::Position pos(target_pos, esphome::servoxxd::PositionUnit::STEPS, id(test_motor));
+          id(test_motor)->move_to(pos);
+
+      - delay: 5s
+
+      - lambda: |-
+          int final_pos = (int)id(test_motor).current_position;
+          ESP_LOGI("test", "  -> Final position: %d steps", final_pos);
+
+      - lambda: 'ESP_LOGI("test", "  ✓ TEST 2 PASSED");'
+      - delay: 1s
+
+  # ========================================
+  # TEST 3: Homing with Endstop
+  # ========================================
+  - id: test_3_homing_endstop
+    mode: single
+    then:
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - lambda: 'ESP_LOGI("test", "TEST 3: Homing with ENDSTOP");'
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - delay: 1s
+
+      - lambda: |-
+          ESP_LOGI("test", "  -> Current position: %d steps", (int)id(test_motor).current_position);
+          ESP_LOGI("test", "  -> Starting ENDSTOP homing sequence...");
+          ESP_LOGI("test", "  -> Motor will move until endstop is triggered");
+
+      - stepper.home: test_motor
+
+      - lambda: 'ESP_LOGI("test", "  -> Homing command sent, waiting for completion...");'
+      - delay: 30s # Wait for homing to complete (max 30 seconds)
+
+      - lambda: |-
+          int final_pos = (int)id(test_motor).current_position;
+          ESP_LOGI("test", "  -> Homing completed");
+          ESP_LOGI("test", "  -> Final position: %d steps (should be 0)", final_pos);
+
+          if (final_pos == 0) {
+            ESP_LOGI("test", "  ✓ TEST 3 PASSED - Position correctly set to zero");
+          } else {
+            ESP_LOGW("test", "  ⚠ TEST 3 WARNING - Position is %d, expected 0", final_pos);
+          }
+
+      - delay: 2s
+
+  # ========================================
+  # TEST 4: Move away and Home again
+  # ========================================
+  - id: test_4_move_and_home
+    mode: single
+    then:
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - lambda: 'ESP_LOGI("test", "TEST 4: Move Away and Return Home");'
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - delay: 1s
+
+      - lambda: 'ESP_LOGI("test", "  -> Moving 1000 steps away from home...");'
+      - lambda: |-
+          esphome::servoxxd::Position target(1000.0f, esphome::servoxxd::PositionUnit::STEPS, id(test_motor));
+          id(test_motor)->move_to(target);
+
+      - delay: 8s
+
+      - lambda: |-
+          int pos_after_move = (int)id(test_motor).current_position;
+          ESP_LOGI("test", "  -> Position after move: %d steps", pos_after_move);
+
+      - delay: 1s
+      - lambda: 'ESP_LOGI("test", "  -> Starting homing sequence again...");'
+      - stepper.home: test_motor
+
+      - delay: 30s # Wait for homing
+
+      - lambda: |-
+          int final_pos = (int)id(test_motor).current_position;
+          ESP_LOGI("test", "  -> Homing completed");
+          ESP_LOGI("test", "  -> Final position: %d steps (should be 0)", final_pos);
+
+          if (final_pos == 0) {
+            ESP_LOGI("test", "  ✓ TEST 4 PASSED - Successfully returned to home");
+          } else {
+            ESP_LOGW("test", "  ⚠ TEST 4 WARNING - Position is %d, expected 0", final_pos);
+          }
+
+      - delay: 1s
+
+  # ========================================
+  # Main Test Runner - Calls individual tests
+  # ========================================
+  - id: run_all_tests
+    mode: single
+    then:
+      # Run TEST 1 (currently disabled)
+      #- script.execute: test_1_enable_disable
+      #- script.wait: test_1_enable_disable
+
+      # Run TEST 2
+      #- script.execute: test_2_small_movement
+      #- script.wait: test_2_small_movement
+
+      # Run TEST 3 - Homing
+      - script.execute: test_3_homing_endstop
+      - script.wait: test_3_homing_endstop
+
+      # Run TEST 4 - Move and Home
+      - script.execute: test_4_move_and_home
+      - script.wait: test_4_move_and_home
+
+      # All tests complete
+      - delay: 2s
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - lambda: 'ESP_LOGI("test", "  ALL TESTS COMPLETED!");'
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - delay: 5s
+      - lambda: 'ESP_LOGI("test", "System will restart in 3 seconds...");'
+      - delay: 3s
+      - button.press: restart_esp
 
 esp32:
   board: esp32dev
   framework:
     type: arduino
 
-# Load component from local directory (for testing)
+# Enable logging
+logger:
+  level: DEBUG
+  logs:
+    # Show UART debug output
+    uart.idf: DEBUG
+    uart: DEBUG
+    # Reduce noise from other components
+    wifi: INFO
+    api: INFO
+    mdns: WARN
+    esp-idf: WARN
+    # Reduce spam during tests
+    servoxxd.queue: INFO
+    servoxxd.modbus: INFO
+    sensor: INFO
+    component: WARN
+
+# WiFi
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Servo42D Setup Test"
+    password: !secret fallback_ap_password
+
+# Enable Home Assistant API
+api:
+
+# Enable OTA updates
+ota:
+  - platform: esphome
+
+# Web server for easy access
+web_server:
+  port: 80
+
+# UART configuration for RS485
+uart:
+  id: rs485_uart
+  tx_pin: GPIO13
+  rx_pin: GPIO16
+  baud_rate: 9600
+  debug:
+    direction: BOTH
+    dummy_receiver: false
+
+# Modbus configuration
+modbus:
+  id: modbus_rs485
+  uart_id: rs485_uart
+  send_wait_time: 50ms
+
+# External component (local path)
 external_components:
   - source:
       type: local
       path: ../../components
     components: [servoxxd]
 
-# Enable detailed logging
-logger:
-  level: VERY_VERBOSE
-
-# UART for RS485 communication with debug output
-uart:
-  id: uart_bus
-  tx_pin: GPIO17
-  rx_pin: GPIO16
-  baud_rate: 9600 # Adjust to your motor's configuration
-  parity: EVEN
-  stop_bits: 1
-  debug:
-    direction: BOTH
-    dummy_receiver: false
-    after:
-      timeout: 50ms
-
-# MODBUS-RTU Controller
-modbus:
-  id: modbus_bus
-  uart_id: uart_bus
-  send_wait_time: 50ms
-
-# ServoXxD Stepper Motor - minimal config for testing
+# ServoXxD Stepper Motor
 stepper:
   - platform: servoxxd
     id: test_motor
-    modbus_id: modbus_bus
-    address: 0x02 # Motor address (default factory setting)
+    modbus_id: modbus_rs485
+    address: 0x02
     servo_type: SERVO42D
     mode: POSITION
-    steps_per_revolution: 3200 # 200 * 16 microsteps
+    steps_per_revolution: 3200
     microsteps: 16
-    speed: 1000 steps/s
-    acceleration: 500 steps/s^2
+    speed: 100 steps/s
+    acceleration: 100 steps/s^2
+    homing:
+      mode: ENDSTOP
+      direction: CCW # Change to CW if your endstop is in the other direction
+      speed: 2 rpm
+      endstop_trigger: LOW # Change to HIGH if your endstop triggers on HIGH
+      at_startup: false # Don't auto-home at startup during tests
 
-# Position sensor for monitoring
+# Sensors to monitor status
 sensor:
   - platform: template
     name: "Motor Position"
-    id: motor_position
-    update_interval: 1s
     lambda: |-
       return id(test_motor).current_position;
-    state_class: measurement
+    update_interval: 1s
+    unit_of_measurement: "steps"
 
-# Comprehensive hardware test script
-script:
-  - id: comprehensive_hardware_test
-    then:
-      - logger.log:
-          format: "=========================================="
-          level: INFO
-      - logger.log:
-          format: "  SERVO42D COMPREHENSIVE HARDWARE TEST"
-          level: INFO
-      - logger.log:
-          format: "=========================================="
-          level: INFO
+  - platform: template
+    name: "Motor Target Position"
+    lambda: |-
+      return id(test_motor).target_position;
+    update_interval: 1s
+    unit_of_measurement: "steps"
 
-      # === PHASE 1: Communication Test ===
-      - logger.log:
-          format: "PHASE 1: Testing Modbus Communication..."
-          level: INFO
-      - delay: 3s
-      - logger.log:
-          format: "  ✓ Waiting for status updates..."
-          level: INFO
-      - delay: 2s
-
-      # === PHASE 2: Motor Enable/Disable ===
-      - logger.log:
-          format: "PHASE 2: Testing Motor Enable/Disable..."
-          level: INFO
-      - logger.log: "  → Enabling motor..."
-      - stepper.enable: test_motor
-      - delay: 2s
-      - logger.log: "  ✓ Motor enabled"
-
-      - logger.log: "  → Disabling motor..."
-      - stepper.disable: test_motor
-      - delay: 2s
-      - logger.log: "  ✓ Motor disabled"
-
-      - logger.log: "  → Re-enabling for movement tests..."
-      - stepper.enable: test_motor
-      - delay: 2s
-
-      # === PHASE 3: Configuration Test ===
-      - logger.log:
-          format: "PHASE 3: Testing Configuration..."
-          level: INFO
-      - logger.log: "  → Motor already configured in YAML"
-      - delay: 1s
-      - logger.log: "  ✓ Config verified"
-
-      # === PHASE 4: Small Movement Test ===
-      - logger.log:
-          format: "PHASE 4: Small Movement Test (±200 steps)..."
-          level: INFO
-      - logger.log: "  → Moving +200 steps..."
-      - lambda: |-
-          id(test_motor).set_target(id(test_motor).current_position + 200);
-      - delay: 5s
-      - logger.log: "  ✓ Forward movement complete"
-
-      - logger.log: "  → Moving -200 steps (returning)..."
-      - lambda: |-
-          id(test_motor).set_target(id(test_motor).current_position - 200);
-      - delay: 5s
-      - logger.log: "  ✓ Backward movement complete"
-
-      # === PHASE 5: Testing Position Reset ===
-      - logger.log:
-          format: "PHASE 5: Testing Position Reset..."
-          level: INFO
-      - logger.log: "  → Resetting position counter to 0..."
-      - stepper.report_position:
-          id: test_motor
-          position: 0
-      - delay: 2s
-      - logger.log: "  ✓ Position reset complete"
-
-      # === PHASE 6: Larger Movement Test ===
-      - logger.log:
-          format: "PHASE 6: Larger Movement Test (±1000 steps)..."
-          level: INFO
-      - logger.log: "  → Moving +1000 steps..."
-      - lambda: |-
-          id(test_motor).set_target(id(test_motor).current_position + 1000);
-      - delay: 10s
-      - logger.log: "  ✓ Large forward movement complete"
-
-      - logger.log: "  → Moving -1000 steps (returning)..."
-      - lambda: |-
-          id(test_motor).set_target(id(test_motor).current_position - 1000);
-      - delay: 10s
-      - logger.log: "  ✓ Large backward movement complete"
-
-      # === PHASE 7: Emergency Functions ===
-      - logger.log:
-          format: "PHASE 7: Testing Emergency Functions..."
-          level: INFO
-      - logger.log: "  → Starting movement for emergency stop test..."
-      - lambda: |-
-          id(test_motor).set_target(id(test_motor).current_position + 500);
-      - delay: 1s
-      - logger.log: "  → Triggering emergency stop..."
-      - stepper.emergency_stop: test_motor
-      - delay: 2s
-      - logger.log: "  ✓ Emergency stop triggered"
-
-      - logger.log: "  → Releasing protection..."
-      - stepper.release_protection: test_motor
-      - delay: 2s
-      - logger.log: "  ✓ Protection released"
-
-      # === PHASE 8: Cleanup ===
-      - logger.log:
-          format: "PHASE 9: Cleanup..."
-          level: INFO
-      - logger.log: "  → Disabling motor..."
-      - stepper.disable: test_motor
-      - delay: 1s
-
-      # === TEST COMPLETE ===
-      - logger.log:
-          format: "=========================================="
-          level: INFO
-      - logger.log:
-          format: "  ALL HARDWARE TESTS COMPLETED!"
-          level: INFO
-      - logger.log:
-          format: "  Check logs above for any errors"
-          level: INFO
-      - logger.log:
-          format: "=========================================="
-          level: INFO
-
-  # Quick test for manual triggering
-  - id: quick_movement_test
-    then:
-      - logger.log: "Quick test: +500 steps"
-      - stepper.enable: test_motor
-      - delay: 1s
-      - lambda: |-
-          id(test_motor).set_target(id(test_motor).current_position + 500);
-      - delay: 5s
-      - lambda: |-
-          id(test_motor).set_target(id(test_motor).current_position - 500);
-      - delay: 5s
-      - stepper.disable: test_motor
-
-# Manual control buttons
+# Simple control buttons
 button:
-  - platform: template
-    name: "Run Full Hardware Test"
-    on_press:
-      - script.execute: comprehensive_hardware_test
-
-  - platform: template
-    name: "Run Quick Movement Test"
-    on_press:
-      - script.execute: quick_movement_test
-
-  - platform: template
-    name: "Enable Motor"
-    on_press:
-      - stepper.enable: test_motor
-
-  - platform: template
-    name: "Disable Motor"
-    on_press:
-      - stepper.disable: test_motor
-
-  - platform: template
-    name: "Move +100"
-    on_press:
-      - lambda: |-
-          id(test_motor).set_target(id(test_motor).current_position + 100);
-
-  - platform: template
-    name: "Move -100"
-    on_press:
-      - lambda: |-
-          id(test_motor).set_target(id(test_motor).current_position - 100);
+  - platform: restart
+    name: "Restart ESP"
+    id: restart_esp
 
   - platform: template
     name: "Emergency Stop"
     on_press:
       - stepper.emergency_stop: test_motor
+      - lambda: 'ESP_LOGI("test", "EMERGENCY STOP activated!");'
 
   - platform: template
-    name: "Release Protection"
+    name: "Enable Motor"
     on_press:
-      - stepper.release_protection: test_motor
+      - stepper.enable: test_motor
+      - lambda: 'ESP_LOGI("test", "Motor enabled");'
+
+  # Manual test triggers
+  - platform: template
+    name: "Run Test 1"
+    on_press:
+      - script.execute: test_1_enable_disable
+
+  - platform: template
+    name: "Run Test 2"
+    on_press:
+      - script.execute: test_2_small_movement
+
+  - platform: template
+    name: "Run Test 3 - Homing"
+    on_press:
+      - script.execute: test_3_homing_endstop
+
+  - platform: template
+    name: "Run Test 4 - Move and Home"
+    on_press:
+      - script.execute: test_4_move_and_home
+
+  - platform: template
+    name: "Manual Home"
+    on_press:
+      - stepper.home: test_motor
+      - lambda: 'ESP_LOGI("test", "Manual homing started...");'
+
+  - platform: template
+    name: "Run All Tests"
+    on_press:
+      - script.execute: run_all_tests

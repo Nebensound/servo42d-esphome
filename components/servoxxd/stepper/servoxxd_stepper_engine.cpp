@@ -59,37 +59,98 @@ namespace esphome
     {
       // Enqueue read command for motor speed (Command 0x32 READ_CURRENT_SPEED)
       // Expected response: speed_rpm (int16_t) = 2 bytes
-      queue_->enqueue_read(Command::READ_CURRENT_SPEED, [this](bool success, const std::vector<uint8_t> &data)
-                           {
+      queue_->enqueue(Command::READ_CURRENT_SPEED, {}, [this](bool success, const std::vector<uint8_t> &data)
+                      {
         if (success && data.size() >= 2) {
           Speed speed = ServoCommandCodec::decode_current_speed(data);
           process_speed_update(speed);
-        } });
+        } }, Priority::BACKGROUND);
     }
 
     void StepperEngine::poll_motor_status()
     {
       // Enqueue read command for motor status (Command 0x3A READ_MOTOR_STATUS)
       // Expected response: status (uint8_t, 0=STOP, 1=MOVING, 2=HOMING) = 2 bytes (1 register)
-      queue_->enqueue_read(Command::READ_MOTOR_STATUS, [this](bool success, const std::vector<uint8_t> &data)
-                           {
+      queue_->enqueue(Command::READ_MOTOR_STATUS, {}, [this](bool success, const std::vector<uint8_t> &data)
+                      {
         if (success && !data.empty()) {
           auto status = ServoCommandCodec::decode_motor_status(data);
           bool enabled = (status.state != ServoCommandCodec::MotorStatus::STOP);
           process_motor_status_update(enabled);
-        } });
+        } }, Priority::BACKGROUND);
     }
 
     void StepperEngine::poll_protection_status()
     {
       // Enqueue read command for protection status (Command 0x3E READ_PROTECTION_STATUS)
       // Expected response: protection (uint8_t, 0 = OK, 1 = protected) = 2 bytes (1 register)
-      queue_->enqueue_read(Command::READ_PROTECTION_STATUS, [this](bool success, const std::vector<uint8_t> &data)
-                           {
+      queue_->enqueue(Command::READ_PROTECTION_STATUS, {}, [this](bool success, const std::vector<uint8_t> &data)
+                      {
         if (success && !data.empty()) {
           auto ps = ServoCommandCodec::decode_protection_status(data);
           process_protection_update(ps.protected_state ? 1 : 0);
-        } });
+        } }, Priority::BACKGROUND);
+    }
+
+    void StepperEngine::poll_homing_status()
+    {
+      // TODO: Implement proper homing status polling
+      // Currently disabled - needs proper implementation
+      /*
+      // Enqueue read command for homing status (Command 0x3B READ_ZERO_RETURN_STATUS)
+      // Expected response: homing_status (uint8_t) = 2 bytes (1 register)
+      // 0=IN_PROGRESS, 1=SUCCESS, 2=FAIL
+      queue_->enqueue(Command::READ_ZERO_RETURN_STATUS, {}, [this](bool success, const std::vector<uint8_t> &data)
+                      {
+        if (!success) {
+          ESP_LOGW(TAG_ENGINE, "Failed to read homing status");
+          return;
+        }
+
+        if (data.empty()) {
+          ESP_LOGW(TAG_ENGINE, "Empty homing status response");
+          return;
+        }
+
+        auto hs = ServoCommandCodec::decode_zero_return_status(data);
+
+        switch (hs) {
+          case ServoCommandCodec::ZeroReturnStatus::IN_PROGRESS:
+          {
+            ESP_LOGV(TAG_ENGINE, "Zero return status: IN_PROGRESS");
+            // Continue waiting
+            break;
+          }
+
+          case ServoCommandCodec::ZeroReturnStatus::SUCCESS:
+          {
+            ESP_LOGI(TAG_ENGINE, "Zero return COMPLETED successfully");
+
+            // Set position to zero after successful homing
+            Position zero_pos = Position::from_steps(0, parent_);
+            parent_->report_position(zero_pos);
+
+            // Transition back to Idle
+            transition_to(State::Idle);
+            break;
+          }
+
+          case ServoCommandCodec::ZeroReturnStatus::FAIL:
+          {
+            ESP_LOGE(TAG_ENGINE, "Zero return FAILED");
+
+            // Transition to Error state
+            transition_to(State::Error);
+            break;
+          }
+
+          default:
+          {
+            ESP_LOGW(TAG_ENGINE, "Unknown zero return status: %u", static_cast<uint8_t>(hs));
+            break;
+          }
+        } }, Priority::BACKGROUND);
+      */
     }
 
     // ============================================================================
@@ -108,11 +169,9 @@ namespace esphome
 
       // 0. Restart motor to ensure clean state (Command 0x41 RESTART)
       // Motor needs ~3s to reboot before accepting configuration commands
-      {
-        std::vector<uint8_t> restart_payload; // No payload for restart
+      restart();
 
-        restart();
-      }
+      ESP_LOGCONFIG(TAG_ENGINE, "  Motor restart initiated, configuration commands enqueued...");
 
       // 1. Set microstepping (Command 0x84 SET_SUBDIVISION)
       {
@@ -221,7 +280,199 @@ namespace esphome
       // Position zeroing should be done explicitly via set_zero() or during homing.
       // Automatically resetting position during motor initialization could cause unexpected behavior.
 
-      ESP_LOGCONFIG(TAG_ENGINE, "Setup: 6 commands enqueued (will execute via CommandQueue)");
+      // 6. Configure homing parameters (if homing is enabled)
+      // Homing parameters are static (set once at startup, not changed at runtime)
+      // Note: Actual homing execution happens via home() method
+      auto &homing = parent_->homing_;
+
+      switch (homing.mode)
+      {
+      case HomingMode::NO_HOMING:
+      {
+        // No homing configured - disable 0_Mode
+        ESP_LOGD(TAG_ENGINE, "No homing configured - disabling 0_Mode");
+        auto payload = ServoCommandCodec::encode_set_zero_mode();
+
+        queue_->enqueue(Command::SET_ZERO_MODE, payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ 0_Mode disabled (no homing)");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to disable 0_Mode");
+                          }
+                        });
+        break;
+      }
+
+      case HomingMode::ENDSTOP:
+      {
+        // ENDSTOP mode: Set homing parameters via Command 0x90
+        ESP_LOGD(TAG_ENGINE, "ENDSTOP homing: Configuring parameters via Command 0x90");
+        ESP_LOGD(TAG_ENGINE, "  Hm_Dir=%s, Hm_Speed=%.1f RPM, Trigger=%s, EndLimit=enabled",
+                 homing.direction == HomingDirection::CW ? "CW" : "CCW",
+                 homing.speed.rpm(),
+                 homing.endstop_trigger == EndstopTrigger::TRIGGER_HIGH ? "HIGH" : "LOW");
+
+        // Convert homing parameters to hardware values
+        Direction hw_direction = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
+        bool endlimit_enable = true; // Enable endstop limit for ENDSTOP mode
+
+        auto endstop_payload = ServoCommandCodec::encode_set_home_parameters(
+            homing.endstop_trigger, hw_direction, homing.speed, endlimit_enable);
+
+        // Disable no-limit homing (SENSORLESS) for ENDSTOP mode
+        auto nolimit_disable_payload = ServoCommandCodec::encode_set_nolimit_home_parameters();
+        queue_->enqueue(Command::SET_NOLIMIT_HOMING_PARAMS, nolimit_disable_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ No-limit homing disabled for ENDSTOP");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to disable no-limit homing");
+                          }
+                        });
+
+        queue_->enqueue(Command::SET_HOMING_PARAMETERS, endstop_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ ENDSTOP homing parameters configured");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to configure ENDSTOP homing parameters");
+                          }
+                        });
+
+        // Disable 0_Mode for ENDSTOP (spec: 0x9A disable)
+        auto zero_mode_payload = ServoCommandCodec::encode_set_zero_mode();
+        queue_->enqueue(Command::SET_ZERO_MODE, zero_mode_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ 0_Mode disabled for ENDSTOP");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to disable 0_Mode");
+                          }
+                        });
+        break;
+      }
+
+      case HomingMode::SENSORLESS:
+      {
+        // SENSORLESS mode: Set no-limit home parameters once
+        Position reverse_angle = Position::from_steps(0, parent_);
+        auto payload = ServoCommandCodec::encode_set_nolimit_home_parameters(reverse_angle, true, homing.current_ma); // Current threshold for stall detection
+
+        queue_->enqueue(Command::SET_NOLIMIT_HOMING_PARAMS, payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ SENSORLESS homing parameters configured (current=%umA)", parent_->homing_.current_ma);
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to configure SENSORLESS homing parameters");
+                          }
+                        });
+
+        // Disable 0_Mode for SENSORLESS (spec: 0x9A disable)
+        auto zero_mode_payload = ServoCommandCodec::encode_set_zero_mode();
+        queue_->enqueue(Command::SET_ZERO_MODE, zero_mode_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ 0_Mode disabled for SENSORLESS");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to disable 0_Mode");
+                          }
+                        });
+        break;
+      }
+
+      case HomingMode::VIRTUAL:
+      {
+        // VIRTUAL mode: Enable 0_Mode with direction and speed parameters
+        // Only configure if currently disabled to avoid resetting zero point repeatedly
+        ESP_LOGD(TAG_ENGINE, "VIRTUAL homing: Checking 0_Mode status");
+
+        ServoCommandCodec::ZeroModeMode mode = homing.direction == HomingDirection::NEAREST
+                                                   ? ServoCommandCodec::ZeroModeMode::NEAR_MODE
+                                                   : ServoCommandCodec::ZeroModeMode::DIR_MODE;
+
+        Direction hw_direction = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
+
+        auto config_payload = ServoCommandCodec::encode_set_zero_mode(
+            mode,
+            ServoCommandCodec::ZeroModeTask::SET,
+            homing.level,
+            hw_direction);
+
+        queue_->enqueue(Command::READ_ZERO_RETURN_STATUS,
+                        ServoCommandCodec::encode_read_zero_return_status(),
+                        [this, config_payload](bool success, const std::vector<uint8_t> &data)
+                        {
+                          if (!success)
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to read zero return status");
+                            return;
+                          }
+
+                          auto status = ServoCommandCodec::decode_zero_return_status(data);
+
+                          // Only configure if not currently active (IN_PROGRESS or SUCCESS means active)
+                          if (status == ServoCommandCodec::ZeroReturnStatus::FAIL)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "0_Mode disabled, configuring now");
+                            queue_->enqueue(Command::SET_ZERO_MODE, config_payload,
+                                            [this](bool success, const std::vector<uint8_t> &)
+                                            {
+                                              if (success)
+                                              {
+                                                ESP_LOGD(TAG_ENGINE, "✓ 0_Mode configured for VIRTUAL homing");
+                                              }
+                                              else
+                                              {
+                                                ESP_LOGW(TAG_ENGINE, "✗ Failed to configure 0_Mode");
+                                              }
+                                            });
+                          }
+                          else
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ 0_Mode already active, skipping configuration");
+                          }
+                        });
+
+        break;
+      }
+      }
+
+      // 7. Trigger homing if at_startup is enabled
+      // Queue will automatically execute this after RESTART delay (4000ms)
+      if (homing.at_startup && homing.mode != HomingMode::NO_HOMING)
+      {
+        ESP_LOGCONFIG(TAG_ENGINE, "Homing at startup enabled - enqueuing home() command");
+        // Simply call home() - it will enqueue the appropriate homing command
+        // The queue ensures it executes after all setup commands (including RESTART delay)
+        home();
+      }
+
+      ESP_LOGCONFIG(TAG_ENGINE, "Setup: %d commands enqueued (will execute via CommandQueue)", 7);
     }
 
     // ============================================================================
@@ -257,7 +508,14 @@ namespace esphome
       poll_encoder_position();
       poll_motor_speed();
       poll_motor_status();
-      poll_protection_status();
+      // TODO: Register 0x3E might not exist in hardware - investigate
+      // poll_protection_status();
+
+      // Poll homing status if in Homing state
+      if (state_ == State::Homing)
+      {
+        poll_homing_status();
+      }
     }
 
     // ============================================================================
@@ -323,86 +581,188 @@ namespace esphome
 
       emergency_flag_ = true;
 
-      // Clear command queue
+      // Clear command queue and send emergency stop
       if (queue_)
       {
-        queue_->clear();
+        queue_->clear(); // Clear all pending commands
+
+        // Send emergency stop command to hardware (Command 0xF7 EMERGENCY_STOP)
+        std::vector<uint8_t> payload; // No payload for emergency stop
+        queue_->enqueue(Command::EMERGENCY_STOP, payload, nullptr, Priority::CRITICAL);
       }
-
-      // Send emergency stop command to hardware (Command 0xF7 EMERGENCY_STOP)
-      std::vector<uint8_t> payload;                                     // No payload for emergency stop
-      queue_->enqueue(Command::EMERGENCY_STOP, payload, nullptr, true); // Priority command
-
-      // Disable motor immediately
-      auto disable_payload = ServoCommandCodec::encode_enable_motor(false);
-      queue_->enqueue(Command::ENABLE_MOTOR, disable_payload, nullptr, true);
 
       transition_to(State::Error);
     }
 
     void StepperEngine::home()
     {
-      // Validation: only allowed in Idle state (Position Mode)
-      if (!validate_command("home", {State::Idle}))
-      {
-        return;
-      }
 
       // Get homing configuration from parent
       auto &homing = parent_->homing_;
 
-      ESP_LOGD(TAG_ENGINE, "home(): Starting homing sequence (mode=%d, direction=%d)",
-               static_cast<int>(homing.mode), static_cast<int>(homing.direction));
+      // Check if homing is configured
+      if (homing.mode == HomingMode::NO_HOMING)
+      {
+        ESP_LOGW(TAG_ENGINE, "home(): No homing configured - action ignored");
+        return;
+      }
+
+      ESP_LOGD(TAG_ENGINE, "home(): Starting homing sequence (mode=%d)",
+               static_cast<int>(homing.mode));
+
+      // Note: Homing parameters are already configured in setup_motor()
+      // This method only triggers the homing sequence
 
       switch (homing.mode)
       {
       case HomingMode::VIRTUAL:
       {
-        // Virtual homing: Return to stored zero position via motor restart
-        // Speed level (0-4), direction, and "set zero" flag
-        ZeroingSpeed speed_level = static_cast<ZeroingSpeed>(homing.level);
-        Direction dir = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
+        // TODO: Implement VIRTUAL homing properly
+        ESP_LOGW(TAG_ENGINE, "VIRTUAL homing not yet implemented");
+        /*
+        // Virtual homing: Move to position 0 using normal positioning
+        // Movement limited to ±180° (one revolution max)
+        ESP_LOGD(TAG_ENGINE, "  VIRTUAL homing: Moving to position 0");
 
-        // Step 1: Configure zero mode parameters (Command 0x9A SET_ZERO_MODE)
-        auto payload = ServoCommandCodec::encode_set_zero_mode(
-            homing.direction, // mode (CW=DirMode, CCW=DirMode, NEAREST=NearMode)
-            true,             // enable = true (set zero)
-            speed_level,      // speed level 0-4 (VERY_SLOW..VERY_FAST)
-            dir);             // direction (only used for DirMode)
+        Position target = Position::from_steps(0, parent_);
 
-        queue_->enqueue(Command::START_HOMING, payload, nullptr);
+        // Use ZeroingSpeed level to select appropriate speed
+        // Map VERY_SLOW(0)→60 RPM, SLOW(1)→120, MEDIUM(2)→180, FAST(3)→240, VERY_FAST(4)→300
+        float rpm = 60.0f + (static_cast<uint8_t>(homing.level) * 60.0f);
+        Speed speed(rpm, SpeedUnit::RPM, parent_);
 
-        ESP_LOGD(TAG_ENGINE, "  Virtual homing: level=%d, dir=%d - will restart motor",
-                 homing.level, static_cast<int>(dir));
+        // Get current position
+        Position current = Position::from_steps(parent_->current_position, parent_);
+        float current_steps = current.get_steps();
+        float steps_per_rev = parent_->get_steps_per_revolution();
 
-        // Step 2: Restart motor to execute virtual homing (Command 0x0F RESTART)
-        // This makes the motor return to the stored zero position
-        std::vector<uint8_t> restart_payload;
-        queue_->enqueue(Command::RESTART, restart_payload,
-                        [this](bool success, const std::vector<uint8_t> &)
-                        {
-                          if (success)
-                          {
-                            ESP_LOGD(TAG_ENGINE, "✓ Virtual homing: Motor restarting to zero position");
-                          }
-                          else
-                          {
-                            ESP_LOGW(TAG_ENGINE, "✗ Virtual homing: Failed to restart motor");
-                          }
-                        });
+        // Calculate delta to position 0
+        float delta = 0.0f - current_steps;
+
+        // Normalize delta to [-steps_per_rev/2, +steps_per_rev/2] for NEAREST behavior
+        while (delta > steps_per_rev / 2.0f)
+          delta -= steps_per_rev;
+        while (delta < -steps_per_rev / 2.0f)
+          delta += steps_per_rev;
+
+        // Store shortest path distance
+        float shortest_distance = std::abs(delta);
+
+        // Apply direction constraint
+        if (homing.direction == HomingDirection::CW)
+        {
+          // Force clockwise: if shortest path is CCW (delta < 0), go the long way CW
+          if (delta < 0)
+            delta = steps_per_rev + delta; // Positive = CW
+        }
+        else if (homing.direction == HomingDirection::CCW)
+        {
+          // Force counter-clockwise: if shortest path is CW (delta > 0), go the long way CCW
+          if (delta > 0)
+            delta = delta - steps_per_rev; // Negative = CCW
+        }
+        // NEAREST: delta already contains shortest path
+
+        // Validate ±180° constraint
+        // Only NEAREST is guaranteed to be within one revolution
+        // CW/CCW can require up to a full revolution if forcing the "wrong" direction
+        if (homing.direction == HomingDirection::NEAREST)
+        {
+          // NEAREST is always ≤ 180°
+          if (shortest_distance > steps_per_rev / 2.0f + 1.0f) // +1 for float tolerance
+          {
+            ESP_LOGE(TAG_ENGINE, "✗ VIRTUAL homing: Internal error - NEAREST path exceeds 180°");
+            return;
+          }
+        }
+        else
+        {
+          // CW/CCW: Warn if forced direction requires >180°
+          if (std::abs(delta) > steps_per_rev / 2.0f)
+          {
+            ESP_LOGW(TAG_ENGINE, "VIRTUAL homing: Forced %s direction requires %.1f° movement (>180°)",
+                     homing.direction == HomingDirection::CW ? "CW" : "CCW",
+                     std::abs(delta) / steps_per_rev * 360.0f);
+          }
+
+          // Hard limit: Cannot move more than one full revolution
+          if (std::abs(delta) > steps_per_rev)
+          {
+            ESP_LOGE(TAG_ENGINE, "✗ VIRTUAL homing: Movement exceeds one revolution (%.1f steps > %.1f)",
+                     std::abs(delta), steps_per_rev);
+            ESP_LOGE(TAG_ENGINE, "  Current position too far from zero - use set_zero() first");
+            return;
+          }
+        }
+
+        // Move to position 0
+        move_to(target, speed, parent_->get_default_acceleration());
+
+        ESP_LOGD(TAG_ENGINE, "✓ VIRTUAL homing: Moving %.1f steps (%.1f°) to position 0",
+                 delta, delta / steps_per_rev * 360.0f);
+        */
         break;
       }
 
       case HomingMode::ENDSTOP:
+      {
+        // TODO: Implement ENDSTOP homing properly
+        ESP_LOGW(TAG_ENGINE, "ENDSTOP homing not yet implemented");
+        /*
+        // ENDSTOP homing: Trigger homing sequence (parameters already set in setup)
+        ESP_LOGD(TAG_ENGINE, "  ENDSTOP homing: Starting sequence (speed=%.1f RPM)",
+                 homing.speed.rpm());
+
+        queue_->enqueue(Command::GO_HOME, ServoCommandCodec::encode_go_home(),
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ ENDSTOP homing started");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to start ENDSTOP homing");
+                            transition_to(State::Error);
+                          }
+                        });
+        */
+        break;
+      }
+
       case HomingMode::SENSORLESS:
       {
-        // Real homing (ENDSTOP or SENSORLESS): Not yet fully implemented
-        // These modes require additional hardware commands and configuration
+        // TODO: Implement SENSORLESS homing properly
+        ESP_LOGW(TAG_ENGINE, "SENSORLESS homing not yet implemented");
+        /*
+        // SENSORLESS homing: Start movement (stall detection parameters already set)
+        ESP_LOGD(TAG_ENGINE, "  SENSORLESS homing: Starting movement (current=%umA, speed=%.1f RPM)",
+                 homing.current_ma, homing.speed.rpm());
 
-        ESP_LOGE(TAG_ENGINE, "home(): ENDSTOP and SENSORLESS modes not yet implemented!");
-        ESP_LOGE(TAG_ENGINE, "  Required: Hardware commands for endstop detection or stall sensing");
-        ESP_LOGE(TAG_ENGINE, "  Use VIRTUAL mode for now, or implement hardware-specific homing");
-        return;
+        // Move in homing direction until stall detected
+        int32_t large_target = (homing.direction == HomingDirection::CW) ? 1000000 : -1000000;
+        Position target = Position::from_steps(large_target, parent_);
+
+        auto move_payload = ServoCommandCodec::encode_move_position_mode_3(
+            homing.speed,
+            parent_->get_default_acceleration(),
+            target);
+
+        queue_->enqueue(Command::MOVE_POSITION_MODE_3, move_payload,
+                        [this](bool success, const std::vector<uint8_t> &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ SENSORLESS homing movement started");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to start SENSORLESS homing");
+                            transition_to(State::Error);
+                          }
+                        });
+        */
+        break;
       }
 
       default:
@@ -524,11 +884,12 @@ namespace esphome
         queue_->clear();
       }
 
-      // Send restart command to hardware (Command 0x0F RESTART)
-      std::vector<uint8_t> payload; // No payload
-      queue_->enqueue(Command::RESTART, payload, nullptr);
+      // Send restart command to hardware (Command 0x41 RESTART with value 0x0001)
+      // Motor needs 3-4 seconds to fully restart - use queue delay mechanism
+      std::vector<uint8_t> payload = ServoCommandCodec::encode_restart();
+      queue_->enqueue(Command::RESTART, payload, nullptr, Priority::NORMAL, 4000);
 
-      delay(3000); // Wait 3s for motor to reboot
+      ESP_LOGD(TAG_ENGINE, "  Motor will restart, next command delayed 4000ms");
 
       transition_to(State::Idle);
     }
@@ -712,6 +1073,11 @@ namespace esphome
       }
     }
 
+    ITransport *StepperEngine::get_transport() const
+    {
+      return queue_ ? queue_->get_transport() : nullptr;
+    }
+
     // ============================================================================
     // Private Methods - State Machine
     // ============================================================================
@@ -817,8 +1183,8 @@ namespace esphome
     {
       // Enqueue read command for encoder position (Command 0x30 READ_ENCODER_CARRY)
       // Expected response: carry (int32_t) + value (uint16_t) = 6 bytes
-      queue_->enqueue_read(Command::READ_ENCODER_CARRY, [this, callback](bool success, const std::vector<uint8_t> &data)
-                           {
+      queue_->enqueue(Command::READ_ENCODER_CARRY, {}, [this, callback](bool success, const std::vector<uint8_t> &data)
+                      {
         if (success && data.size() >= 6) {
           auto position = ServoCommandCodec::decode_encoder_carry(data, parent_);
           process_encoder_update(position);
@@ -836,7 +1202,7 @@ namespace esphome
         if (callback) {
           callback(position);
         }
-        } });
+        } }, Priority::BACKGROUND);
     }
 
     // ============================================================================

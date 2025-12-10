@@ -53,14 +53,17 @@ namespace esphome
       void set_timeout(uint32_t timeout_ms) { timeout_ms_ = timeout_ms; }
 
       /**
-       * @brief Handle Modbus read response (called by ESPHome Modbus callback)
+       * @brief Handle Modbus response (read or write)
+       * @param data Response data from Modbus device
        */
-      void handle_read_response(const std::vector<uint8_t> &data);
+      void handle_response(const std::vector<uint8_t> &data);
 
       /**
-       * @brief Handle Modbus write response (called by ESPHome Modbus callback)
+       * @brief Handle Modbus error response (called when motor returns error frame)
+       * @param function_code The function code that caused the error
+       * @param exception_code The Modbus exception code (1=illegal function, 2=illegal address, etc.)
        */
-      void handle_write_response();
+      void handle_error_response(uint8_t function_code, uint8_t exception_code);
 
       /**
        * @brief Check if transport is waiting for a write response
@@ -85,6 +88,9 @@ namespace esphome
       uint8_t slave_address_;
       State state_{State::IDLE};
       Command pending_command_;
+      uint8_t pending_function_code_{0};      // Modbus function code (0x06 or 0x10)
+      uint16_t pending_register_address_{0};  // Register address for validation
+      std::vector<uint8_t> pending_data_;     // Sent data for validation
       uint32_t timeout_ms_{1000};
       uint32_t timeout_start_ms_{0};
 

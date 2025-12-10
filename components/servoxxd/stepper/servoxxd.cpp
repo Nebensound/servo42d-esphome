@@ -256,7 +256,7 @@ namespace esphome
       // Send initial configuration via CommandQueue
       ESP_LOGCONFIG(TAG, "Enqueuing initial configuration commands...");
       this->engine_->setup_motor();
-
+      
       ESP_LOGCONFIG(TAG, "  Steps per Revolution: %.1f", this->steps_per_revolution_);
       ESP_LOGCONFIG(TAG, "  Microstepping: %u", this->microstepping_);
 
@@ -277,6 +277,11 @@ namespace esphome
         {
           this->engine_->poll_hardware();
         } });
+
+      // Note: Homing at startup is handled by motor's 0_Mode feature (Command 0x9A)
+      // When homing.at_startup=true and homing.mode=VIRTUAL, the motor automatically
+      // returns to zero position after restart. No ESPHome-side action required.
+      // For ENDSTOP/SENSORLESS modes, homing must be triggered manually via home() action.
 
       ESP_LOGCONFIG(TAG, "ServoXxd Modbus setup complete");
     }
@@ -336,33 +341,40 @@ namespace esphome
       // Homing configuration (only in POSITION mode)
       if (this->operating_mode_ == OperatingMode::POSITION)
       {
-        const char *homing_modes[] = {"SENSORLESS", "ENDSTOP", "VIRTUAL"};
-        ESP_LOGCONFIG(TAG, "  Homing Mode: %s", homing_modes[static_cast<uint8_t>(this->homing_.mode)]);
-        ESP_LOGCONFIG(TAG, "  Homing at Startup: %s", this->homing_.at_startup ? "YES" : "NO");
-
-        const char *homing_dirs[] = {"CW", "CCW", "NEAREST"};
-        ESP_LOGCONFIG(TAG, "  Homing Direction: %s", homing_dirs[static_cast<uint8_t>(this->homing_.direction)]);
-
-        // Speed formatting depends on mode
-        if (this->homing_.mode == HomingMode::VIRTUAL)
+        if (this->homing_.mode != HomingMode::NO_HOMING)
         {
-          const char *speed_levels[] = {"VERY_SLOW", "SLOW", "MEDIUM", "FAST", "VERY_FAST"};
-          ESP_LOGCONFIG(TAG, "  Homing Speed: %s (level %u)", speed_levels[this->homing_.level], this->homing_.level);
+          const char *homing_modes[] = {"NO_HOMING", "ENDSTOP", "SENSORLESS", "VIRTUAL"};
+          ESP_LOGCONFIG(TAG, "  Homing Mode: %s", homing_modes[static_cast<uint8_t>(this->homing_.mode)]);
+          ESP_LOGCONFIG(TAG, "  Homing at Startup: %s", this->homing_.at_startup ? "YES" : "NO");
+
+          const char *homing_dirs[] = {"CW", "CCW", "NEAREST"};
+          ESP_LOGCONFIG(TAG, "  Homing Direction: %s", homing_dirs[static_cast<uint8_t>(this->homing_.direction)]);
+
+          // Speed formatting depends on mode
+          if (this->homing_.mode == HomingMode::VIRTUAL)
+          {
+            const char *speed_levels[] = {"VERY_SLOW", "SLOW", "MEDIUM", "FAST", "VERY_FAST"};
+            ESP_LOGCONFIG(TAG, "  Homing Speed: %s (level %u)", speed_levels[static_cast<uint8_t>(this->homing_.level)], static_cast<uint8_t>(this->homing_.level));
+          }
+          else
+          {
+            ESP_LOGCONFIG(TAG, "  Homing Speed: %.1f RPM", this->homing_.speed.rpm());
+          }
+
+          // Mode-specific settings
+          if (this->homing_.mode == HomingMode::ENDSTOP)
+          {
+            const char *endstop_triggers[] = {"LOW", "HIGH"};
+            ESP_LOGCONFIG(TAG, "  Endstop Trigger: %s", endstop_triggers[static_cast<uint8_t>(this->homing_.endstop_trigger)]);
+          }
+          else if (this->homing_.mode == HomingMode::SENSORLESS)
+          {
+            ESP_LOGCONFIG(TAG, "  Homing Current: %u mA", this->homing_.current_ma);
+          }
         }
         else
         {
-          ESP_LOGCONFIG(TAG, "  Homing Speed: %.1f RPM", this->homing_.speed.rpm());
-        }
-
-        // Mode-specific settings
-        if (this->homing_.mode == HomingMode::ENDSTOP)
-        {
-          const char *endstop_triggers[] = {"LOW", "HIGH"};
-          ESP_LOGCONFIG(TAG, "  Endstop Trigger: %s", endstop_triggers[static_cast<uint8_t>(this->homing_.endstop_trigger)]);
-        }
-        else if (this->homing_.mode == HomingMode::SENSORLESS)
-        {
-          ESP_LOGCONFIG(TAG, "  Homing Current: %u mA", this->homing_.current_ma);
+          ESP_LOGCONFIG(TAG, "  Homing: Not configured");
         }
       }
 
@@ -414,20 +426,7 @@ namespace esphome
       // Forward response data to transport layer
       if (this->transport_ != nullptr)
       {
-        // Check if transport is waiting for read response
-        if (this->transport_->is_busy() && !this->transport_->is_waiting_write())
-        {
-          this->transport_->handle_read_response(data);
-        }
-        else if (this->transport_->is_waiting_write())
-        {
-          // Write command completed (motor acknowledged the write)
-          this->transport_->handle_write_response();
-        }
-        else
-        {
-          ESP_LOGW(TAG, "Received unsolicited Modbus data: %zu bytes", data.size());
-        }
+        this->transport_->handle_response(data);
       }
       else
       {
@@ -437,10 +436,17 @@ namespace esphome
 
     void ServoXxd::on_modbus_error(uint8_t function_code, uint8_t exception_code)
     {
-      ESP_LOGE(TAG, "Modbus error - Function: 0x%02X, Exception: 0x%02X", function_code, exception_code);
-
-      // TODO: Forward error to transport/engine for proper error handling
-      // For now, just log the error
+      // Forward error to ModbusTransport to clear "busy" state immediately
+      // This prevents 4-second timeout wait after motor rejects a command
+      // Note: Detailed logging happens in handle_error_response() with command context
+      if (this->engine_)
+      {
+        auto *modbus_transport = static_cast<ModbusTransport *>(this->engine_->get_transport());
+        if (modbus_transport)
+        {
+          modbus_transport->handle_error_response(function_code, exception_code);
+        }
+      }
     }
 
     // ============================================================================

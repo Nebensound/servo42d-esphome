@@ -17,7 +17,8 @@ namespace esphome
       PROTOCOL_ERROR,
       DEVICE_ERROR,
       INVALID_RESPONSE,
-      BUSY
+      BUSY,
+      MODBUS_ERROR  // Motor rejected command with Modbus exception
     };
 
     struct Result

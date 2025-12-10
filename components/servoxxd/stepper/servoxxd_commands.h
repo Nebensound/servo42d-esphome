@@ -34,121 +34,48 @@ namespace esphome
     enum class Command : uint8_t
     {
       // ==================== Read Commands (0x30-0x3F) ====================
-      /// Read encoder carry value (upper 32 bits of position)
-      READ_ENCODER_CARRY = 0x30,
-
-      /// Read encoder addition value (lower 16 bits of position)
-      READ_ENCODER_ADDITION = 0x31,
-
-      /// Read current motor speed in RPM
-      READ_CURRENT_SPEED = 0x32,
-
-      /// Read pulse count (step counter)
-      READ_PULSE_COUNT = 0x33,
-
-      /// Read IO port status (limit switches, inputs)
-      READ_IO_STATUS = 0x34,
-
-      /// Read angle error (position deviation)
-      READ_ANGLE_ERROR = 0x39,
-
-      /// Read motor status (moving, stopped, homing, etc.)
-      READ_MOTOR_STATUS = 0x3A,
-
-      /// Read homing status
-      READ_HOMING_STATUS = 0x3B,
-
-      /// Read protection status (over-current, stall, etc.)
-      READ_PROTECTION_STATUS = 0x3E,
-
-      /// Restart/reset the controller
-      RESTART_CONTROLLER = 0x3F,
+      READ_ENCODER_CARRY = 0x30,      /// Read encoder carry value (upper 32 bits of position)
+      READ_ENCODER_ADDITION = 0x31,   /// Read encoder addition value (lower 16 bits of position)
+      READ_CURRENT_SPEED = 0x32,      /// Read current motor speed in RPM
+      READ_PULSE_COUNT = 0x33,        /// Read pulse count (step counter)
+      READ_IO_STATUS = 0x34,          /// Read IO port status (limit switches, inputs)
+      READ_ANGLE_ERROR = 0x39,        /// Read angle error (position deviation)
+      READ_MOTOR_STATUS = 0x3A,       /// Read motor status (moving, stopped, homing, etc.)
+      READ_ZERO_RETURN_STATUS = 0x3B, /// Read the go back to zero status (0_Mode auto-return)
+      READ_PROTECTION_STATUS = 0x3E,  /// Read protection status (over-current, stall, etc.)
+      RESTART_CONTROLLER = 0x3F,      /// Restart/reset the controller
 
       // ==================== Configuration Commands (0x40-0x9A) ====================
-      /// Set working current in mA (configuration)
-      SET_WORKING_CURRENT = 0x44,
-
-      /// Set home parameters (direction, speed, etc.)
-      SET_HOME_PARAMS = 0x4A,
-
-      /// Calibrate encoder (zero position)
-      CALIBRATE_ENCODER = 0x80,
-
-      /// Set work mode (CR_OPEN, SR_VFOC, etc.)
-      SET_WORK_MODE = 0x82,
-
-      /// Set working current in mA (runtime change)
-      /// @see docs/specification/02-cpp-interface.md line 202
-      SET_WORKING_CURRENT_RUNTIME = 0x83,
-
-      /// Set subdivision (microstepping: 1, 2, 4, 8, 16, 32, 64, etc.)
-      SET_SUBDIVISION = 0x84,
-
-      /// Set EN pin active level (0=LOW, 1=HIGH, 2=ALWAYS/Hold)
-      SET_EN_PIN_ACTIVE = 0x85,
-
-      /// Set auto screen off (0=disabled, 1=enabled)
-      SET_AUTO_SCREEN_OFF = 0x87,
-
-      /// Set key lock (0=unlock, 1=lock)
-      SET_LOCK_KEYS = 0x8F,
-
-      /// Set holding current percentage (0-8 for 10%-90%)
-      SET_HOLDING_CURRENT_PERCENT = 0x9B,
-
-      /// Set current encoder position as zero reference
-      SET_ZERO = 0x92,
-
-      /// Set homing current threshold for sensorless homing
-      /// @see docs/specification/02-cpp-interface.md line 221
-      SET_HOMING_CURRENT = 0x94,
-
-      /// Start homing sequence (also known as return to zero)
-      START_HOMING = 0x9A,
+      SET_WORKING_CURRENT = 0x44,         /// Set working current in mA (configuration)
+      SET_HOME_PARAMS = 0x4A,             /// Set home parameters (direction, speed, etc.)
+      CALIBRATE_ENCODER = 0x80,           /// Calibrate encoder (zero position)
+      SET_WORK_MODE = 0x82,               /// Set work mode (CR_OPEN, SR_VFOC, etc.)
+      SET_WORKING_CURRENT_RUNTIME = 0x83, /// Set working current in mA (runtime change)
+      SET_SUBDIVISION = 0x84,             /// Set subdivision (microstepping: 1, 2, 4, 8, 16, 32, 64, etc.)
+      SET_EN_PIN_ACTIVE = 0x85,           /// Set EN pin active level (0=LOW, 1=HIGH, 2=ALWAYS/Hold)
+      SET_AUTO_SCREEN_OFF = 0x87,         /// Set auto screen off (0=disabled, 1=enabled)
+      SET_LOCK_KEYS = 0x8F,               /// Set key lock (0=unlock, 1=lock)
+      SET_HOLDING_CURRENT_PERCENT = 0x9B, /// Set holding current percentage (0-8 for 10%-90%)
+      SET_HOMING_PARAMETERS = 0x90,       /// Set ENDSTOP homing parameters (Fn 0x10, Reg 0x0090, 5 bytes)
+      GO_HOME = 0x91,                     /// Start homing sequence (go to home/zero position)
+      SET_ZERO = 0x92,                    /// Set current encoder position as zero reference
+      SET_NOLIMIT_HOMING_PARAMS = 0x94,   /// Set the parameter of "noLimit" go home (Fn 0x10, Reg 0x0094, 8 bytes)
+      SET_LIMIT_PORT_REMAP = 0x95,        /// Remap limit switch ports - swap IN1/IN2 (Fn 0x10, Reg 0x0095, 1 byte)
+      SET_ZERO_MODE = 0x9A,               /// Set 0_Mode auto-return parameters (Fn 0x10, Reg 0x009A, 4 bytes)
 
       // ==================== Movement Commands (0xF0-0xFF) ====================
-      /// Enable or disable motor
-      /// Data: 0x01 = enable, 0x00 = disable
-      ENABLE_MOTOR = 0xF3,
-
-      /// Position Mode 3: Move to absolute/relative position
-      /// Data: direction, speed, acceleration, position (4 bytes)
-      MOVE_POSITION_MODE_3 = 0xF4,
-
-      /// Position Mode 4: Move to position with multi-segment profile
-      MOVE_POSITION_MODE_4 = 0xF5,
-
-      /// Speed Mode: Constant velocity rotation
-      /// Data: direction, speed, acceleration
-      /// Note: Speed=0 stops the motor
-      MOVE_SPEED_MODE = 0xF6,
-
-      /// Emergency stop - immediate halt
-      EMERGENCY_STOP = 0xF7,
-
-      /// Position Mode 1: Move by pulse count
-      /// Data: direction, speed, acceleration, pulses (4 bytes)
-      /// Note: pulses=0 stops the motor
-      MOVE_POSITION_MODE_1 = 0xFD,
-
-      /// Position Mode 2: Move to absolute position
-      /// Data: direction, speed, acceleration, position (4 bytes)
-      /// Note: position=0 can be used to stop
-      MOVE_POSITION_MODE_2 = 0xFE,
-
-      /// Stop in Position Mode 2 (deceleration stop)
-      /// Data: deceleration value
-      STOP_POSITION_MODE_2 = 0xFF,
+      ENABLE_MOTOR = 0xF3,         /// Enable or disable motor (0x01=enable, 0x00=disable)
+      MOVE_POSITION_MODE_3 = 0xF4, /// Position Mode 3: Move to absolute/relative position
+      MOVE_POSITION_MODE_4 = 0xF5, /// Position Mode 4: Move to position with multi-segment profile
+      MOVE_SPEED_MODE = 0xF6,      /// Speed Mode: Constant velocity rotation (Speed=0 stops motor)
+      EMERGENCY_STOP = 0xF7,       /// Emergency stop - immediate halt
+      MOVE_POSITION_MODE_1 = 0xFD, /// Position Mode 1: Move by pulse count (pulses=0 stops motor)
+      MOVE_POSITION_MODE_2 = 0xFE, /// Position Mode 2: Move to absolute position
+      STOP_POSITION_MODE_2 = 0xFF, /// Stop in Position Mode 2 (deceleration stop)
 
       // ==================== Special Commands (outside standard range) ====================
-      /// Release protection state (clear error)
-      /// Note: This command uses 0x0E, which is outside the standard command range.
-      /// This is intentional per the hardware protocol specification.
-      RELEASE_PROTECTION = 0x0E,
-
-      /// Restart/reset the motor controller (Command 0x41 per V1.0.5 manual section 5.6)
-      /// Note: This command uses 0x41, which is outside the standard command range.
-      RESTART = 0x41,
+      RELEASE_PROTECTION = 0x0E, /// Release protection state (clear error)
+      RESTART = 0x41,            /// Restart/reset the motor controller
     };
 
   } // namespace servoxxd

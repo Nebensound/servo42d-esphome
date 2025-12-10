@@ -62,9 +62,10 @@ namespace esphome
 
     enum class HomingMode : uint8_t
     {
-      SENSORLESS = 0, // Sensorless homing using stall detection
-      ENDSTOP = 1,    // Homing with physical endstop switch
-      VIRTUAL = 2,    // Virtual homing (just set zero)
+      NO_HOMING = 0,  // No homing configured
+      ENDSTOP = 1,    // Homing with physical endstop switch (used limit switch)
+      SENSORLESS = 2, // Sensorless homing using stall detection (no limit switch)
+      VIRTUAL = 3,    // Virtual homing (software move to position 0)
     };
 
     enum class HomingDirection : uint8_t
@@ -100,17 +101,17 @@ namespace esphome
      */
     struct HomingConfig
     {
-      HomingMode mode{HomingMode::ENDSTOP};           ///< Homing mode (determines which speed field is used)
+      HomingMode mode{HomingMode::NO_HOMING};         ///< Homing mode (determines which speed field is used)
       bool at_startup{false};                         ///< Perform homing at startup
       HomingDirection direction{HomingDirection::CW}; ///< Homing direction
 
       // Speed - union of two types (mode determines which is active):
-      // - VIRTUAL: speed_level (0-4)
+      // - VIRTUAL: speed_level (ZeroingSpeed enum)
       // - ENDSTOP/SENSORLESS: speed (Speed object)
       union
       {
-        Speed speed;   ///< For ENDSTOP/SENSORLESS modes
-        uint8_t level; ///< For VIRTUAL mode (ZeroingSpeed 0-4)
+        Speed speed;        ///< For ENDSTOP/SENSORLESS modes
+        ZeroingSpeed level; ///< For VIRTUAL mode
       };
 
       EndstopTrigger endstop_trigger{EndstopTrigger::TRIGGER_LOW}; ///< For ENDSTOP mode
@@ -118,7 +119,7 @@ namespace esphome
 
       // Constructor - requires parent pointer for Speed initialization
       // Note: Will be properly initialized in ServoXxd constructor
-      HomingConfig() : level(0) {} // Temporary - will be overwritten by ServoXxd constructor
+      HomingConfig() : level(ZeroingSpeed::MEDIUM) {} // Temporary - will be overwritten by ServoXxd constructor
 
       // Destructor - clean up Speed if that's the active member
       ~HomingConfig()
@@ -352,8 +353,8 @@ namespace esphome
         if (homing_.mode == mode)
           return; // No change
 
-        // Destroy old union member
-        if (homing_.mode != HomingMode::VIRTUAL)
+        // Destroy old union member (if previously not NO_HOMING or VIRTUAL)
+        if (homing_.mode != HomingMode::NO_HOMING && homing_.mode != HomingMode::VIRTUAL)
           homing_.speed.~Speed();
 
         // Update mode
@@ -361,8 +362,8 @@ namespace esphome
 
         // Construct new union member
         if (mode == HomingMode::VIRTUAL)
-          homing_.level = 2; // Default to MEDIUM
-        else
+          homing_.level = ZeroingSpeed::MEDIUM; // Default to MEDIUM
+        else if (mode != HomingMode::NO_HOMING)
           new (&homing_.speed) Speed(100.0f, SpeedUnit::RPM, this); // Default speed
       }
 
@@ -379,9 +380,9 @@ namespace esphome
       /**
        * @brief Set homing speed for ENDSTOP/SENSORLESS modes
        *
-       * Called from Python/YAML with value and unit.
+       * Called from Python/YAML with Speed object.
        */
-      void set_homing_speed(float value, SpeedUnit unit)
+      void set_homing_speed(const Speed &speed)
       {
         if (homing_.mode == HomingMode::VIRTUAL)
         {
@@ -390,24 +391,19 @@ namespace esphome
         }
         // Reconstruct Speed object with new value
         homing_.speed.~Speed();
-        new (&homing_.speed) Speed(value, unit, this);
+        new (&homing_.speed) Speed(speed);
       }
 
       /**
-       * @brief Set homing speed level for VIRTUAL mode (0-4)
+       * @brief Set homing speed level for VIRTUAL mode
        *
-       * 0=SLOWEST, 1=SLOW, 2=MEDIUM, 3=FAST, 4=FASTEST
+       * @param level ZeroingSpeed enum (VERY_SLOW, SLOW, MEDIUM, FAST, VERY_FAST)
        */
-      void set_homing_speed_level(uint8_t level)
+      void set_homing_speed_level(ZeroingSpeed level)
       {
         if (homing_.mode != HomingMode::VIRTUAL)
         {
           ESP_LOGW("servoxxd", "set_homing_speed_level: ignored for non-VIRTUAL mode (use set_homing_speed)");
-          return;
-        }
-        if (level > 4)
-        {
-          ESP_LOGE("servoxxd", "Invalid homing speed level: %u (must be 0-4)", level);
           return;
         }
         homing_.level = level;

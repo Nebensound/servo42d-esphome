@@ -152,17 +152,17 @@ stepper:
 ### Configuration
 
 - **sleep_when_done** (*Optional*, [Time](https://esphome.io/guides/configuration-types.html#config-time) or boolean): Put the motor to sleep after reaching the target and waiting for the set amount of time. Defaults to `false` or `inf` which may deactivate this function. `true` or any other [Time](https://esphome.io/guides/configuration-types.html#config-time) value may deactivate the motor after that amount of [Time](https://esphome.io/guides/configuration-types.html#config-time). `true` may equal a delay of `0ms`.
-- **homing** (*Optional*, object): Homing configuration
+- **homing** (*Optional*, object): Homing configuration. If omitted, `stepper.home()` action will log a warning and do nothing.
   - **mode** (**Required**, enum):
-    - `ENDSTOP`: Real homing using an endstop (limit switch).
-    - `SENSORLESS`: Sensorless homing using stall detection.
-    - `VIRTUAL`: Return-to-zero using stored angle (0_Mode, no endstop).
-> [!NOTE]
-> Position to move to may be set at least once with `stepper.set_zero` before using virtual homing. After that it may be stored permanently within the controller of the stepper.
+    - `ENDSTOP`: Hardware homing using a physical endstop (limit switch). Motor moves to endstop position.
+    - `SENSORLESS`: Hardware homing using stall detection. Motor runs until stalled, then reverses slightly.
+    - `VIRTUAL`: Software homing - motor moves to position 0 using normal positioning. No hardware homing.
+  > [!NOTE]
+  > `VIRTUAL` mode moves the motor to position 0 within one revolution (±359°, like a clock returning to 12:00). The motor will not move multiple full rotations. Call `report_position(0)` at your desired home position to define where zero is. Optionally, `at_startup=true` enables automatic return-to-zero on motor power-on.
   - **direction** (*Optional*, enum): `CW` clockwise, `CCW` counter-clockwise and `NEAREST`. Default: `CW`. `NEAREST` may only be used with `mode: VIRTUAL`.
   - **speed**: (*Optional*, string): Homing speed. Supports units: `RPM` or `steps/s`. Default: `1 RPM`.
-> [!NOTE]
-> In `mode: VIRTUAL`, the speed may only be provided in five discrete levels. Use `VERY_SLOW`, `SLOW`, `MEDIUM`, `FAST` or `VERY_FAST` in this mode to set the speed.
+  > [!NOTE]
+  > In `mode: VIRTUAL`, the speed may only be provided in five discrete levels. Use `VERY_SLOW`, `SLOW`, `MEDIUM`, `FAST` or `VERY_FAST` in this mode to set the speed.
     Examples for ENDSTOP/SENSORLESS:
     - `speed: 1`                 # steps/s (default unit)
     - `speed: "50 RPM"`
@@ -274,18 +274,24 @@ on_...:
 
 Execute homing sequence. Behavior depends on `homing.mode` configuration:
 
-- `SENSORLESS`: Uses stall detection (sensorless homing)
-- `ENDSTOP`: Uses endstop and GoHome command (real homing)
-- `VIRTUAL`: Restarts motor to return to stored zero position
+- `ENDSTOP`: Moves motor to physical endstop using hardware GoHome command. Blocks until homing completes.
+- `SENSORLESS`: Moves motor until stall detected, then reverses. Blocks until homing completes.
+- `VIRTUAL`: Moves motor to position 0 using normal positioning (direction determined by `homing.direction`). Movement limited to ±359° (one revolution max).
+- If homing not configured: Logs warning and does nothing.
 
+> [!TIP]
+> For `VIRTUAL` mode: The motor moves to position 0 within one revolution (±359°), like a clock hand returning to 12:00. It will not rotate multiple full turns. Use `report_position(0)` to define your home position, or enable `at_startup=true` for automatic return-to-zero on motor power-on.
 ## `stepper.set_zero`
 
-Store the current position as persistent zero point for virtual homing. This must be called once before using virtual homing. The value is stored within the motor controller and remains after power-cycles.
+Store the current position as persistent zero point. Equivalent to `report_position(0)` but also saves the zero point to motor's non-volatile memory.
 
 ```yaml
 on_...:
   - stepper.set_zero: my_stepper
 ```
+
+> [!NOTE]
+> When using `VIRTUAL` homing mode with `at_startup=true`, call this action once at your desired home position to enable automatic return-to-zero on motor power-on. The zero point persists across power cycles.
 
 ## `stepper.run_continuous`
 

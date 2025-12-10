@@ -47,7 +47,7 @@ void test_encode_move_position_mode_2()
 
   // Test basic encoding
   // Use from_ticks() which is hardware-native (encoder counts)
-  Position pos1 = Position::from_ticks(1000);  // 1000 encoder ticks
+  Position pos1 = Position::from_ticks(1000); // 1000 encoder ticks
   Speed spd1 = Speed::from_rpm(100, nullptr);
   Acceleration acc1 = Acceleration::from_internal(50); // Direct hardware value
   auto data = ServoCommandCodec::encode_move_position_mode_2(pos1, spd1, acc1);
@@ -352,6 +352,197 @@ void test_decode_protection_status()
   ASSERT_TRUE(!ps.protected_state, "Empty data → not protected");
 }
 
+void test_decode_homing_status()
+{
+  std::cout << "\n=== decode_homing_status Tests ===" << std::endl;
+
+  std::vector<uint8_t> data;
+  ServoCommandCodec::HomingStatus hs;
+
+  // Test IDLE state
+  data = {0x00};
+  hs = ServoCommandCodec::decode_homing_status(data);
+  ASSERT_EQUAL(static_cast<int>(hs.state), static_cast<int>(ServoCommandCodec::HomingStatus::IDLE), "Status = IDLE");
+  ASSERT_EQUAL(hs.error_code, 0, "IDLE error_code = 0");
+
+  // Test IN_PROGRESS state
+  data = {0x01};
+  hs = ServoCommandCodec::decode_homing_status(data);
+  ASSERT_EQUAL(static_cast<int>(hs.state), static_cast<int>(ServoCommandCodec::HomingStatus::IN_PROGRESS), "Status = IN_PROGRESS");
+  ASSERT_EQUAL(hs.error_code, 0, "IN_PROGRESS error_code = 0");
+
+  // Test COMPLETED state
+  data = {0x02};
+  hs = ServoCommandCodec::decode_homing_status(data);
+  ASSERT_EQUAL(static_cast<int>(hs.state), static_cast<int>(ServoCommandCodec::HomingStatus::COMPLETED), "Status = COMPLETED");
+  ASSERT_EQUAL(hs.error_code, 0, "COMPLETED error_code = 0");
+
+  // Test ERROR state (value 3)
+  data = {0x03};
+  hs = ServoCommandCodec::decode_homing_status(data);
+  ASSERT_EQUAL(static_cast<int>(hs.state), static_cast<int>(ServoCommandCodec::HomingStatus::ERROR), "Status = ERROR (3)");
+  ASSERT_EQUAL(hs.error_code, 3, "ERROR error_code = 3");
+
+  // Test ERROR state (value 4 - no endstop)
+  data = {0x04};
+  hs = ServoCommandCodec::decode_homing_status(data);
+  ASSERT_EQUAL(static_cast<int>(hs.state), static_cast<int>(ServoCommandCodec::HomingStatus::ERROR), "Status = ERROR (4)");
+  ASSERT_EQUAL(hs.error_code, 4, "ERROR error_code = 4");
+
+  // Test ERROR state (value 5 - position error)
+  data = {0x05};
+  hs = ServoCommandCodec::decode_homing_status(data);
+  ASSERT_EQUAL(static_cast<int>(hs.state), static_cast<int>(ServoCommandCodec::HomingStatus::ERROR), "Status = ERROR (5)");
+  ASSERT_EQUAL(hs.error_code, 5, "ERROR error_code = 5");
+
+  // Test empty data (communication error)
+  data.clear();
+  hs = ServoCommandCodec::decode_homing_status(data);
+  ASSERT_EQUAL(static_cast<int>(hs.state), static_cast<int>(ServoCommandCodec::HomingStatus::ERROR), "Empty data → ERROR");
+  ASSERT_EQUAL(hs.error_code, 0xFF, "Empty data error_code = 0xFF (comm error)");
+}
+
+void test_encode_homing_commands()
+{
+  std::cout << "\n=== Homing Encoder Tests ===" << std::endl;
+
+  using namespace esphome::servoxxd;
+
+  // Test encode_set_home_parameters (Command 0x90 - "Set the parameter of home")
+  // Format: [hmTrig][hmDir][HmSpeed_hi][HmSpeed_lo][EndLimit]
+  auto data = ServoCommandCodec::encode_set_home_parameters(
+      EndstopTrigger::TRIGGER_HIGH,
+      Direction::CW,
+      Speed::from_rpm(500, nullptr), // 500 RPM
+      true);
+  ASSERT_EQUAL(data.size(), 5u, "Home params payload size = 5");
+  ASSERT_EQUAL(data[0], 0x01, "Trigger = TRIGGER_HIGH");
+  ASSERT_EQUAL(data[1], 0x00, "Direction = CW");
+  ASSERT_EQUAL(data[2], 0x01, "Speed MSB (500)");
+  ASSERT_EQUAL(data[3], 0xF4, "Speed LSB (500)");
+  ASSERT_EQUAL(data[4], 0x01, "Endlimit enable = true");
+
+  // Test with TRIGGER_LOW and CCW
+  data = ServoCommandCodec::encode_set_home_parameters(
+      EndstopTrigger::TRIGGER_LOW,
+      Direction::CCW,
+      Speed::from_rpm(300, nullptr), // 300 RPM
+      false);
+  ASSERT_EQUAL(data[0], 0x00, "Trigger = TRIGGER_LOW");
+  ASSERT_EQUAL(data[1], 0x01, "Direction = CCW");
+  ASSERT_EQUAL(data[2], 0x01, "Speed MSB (300)");
+  ASSERT_EQUAL(data[3], 0x2C, "Speed LSB (300)");
+  ASSERT_EQUAL(data[4], 0x00, "Endlimit enable = false");
+
+  // Test encode_set_nolimit_home_parameters (SENSORLESS mode enabled)
+  // Format: [retValue_b3][b2][b1][b0][mode_hi][mode_lo][ma_hi][ma_lo]
+  Position reverse_pos = Position::from_ticks(500);
+  data = ServoCommandCodec::encode_set_nolimit_home_parameters(
+      reverse_pos,
+      true,  // sensorless_enabled=true: no limit switch for go home
+      1500); // current threshold (ma)
+  ASSERT_EQUAL(data.size(), 8u, "Nolimit params payload size = 8");
+  ASSERT_EQUAL(data[0], 0x00, "retValue byte 0");
+  ASSERT_EQUAL(data[1], 0x00, "retValue byte 1");
+  ASSERT_EQUAL(data[2], 0x01, "retValue byte 2");
+  ASSERT_EQUAL(data[3], 0xF4, "retValue byte 3 (500 ticks)");
+  ASSERT_EQUAL(data[4], 0x00, "mode MSB");
+  ASSERT_EQUAL(data[5], 0x01, "mode LSB = 1 (sensorless enabled)");
+  ASSERT_EQUAL(data[6], 0x05, "ma MSB (1500 mA)");
+  ASSERT_EQUAL(data[7], 0xDC, "ma LSB (1500 mA)");
+
+  // Test encode_set_nolimit_home_parameters (SENSORLESS disabled - ENDSTOP mode)
+  data = ServoCommandCodec::encode_set_nolimit_home_parameters(
+      Position::from_ticks(0x2000), // 180° (default)
+      false,                        // sensorless_enabled=false: use limit switch
+      0);                           // current=0 (disabled)
+  ASSERT_EQUAL(data.size(), 8u, "Nolimit disabled payload size = 8");
+  ASSERT_EQUAL(data[0], 0x00, "retValue byte 0");
+  ASSERT_EQUAL(data[1], 0x00, "retValue byte 1");
+  ASSERT_EQUAL(data[2], 0x20, "retValue byte 2 (0x2000 = 180°)");
+  ASSERT_EQUAL(data[3], 0x00, "retValue byte 3");
+  ASSERT_EQUAL(data[4], 0x00, "mode MSB");
+  ASSERT_EQUAL(data[5], 0x00, "mode LSB = 0 (sensorless disabled)");
+  ASSERT_EQUAL(data[6], 0x00, "ma MSB (0 mA)");
+  ASSERT_EQUAL(data[7], 0x00, "ma LSB (0 mA)");
+
+  // Test encode_set_nolimit_home_parameters with 360° reverse angle
+  data = ServoCommandCodec::encode_set_nolimit_home_parameters(
+      Position::from_ticks(0x4000), // 360°
+      true,                         // sensorless_enabled=true
+      2000);                        // 2000 mA
+  ASSERT_EQUAL(data[0], 0x00, "retValue byte 0");
+  ASSERT_EQUAL(data[1], 0x00, "retValue byte 1");
+  ASSERT_EQUAL(data[2], 0x40, "retValue byte 2 (0x4000 = 360°)");
+  ASSERT_EQUAL(data[3], 0x00, "retValue byte 3");
+  ASSERT_EQUAL(data[4], 0x00, "mode MSB");
+  ASSERT_EQUAL(data[5], 0x01, "mode LSB = 1 (sensorless enabled)");
+  ASSERT_EQUAL(data[6], 0x07, "ma MSB (2000 mA)");
+  ASSERT_EQUAL(data[7], 0xD0, "ma LSB (2000 mA)");
+
+  // Test encode_set_zero_mode (VIRTUAL mode with 0_Mode)
+  // Format: [mode][enable][speed][direction]
+  data = ServoCommandCodec::encode_set_zero_mode(
+      ServoCommandCodec::ZeroMode::NEAR_MODE, // mode=2: NearMode
+      ServoCommandCodec::ZeroModeTask::SET,   // clean_set=SET (set zero)
+      ZeroingSpeed::MEDIUM,
+      Direction::CW);
+  ASSERT_EQUAL(data.size(), 4u, "Zero mode payload size = 4");
+  ASSERT_EQUAL(data[0], 0x02, "Mode = 2 (NearMode)");
+  ASSERT_EQUAL(data[1], 0x01, "Enable = true");
+  ASSERT_EQUAL(data[2], 0x02, "Speed = MEDIUM");
+  ASSERT_EQUAL(data[3], 0x00, "Direction = CW (0)");
+
+  // Test with DirMode CW
+  data = ServoCommandCodec::encode_set_zero_mode(
+      ServoCommandCodec::ZeroMode::DIR_MODE,  // mode=1: DirMode
+      ServoCommandCodec::ZeroModeTask::CLEAN, // clean_set=CLEAN (clean zero)
+      ZeroingSpeed::VERY_SLOW,
+      Direction::CCW);
+  ASSERT_EQUAL(data[0], 0x01, "Mode = 1 (DirMode)");
+  ASSERT_EQUAL(data[1], 0x00, "Enable = false");
+  ASSERT_EQUAL(data[2], 0x00, "Speed = VERY_SLOW");
+  ASSERT_EQUAL(data[3], 0x01, "Direction = CCW (1)");
+
+  // Test with VERY_FAST speed
+  data = ServoCommandCodec::encode_set_zero_mode(
+      ServoCommandCodec::ZeroMode::DIR_MODE, // mode=1: DirMode
+      ServoCommandCodec::ZeroModeTask::SET,  // clean_set=SET
+      ZeroingSpeed::VERY_FAST,
+      Direction::CW);
+  ASSERT_EQUAL(data[0], 0x01, "Mode = 1 (DirMode)");
+  ASSERT_EQUAL(data[1], 0x01, "Enable = true");
+  ASSERT_EQUAL(data[2], 0x04, "Speed = VERY_FAST");
+  ASSERT_EQUAL(data[3], 0x00, "Direction = CW (0)");
+
+  // Test Disable mode (clean_set=CLEAN means clean zero)
+  data = ServoCommandCodec::encode_set_zero_mode(
+      ServoCommandCodec::ZeroMode::DIR_MODE,  // mode
+      ServoCommandCodec::ZeroModeTask::CLEAN, // clean_set=CLEAN (clean zero)
+      ZeroingSpeed::SLOW,
+      Direction::CW);
+  ASSERT_EQUAL(data[0], 0x01, "Mode = 1 (value when disabled)");
+  ASSERT_EQUAL(data[1], 0x00, "Enable = false");
+  ASSERT_EQUAL(data[2], 0x01, "Speed = SLOW");
+  ASSERT_EQUAL(data[3], 0x00, "Direction = CW (0)");
+
+  // Test encode_go_home (empty payload)
+  data = ServoCommandCodec::encode_go_home();
+  ASSERT_EQUAL(data.size(), 0u, "Go home has no payload");
+
+  // Test encode_set_current_axis_zero (empty payload)
+  data = ServoCommandCodec::encode_set_current_axis_zero();
+  ASSERT_EQUAL(data.size(), 0u, "Set current axis zero has no payload");
+
+  // Test encode_set_limit_port_remap
+  data = ServoCommandCodec::encode_set_limit_port_remap(true);
+  ASSERT_EQUAL(data.size(), 1u, "Limit remap payload size = 1");
+  ASSERT_EQUAL(data[0], 0x01, "Remap enable = true");
+
+  data = ServoCommandCodec::encode_set_limit_port_remap(false);
+  ASSERT_EQUAL(data[0], 0x00, "Remap enable = false");
+}
+
 void test_roundtrip_encoding()
 {
   std::cout << "\n=== Round-Trip Encoding Tests ===" << std::endl;
@@ -400,6 +591,8 @@ int main()
   test_decode_encoder_carry();
   test_decode_motor_status();
   test_decode_protection_status();
+  test_decode_homing_status();
+  test_encode_homing_commands();
   test_roundtrip_encoding();
 
   std::cout << "\n========================================" << std::endl;
