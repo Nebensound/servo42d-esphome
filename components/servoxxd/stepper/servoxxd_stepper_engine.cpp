@@ -2,6 +2,7 @@
 #include "servoxxd.h"
 #include "servoxxd_command_codec.h"
 #include "servoxxd_commands.h"
+#include "servoxxd_command_factory.h"
 #include "servoxxd_transport.h"
 #include <cmath>
 
@@ -57,37 +58,38 @@ namespace esphome
 
     void StepperEngine::poll_motor_speed()
     {
-      // Enqueue read command for motor speed (Command 0x32 READ_CURRENT_SPEED)
+      // Enqueue read command for motor speed (Commandtype 0x32 READ_CURRENT_SPEED)
       // Expected response: speed_rpm (int16_t) = 2 bytes
-      queue_->enqueue(Command::READ_CURRENT_SPEED, {}, [this](bool success, const std::vector<uint8_t> &data)
+
+      queue_->enqueue(CommandFactory::read_current_speed(), [this](bool success, const Command &cmd)
                       {
-        if (success && data.size() >= 2) {
-          Speed speed = ServoCommandCodec::decode_current_speed(data);
+        if (success) {
+          Speed speed = CommandDecoder::read_current_speed(cmd);
           process_speed_update(speed);
         } }, Priority::BACKGROUND);
     }
 
     void StepperEngine::poll_motor_status()
     {
-      // Enqueue read command for motor status (Command 0x3A READ_MOTOR_STATUS)
+      // Enqueue read command for motor status (Commandtype 0x3A READ_MOTOR_STATUS)
       // Expected response: status (uint8_t, 0=STOP, 1=MOVING, 2=HOMING) = 2 bytes (1 register)
-      queue_->enqueue(Command::READ_MOTOR_STATUS, {}, [this](bool success, const std::vector<uint8_t> &data)
+      queue_->enqueue(CommandFactory::read_motor_status(), [this](bool success, const Command &cmd)
                       {
-        if (success && !data.empty()) {
-          auto status = ServoCommandCodec::decode_motor_status(data);
-          bool enabled = (status.state != ServoCommandCodec::MotorStatus::STOP);
+        if (success) {
+          auto status = CommandDecoder::read_motor_status(cmd);
+          bool enabled = (status.state != CommandDecoder::MotorStatus::STOP);
           process_motor_status_update(enabled);
         } }, Priority::BACKGROUND);
     }
 
     void StepperEngine::poll_protection_status()
     {
-      // Enqueue read command for protection status (Command 0x3E READ_PROTECTION_STATUS)
+      // Enqueue read command for protection status (Commandtype 0x3E READ_PROTECTION_STATUS)
       // Expected response: protection (uint8_t, 0 = OK, 1 = protected) = 2 bytes (1 register)
-      queue_->enqueue(Command::READ_PROTECTION_STATUS, {}, [this](bool success, const std::vector<uint8_t> &data)
+      queue_->enqueue(CommandFactory::read_protection_status(), [this](bool success, const Command &cmd)
                       {
-        if (success && !data.empty()) {
-          auto ps = ServoCommandCodec::decode_protection_status(data);
+        if (success) {
+          auto ps = CommandDecoder::read_protection_status(cmd);
           process_protection_update(ps.protected_state ? 1 : 0);
         } }, Priority::BACKGROUND);
     }
@@ -97,10 +99,10 @@ namespace esphome
       // TODO: Implement proper homing status polling
       // Currently disabled - needs proper implementation
       /*
-      // Enqueue read command for homing status (Command 0x3B READ_ZERO_RETURN_STATUS)
+      // Enqueue read command for homing status (Commandtype 0x3B READ_ZERO_RETURN_STATUS)
       // Expected response: homing_status (uint8_t) = 2 bytes (1 register)
       // 0=IN_PROGRESS, 1=SUCCESS, 2=FAIL
-      queue_->enqueue(Command::READ_ZERO_RETURN_STATUS, {}, [this](bool success, const std::vector<uint8_t> &data)
+      queue_->enqueue(Command(Commandtype::READ_ZERO_RETURN_STATUS), [this](bool success, const std::vector<uint8_t> &data)
                       {
         if (!success) {
           ESP_LOGW(TAG_ENGINE, "Failed to read homing status");
@@ -112,17 +114,17 @@ namespace esphome
           return;
         }
 
-        auto hs = ServoCommandCodec::decode_zero_return_status(data);
+        auto hs = CommandDecoder::read_zero_return_status(data);
 
         switch (hs) {
-          case ServoCommandCodec::ZeroReturnStatus::IN_PROGRESS:
+          case CommandDecoder::ZeroReturnStatus::IN_PROGRESS:
           {
             ESP_LOGV(TAG_ENGINE, "Zero return status: IN_PROGRESS");
             // Continue waiting
             break;
           }
 
-          case ServoCommandCodec::ZeroReturnStatus::SUCCESS:
+          case CommandDecoder::ZeroReturnStatus::SUCCESS:
           {
             ESP_LOGI(TAG_ENGINE, "Zero return COMPLETED successfully");
 
@@ -135,7 +137,7 @@ namespace esphome
             break;
           }
 
-          case ServoCommandCodec::ZeroReturnStatus::FAIL:
+          case CommandDecoder::ZeroReturnStatus::FAIL:
           {
             ESP_LOGE(TAG_ENGINE, "Zero return FAILED");
 
@@ -167,17 +169,16 @@ namespace esphome
 
       ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor restart...");
 
-      // 0. Restart motor to ensure clean state (Command 0x41 RESTART)
+      // 0. Restart motor to ensure clean state (Commandtype 0x41 RESTART)
       // Motor needs ~3s to reboot before accepting configuration commands
       restart();
 
       ESP_LOGCONFIG(TAG_ENGINE, "  Motor restart initiated, configuration commands enqueued...");
 
-      // 1. Set microstepping (Command 0x84 SET_SUBDIVISION)
+      // 1. Set microstepping (Commandtype 0x84 SET_SUBDIVISION)
       {
-        queue_->enqueue(Command::SET_SUBDIVISION,
-                        ServoCommandCodec::encode_set_subdivision(parent_->get_microstepping()),
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_subdivision(parent_->get_microstepping()),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -190,11 +191,10 @@ namespace esphome
                         });
       }
 
-      // 2. Set EN pin active level (Command 0x85 SET_EN_PIN_ACTIVE)
+      // 2. Set EN pin active level (Commandtype 0x85 SET_EN_PIN_ACTIVE)
       {
-        queue_->enqueue(Command::SET_EN_PIN_ACTIVE,
-                        ServoCommandCodec::encode_set_en_pin_active(parent_->get_en_pin_active()),
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_en_pin_active(parent_->get_en_pin_active()),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -208,11 +208,10 @@ namespace esphome
                         });
       }
 
-      // 3. Set auto screen off (Command 0x87 SET_AUTO_SCREEN_OFF)
+      // 3. Set auto screen off (Commandtype 0x87 SET_AUTO_SCREEN_OFF)
       {
-        queue_->enqueue(Command::SET_AUTO_SCREEN_OFF,
-                        ServoCommandCodec::encode_set_auto_screen_off(parent_->get_auto_screen_off()),
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_auto_screen_off(parent_->get_auto_screen_off()),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -225,11 +224,10 @@ namespace esphome
                         });
       }
 
-      // 4. Set key lock (Command 0x8F SET_LOCK_KEYS)
+      // 4. Set key lock (Commandtype 0x8F SET_LOCK_KEYS)
       {
-        queue_->enqueue(Command::SET_LOCK_KEYS,
-                        ServoCommandCodec::encode_set_lock_keys(parent_->get_lock_keys_at_startup()),
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_lock_keys(parent_->get_lock_keys_at_startup()),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -242,7 +240,7 @@ namespace esphome
                         });
       }
 
-      // 5. Set control mode (Command 0x82 SET_WORK_MODE)
+      // 5. Set control mode (Commandtype 0x82 SET_WORK_MODE)
       {
         ControlMode control_mode = parent_->get_control_mode();
 
@@ -261,9 +259,8 @@ namespace esphome
           break;
         }
 
-        queue_->enqueue(Command::SET_WORK_MODE,
-                        ServoCommandCodec::encode_set_control_mode(control_mode),
-                        [this, mode_name](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_control_mode(control_mode),
+                        [this, mode_name](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -291,10 +288,9 @@ namespace esphome
       {
         // No homing configured - disable 0_Mode
         ESP_LOGD(TAG_ENGINE, "No homing configured - disabling 0_Mode");
-        auto payload = ServoCommandCodec::encode_set_zero_mode();
 
-        queue_->enqueue(Command::SET_ZERO_MODE, payload,
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_zero_mode(),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -310,8 +306,8 @@ namespace esphome
 
       case HomingMode::ENDSTOP:
       {
-        // ENDSTOP mode: Set homing parameters via Command 0x90
-        ESP_LOGD(TAG_ENGINE, "ENDSTOP homing: Configuring parameters via Command 0x90");
+        // ENDSTOP mode: Set homing parameters via Commandtype 0x90
+        ESP_LOGD(TAG_ENGINE, "ENDSTOP homing: Configuring parameters via Commandtype 0x90");
         ESP_LOGD(TAG_ENGINE, "  Hm_Dir=%s, Hm_Speed=%.1f RPM, Trigger=%s, EndLimit=enabled",
                  homing.direction == HomingDirection::CW ? "CW" : "CCW",
                  homing.speed.rpm(),
@@ -321,13 +317,9 @@ namespace esphome
         Direction hw_direction = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
         bool endlimit_enable = true; // Enable endstop limit for ENDSTOP mode
 
-        auto endstop_payload = ServoCommandCodec::encode_set_home_parameters(
-            homing.endstop_trigger, hw_direction, homing.speed, endlimit_enable);
-
         // Disable no-limit homing (SENSORLESS) for ENDSTOP mode
-        auto nolimit_disable_payload = ServoCommandCodec::encode_set_nolimit_home_parameters();
-        queue_->enqueue(Command::SET_NOLIMIT_HOMING_PARAMS, nolimit_disable_payload,
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_nolimit_homing_params(),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -339,8 +331,9 @@ namespace esphome
                           }
                         });
 
-        queue_->enqueue(Command::SET_HOMING_PARAMETERS, endstop_payload,
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_homing_parameters(
+                            homing.endstop_trigger, hw_direction, homing.speed, endlimit_enable),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -353,9 +346,8 @@ namespace esphome
                         });
 
         // Disable 0_Mode for ENDSTOP (spec: 0x9A disable)
-        auto zero_mode_payload = ServoCommandCodec::encode_set_zero_mode();
-        queue_->enqueue(Command::SET_ZERO_MODE, zero_mode_payload,
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_zero_mode(),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -373,10 +365,9 @@ namespace esphome
       {
         // SENSORLESS mode: Set no-limit home parameters once
         Position reverse_angle = Position::from_steps(0, parent_);
-        auto payload = ServoCommandCodec::encode_set_nolimit_home_parameters(reverse_angle, true, homing.current_ma); // Current threshold for stall detection
 
-        queue_->enqueue(Command::SET_NOLIMIT_HOMING_PARAMS, payload,
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_nolimit_homing_params(reverse_angle, true, homing.current_ma),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -389,9 +380,8 @@ namespace esphome
                         });
 
         // Disable 0_Mode for SENSORLESS (spec: 0x9A disable)
-        auto zero_mode_payload = ServoCommandCodec::encode_set_zero_mode();
-        queue_->enqueue(Command::SET_ZERO_MODE, zero_mode_payload,
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::set_zero_mode(),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -411,21 +401,14 @@ namespace esphome
         // Only configure if currently disabled to avoid resetting zero point repeatedly
         ESP_LOGD(TAG_ENGINE, "VIRTUAL homing: Checking 0_Mode status");
 
-        ServoCommandCodec::ZeroModeMode mode = homing.direction == HomingDirection::NEAREST
-                                                   ? ServoCommandCodec::ZeroModeMode::NEAR_MODE
-                                                   : ServoCommandCodec::ZeroModeMode::DIR_MODE;
+        CommandFactory::ZeroModeMode mode = homing.direction == HomingDirection::NEAREST
+                                                ? CommandFactory::ZeroModeMode::NEAR_MODE
+                                                : CommandFactory::ZeroModeMode::DIR_MODE;
 
         Direction hw_direction = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
 
-        auto config_payload = ServoCommandCodec::encode_set_zero_mode(
-            mode,
-            ServoCommandCodec::ZeroModeTask::SET,
-            homing.level,
-            hw_direction);
-
-        queue_->enqueue(Command::READ_ZERO_RETURN_STATUS,
-                        ServoCommandCodec::encode_read_zero_return_status(),
-                        [this, config_payload](bool success, const std::vector<uint8_t> &data)
+        queue_->enqueue(CommandFactory::read_zero_return_status(),
+                        [this, mode, hw_direction, homing](bool success, const Command &cmd)
                         {
                           if (!success)
                           {
@@ -433,14 +416,18 @@ namespace esphome
                             return;
                           }
 
-                          auto status = ServoCommandCodec::decode_zero_return_status(data);
+                          auto status = CommandDecoder::read_zero_return_status(cmd);
 
                           // Only configure if not currently active (IN_PROGRESS or SUCCESS means active)
-                          if (status == ServoCommandCodec::ZeroReturnStatus::FAIL)
+                          if (status == CommandDecoder::ZeroReturnStatus::FAIL)
                           {
                             ESP_LOGD(TAG_ENGINE, "0_Mode disabled, configuring now");
-                            queue_->enqueue(Command::SET_ZERO_MODE, config_payload,
-                                            [this](bool success, const std::vector<uint8_t> &)
+                            queue_->enqueue(CommandFactory::set_zero_mode(
+                                                mode,
+                                                CommandFactory::ZeroModeTask::SET,
+                                                homing.level,
+                                                hw_direction),
+                                            [this](bool success, const Command &)
                                             {
                                               if (success)
                                               {
@@ -541,8 +528,7 @@ namespace esphome
 
       // Note: target_pos_ already updated by caller (ServoXxd::move_to or set_target_pos)
       // Simply send new move command - hardware will update mid-movement
-      auto payload = ServoCommandCodec::encode_move_position_mode_2(target, speed_units, accel_units);
-      queue_->enqueue(Command::MOVE_POSITION_MODE_2, payload, nullptr);
+      queue_->enqueue(CommandFactory::move_position_mode_2(target, speed_units, accel_units), nullptr);
 
       if (state_ == State::Moving || state_ == State::Stopping)
       {
@@ -567,10 +553,9 @@ namespace esphome
 
       ESP_LOGD(TAG_ENGINE, "stop(): decel=%.2f RPM/s", decel.has_value() ? decel->get_rpm_per_sec() : 0.0f);
 
-      // Send stop command via queue (Command 0xFE STOP_POSITION_MODE_2)
+      // Send stop command via queue (Commandtype 0xFE STOP_POSITION_MODE_2)
       Acceleration decel_units = decel.has_value() ? decel.value() : parent_->get_default_acceleration();
-      auto payload = ServoCommandCodec::encode_stop_position_mode_2(decel_units);
-      queue_->enqueue(Command::STOP_POSITION_MODE_2, payload, nullptr);
+      queue_->enqueue(CommandFactory::stop_position_mode_2(decel_units), nullptr);
 
       transition_to(State::Stopping);
     }
@@ -586,9 +571,8 @@ namespace esphome
       {
         queue_->clear(); // Clear all pending commands
 
-        // Send emergency stop command to hardware (Command 0xF7 EMERGENCY_STOP)
-        std::vector<uint8_t> payload; // No payload for emergency stop
-        queue_->enqueue(Command::EMERGENCY_STOP, payload, nullptr, Priority::CRITICAL);
+        // Send emergency stop command to hardware (Commandtype 0xF7 EMERGENCY_STOP)
+        queue_->enqueue(CommandFactory::emergency_stop(), nullptr, Priority::CRITICAL);
       }
 
       transition_to(State::Error);
@@ -713,8 +697,8 @@ namespace esphome
         ESP_LOGD(TAG_ENGINE, "  ENDSTOP homing: Starting sequence (speed=%.1f RPM)",
                  homing.speed.rpm());
 
-        queue_->enqueue(Command::GO_HOME, ServoCommandCodec::encode_go_home(),
-                        [this](bool success, const std::vector<uint8_t> &)
+        queue_->enqueue(CommandFactory::go_home(),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -743,13 +727,11 @@ namespace esphome
         int32_t large_target = (homing.direction == HomingDirection::CW) ? 1000000 : -1000000;
         Position target = Position::from_steps(large_target, parent_);
 
-        auto move_payload = ServoCommandCodec::encode_move_position_mode_3(
+        queue_->enqueue(CommandFactory::move_position_mode_3(
             homing.speed,
             parent_->get_default_acceleration(),
-            target);
-
-        queue_->enqueue(Command::MOVE_POSITION_MODE_3, move_payload,
-                        [this](bool success, const std::vector<uint8_t> &)
+            target),
+                        [this](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -789,9 +771,8 @@ namespace esphome
       ESP_LOGD(TAG_ENGINE, "run_continuous(): speed=%.2f RPM, accel=%.2f RPM/s",
                speed_obj.rpm(), accel_obj.get_rpm_per_sec());
 
-      // Send speed command via queue (Command 0xF6 MOVE_SPEED_MODE)
-      auto payload = ServoCommandCodec::encode_move_speed_mode(speed_obj, accel_obj);
-      queue_->enqueue(Command::MOVE_SPEED_MODE, payload, nullptr);
+      // Send speed command via queue (Commandtype 0xF6 MOVE_SPEED_MODE)
+      queue_->enqueue(CommandFactory::move_speed_mode(speed_obj, accel_obj), nullptr);
 
       transition_to(State::Running);
     }
@@ -802,16 +783,23 @@ namespace esphome
 
     void StepperEngine::enable()
     {
-      if (!validate_command("enable", {State::Disabled}))
+      // Allow enable from Disabled, Idle, or Error states
+      if (!validate_command("enable", {State::Disabled, State::Idle}))
       {
+        return;
+      }
+
+      // If already in Idle state, motor is already enabled
+      if (state_ == State::Idle)
+      {
+        ESP_LOGD(TAG_ENGINE, "enable(): Motor already enabled (state=Idle)");
         return;
       }
 
       ESP_LOGD(TAG_ENGINE, "enable(): Enabling motor");
 
-      // Send enable command via queue (Command 0xF3 ENABLE_MOTOR)
-      auto payload = ServoCommandCodec::encode_enable_motor(true);
-      queue_->enqueue(Command::ENABLE_MOTOR, payload, nullptr);
+      // Send enable command via queue (Commandtype 0xF3 ENABLE_MOTOR)
+      queue_->enqueue(CommandFactory::enable_motor(true), nullptr);
 
       transition_to(State::Idle);
     }
@@ -835,9 +823,8 @@ namespace esphome
 
       ESP_LOGD(TAG_ENGINE, "disable(): Disabling motor");
 
-      // Send disable command via queue (Command 0xF3 ENABLE_MOTOR with false)
-      auto payload = ServoCommandCodec::encode_enable_motor(false);
-      queue_->enqueue(Command::ENABLE_MOTOR, payload, nullptr);
+      // Send disable command via queue (Commandtype 0xF3 ENABLE_MOTOR with false)
+      queue_->enqueue(CommandFactory::enable_motor(false), nullptr);
 
       transition_to(State::Disabled);
     }
@@ -860,9 +847,8 @@ namespace esphome
       protection_triggered_ = false;
       emergency_flag_ = false;
 
-      // Send release protection command via queue (Command 0x0E RELEASE_PROTECTION)
-      std::vector<uint8_t> payload; // No payload
-      queue_->enqueue(Command::RELEASE_PROTECTION, payload, nullptr);
+      // Send release protection command via queue (Commandtype 0x0E RELEASE_PROTECTION)
+      queue_->enqueue(CommandFactory::release_protection(), nullptr);
 
       if (state_ == State::Error)
       {
@@ -884,10 +870,9 @@ namespace esphome
         queue_->clear();
       }
 
-      // Send restart command to hardware (Command 0x41 RESTART with value 0x0001)
+      // Send restart command to hardware (Commandtype 0x41 RESTART with value 0x0001)
       // Motor needs 3-4 seconds to fully restart - use queue delay mechanism
-      std::vector<uint8_t> payload = ServoCommandCodec::encode_restart();
-      queue_->enqueue(Command::RESTART, payload, nullptr, Priority::NORMAL, 4000);
+      queue_->enqueue(CommandFactory::restart(), nullptr, Priority::NORMAL, 4000);
 
       ESP_LOGD(TAG_ENGINE, "  Motor will restart, next command delayed 4000ms");
 
@@ -898,27 +883,24 @@ namespace esphome
     {
       ESP_LOGD(TAG_ENGINE, "calibrate(): Starting encoder calibration");
 
-      // Send calibrate encoder command via queue (Command 0x80 CALIBRATE_ENCODER)
-      auto payload = ServoCommandCodec::encode_calibrate_encoder();
-      queue_->enqueue(Command::CALIBRATE_ENCODER, payload, nullptr);
+      // Send calibrate encoder command via queue (Commandtype 0x80 CALIBRATE_ENCODER)
+      queue_->enqueue(CommandFactory::calibrate_encoder(), nullptr);
     }
 
     void StepperEngine::key_lock()
     {
       ESP_LOGD(TAG_ENGINE, "key_lock(): Locking physical keys");
 
-      // Send key lock command via queue (Command 0x8F SET_LOCK_KEYS)
-      auto payload = ServoCommandCodec::encode_set_lock_keys(true);
-      queue_->enqueue(Command::SET_LOCK_KEYS, payload, nullptr);
+      // Send key lock command via queue (Commandtype 0x8F SET_LOCK_KEYS)
+      queue_->enqueue(CommandFactory::set_lock_keys(true), nullptr);
     }
 
     void StepperEngine::key_unlock()
     {
       ESP_LOGD(TAG_ENGINE, "key_unlock(): Unlocking physical keys");
 
-      // Send key unlock command via queue (Command 0x8F SET_LOCK_KEYS)
-      auto payload = ServoCommandCodec::encode_set_lock_keys(false);
-      queue_->enqueue(Command::SET_LOCK_KEYS, payload, nullptr);
+      // Send key unlock command via queue (Commandtype 0x8F SET_LOCK_KEYS)
+      queue_->enqueue(CommandFactory::set_lock_keys(false), nullptr);
     }
 
     void StepperEngine::set_zero()
@@ -930,11 +912,8 @@ namespace esphome
 
       ESP_LOGD(TAG_ENGINE, "set_zero(): Sending SET_ZERO command to hardware");
 
-      // Send set zero command via queue (Command 0x92 SET_ZERO)
-      std::vector<uint8_t> payload; // No payload
-
       // Update position tracking only after hardware confirms
-      queue_->enqueue(Command::SET_ZERO, payload, [this](bool success, const std::vector<uint8_t> &)
+      queue_->enqueue(CommandFactory::set_zero(), [this](bool success, const Command &)
                       {
         if (!success) {
           ESP_LOGW(TAG_ENGINE, "set_zero: Hardware command failed");
@@ -1009,66 +988,66 @@ namespace esphome
     // Transport Callbacks (Layer 4 Integration)
     // ============================================================================
 
-    void StepperEngine::on_transport_response(Command cmd, const std::vector<uint8_t> &data)
+    void StepperEngine::on_transport_response(const Command &cmd)
     {
-      ESP_LOGD(TAG_ENGINE, "on_transport_response: cmd=0x%02X, %zu bytes", static_cast<uint8_t>(cmd), data.size());
+      ESP_LOGD(TAG_ENGINE, "on_transport_response: cmd=0x%02X, %zu bytes", static_cast<uint8_t>(cmd.command_type), cmd.response.size());
 
       // Decode response based on command type
-      switch (cmd)
+      switch (cmd.command_type)
       {
-      case Command::READ_ENCODER_CARRY:
+      case Commandtype::READ_ENCODER_CARRY:
       {
-        auto position = ServoCommandCodec::decode_encoder_carry(data);
+        auto position = CommandDecoder::read_encoder_carry(cmd, parent_);
         process_encoder_update(position);
         break;
       }
 
-      case Command::READ_CURRENT_SPEED:
+      case Commandtype::READ_CURRENT_SPEED:
       {
-        auto speed = ServoCommandCodec::decode_current_speed(data);
+        auto speed = CommandDecoder::read_current_speed(cmd);
         process_speed_update(speed);
         break;
       }
 
-      case Command::READ_MOTOR_STATUS:
+      case Commandtype::READ_MOTOR_STATUS:
       {
-        auto status = ServoCommandCodec::decode_motor_status(data);
-        bool enabled = (status.state != ServoCommandCodec::MotorStatus::STOP);
+        auto status = CommandDecoder::read_motor_status(cmd);
+        bool enabled = (status.state != CommandDecoder::MotorStatus::STOP);
         process_motor_status_update(enabled);
         break;
       }
 
-      case Command::READ_PROTECTION_STATUS:
+      case Commandtype::READ_PROTECTION_STATUS:
       {
-        auto ps = ServoCommandCodec::decode_protection_status(data);
+        auto ps = CommandDecoder::read_protection_status(cmd);
         process_protection_update(ps.protected_state ? 1 : 0);
         break;
       }
 
       default:
-        ESP_LOGD(TAG_ENGINE, "on_transport_response: Unhandled command 0x%02X", static_cast<uint8_t>(cmd));
+        ESP_LOGD(TAG_ENGINE, "on_transport_response: Unhandled command 0x%02X", static_cast<uint8_t>(cmd.command_type));
         break;
       }
     }
 
-    void StepperEngine::on_transport_error(Command cmd, ErrorCode error)
+    void StepperEngine::on_transport_error(const Command &cmd, ErrorCode error)
     {
-      ESP_LOGW(TAG_ENGINE, "on_transport_error: cmd=0x%02X, error=%d", static_cast<uint8_t>(cmd), static_cast<int>(error));
+      ESP_LOGW(TAG_ENGINE, "on_transport_error: cmd=0x%02X, error=%d", static_cast<uint8_t>(cmd.command_type), static_cast<int>(error));
 
       // Error handling based on severity
       if (error == ErrorCode::TIMEOUT)
       {
-        ESP_LOGW(TAG_ENGINE, "Command timeout for 0x%02X", static_cast<uint8_t>(cmd));
+        ESP_LOGW(TAG_ENGINE, "Command timeout for 0x%02X", static_cast<uint8_t>(cmd.command_type));
         // Timeouts are already handled by CommandQueue retry logic
         // Only transition to Error state if critical movement command times out
-        if (cmd == Command::MOVE_POSITION_MODE_2 || cmd == Command::EMERGENCY_STOP)
+        if (cmd.command_type == Commandtype::MOVE_POSITION_MODE_2 || cmd.command_type == Commandtype::EMERGENCY_STOP)
         {
           handle_error("Critical command timeout");
         }
       }
       else if (error == ErrorCode::DEVICE_ERROR)
       {
-        ESP_LOGE(TAG_ENGINE, "Device error for command 0x%02X, transitioning to Error state", static_cast<uint8_t>(cmd));
+        ESP_LOGE(TAG_ENGINE, "Device error for command 0x%02X, transitioning to Error state", static_cast<uint8_t>(cmd.command_type));
         transition_to(State::Error);
       }
     }
@@ -1181,12 +1160,12 @@ namespace esphome
 
     void StepperEngine::poll_encoder_position(std::function<void(const Position &)> callback)
     {
-      // Enqueue read command for encoder position (Command 0x30 READ_ENCODER_CARRY)
+      // Enqueue read command for encoder position (Commandtype 0x30 READ_ENCODER_CARRY)
       // Expected response: carry (int32_t) + value (uint16_t) = 6 bytes
-      queue_->enqueue(Command::READ_ENCODER_CARRY, {}, [this, callback](bool success, const std::vector<uint8_t> &data)
+      queue_->enqueue(CommandFactory::read_encoder_carry(), [this, callback](bool success, const Command &cmd)
                       {
-        if (success && data.size() >= 6) {
-          auto position = ServoCommandCodec::decode_encoder_carry(data, parent_);
+        if (success) {
+          auto position = CommandDecoder::read_encoder_carry(cmd, parent_);
           process_encoder_update(position);
         
 
@@ -1221,9 +1200,8 @@ namespace esphome
         transition_to(State::Idle);
       }
 
-      // Invoke callback if position changed significantly (threshold: 10 steps)
-      float delta = std::abs(parent_->current_pos_.get_steps() - old_position.get_steps());
-      if (delta >= 10.0f && position_callback_)
+      // Invoke callback if position changed (polled every 100ms, no threshold needed)
+      if (parent_->current_pos_.get_steps() != old_position.get_steps() && position_callback_)
       {
         position_callback_(parent_->current_pos_);
       }

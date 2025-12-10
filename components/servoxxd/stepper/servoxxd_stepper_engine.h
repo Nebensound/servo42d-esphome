@@ -275,7 +275,7 @@ namespace esphome
       /**
        * @brief Poll motor speed from hardware
        *
-       * Sends Command 0x32 to read real-time RPM.
+       * Sends Commandtype 0x32 to read real-time RPM.
        * Used for state transitions (e.g., Moving → Idle when speed reaches 0).
        */
       void poll_motor_speed();
@@ -283,7 +283,7 @@ namespace esphome
       /**
        * @brief Poll motor status (enabled/disabled)
        *
-       * Sends Command 0x3A to read motor enable state.
+       * Sends Commandtype 0x3A to read motor enable state.
        * Monitors sleep_when_done behavior.
        */
       void poll_motor_status();
@@ -291,7 +291,7 @@ namespace esphome
       /**
        * @brief Poll protection status
        *
-       * Sends Command 0x3E to read locked-rotor protection.
+       * Sends Commandtype 0x3E to read locked-rotor protection.
        * Non-zero value triggers Error state transition.
        */
       void poll_protection_status();
@@ -299,14 +299,14 @@ namespace esphome
       /**
        * @brief Poll homing status (only during Homing state)
        *
-       * Sends Command 0x3B to read homing progress.
+       * Sends Commandtype 0x3B to read homing progress.
        * Used to detect homing completion and transition back to Idle.
        * Only called when state_ == State::Homing.
        */
       void poll_homing_status();
 
       /**
-       * @brief Query encoder position (Command 0x30)
+       * @brief Query encoder position (Commandtype 0x30)
        *
        * Reads encoder carry + value, calculates absolute position.
        * @param callback Optional callback to receive position result
@@ -348,7 +348,7 @@ namespace esphome
       /**
        * @brief Register callback for position updates
        *
-       * Callback is invoked when position changes significantly (threshold: 10 steps).
+       * Callback is invoked whenever position changes (polled every 100ms).
        *
        * @param cb Callback function
        */
@@ -383,12 +383,12 @@ namespace esphome
        * @brief Process transport response
        *
        * Called by CommandQueue when a successful response is received from transport layer.
-       * Decodes response data using ServoCommandCodec and updates internal state.
+       * Decodes response data using CommandDecoder and updates internal state.
        *
        * @param cmd Command that generated this response
        * @param data Raw response data
        */
-      void on_transport_response(Command cmd, const std::vector<uint8_t> &data);
+      void on_transport_response(const Command &cmd);
 
       /**
        * @brief Process transport error
@@ -399,7 +399,7 @@ namespace esphome
        * @param cmd Command that failed
        * @param error Error code
        */
-      void on_transport_error(Command cmd, ErrorCode error);
+      void on_transport_error(const Command &cmd, ErrorCode error);
 
     private:
       // ============================================================================
@@ -407,7 +407,7 @@ namespace esphome
       // ============================================================================
 
       ServoXxd *parent_;    ///< Parent component (configuration, helpers)
-      CommandQueue *queue_; ///< Command queue for serial Modbus execution
+      CommandQueue *queue_; ///< Commandtype queue for serial Modbus execution
       State state_;         ///< Current state machine state
       bool emergency_flag_; ///< Emergency stop flag (requires restart)
 
@@ -444,7 +444,7 @@ namespace esphome
       /**
        * @brief Validate if command is allowed in current state
        *
-       * @param command_name Command name (for logging)
+       * @param command_name Commandtype name (for logging)
        * @param allowed_states List of allowed states
        * @return True if command is allowed
        */
