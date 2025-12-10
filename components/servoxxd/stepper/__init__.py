@@ -574,7 +574,7 @@ HOMING_SCHEMA = cv.Schema({
     cv.Optional(CONF_HOMING_SPEED, default="1 RPM"): cv.Any(cv.string, dict),  # Validated later with context
     cv.Optional(CONF_ENDSTOP_TRIGGER, default="HIGH"): cv.enum(ENDSTOP_TRIGGERS, upper=True),
     cv.Optional(CONF_HOMING_CURRENT): validate_current,  # Only for SENSORLESS
-    cv.Optional(CONF_AT_STARTUP, default=False): cv.boolean,
+    cv.Optional(CONF_AT_STARTUP, default=True): cv.boolean,
 })
 
 
