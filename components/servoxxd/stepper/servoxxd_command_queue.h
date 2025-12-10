@@ -186,6 +186,7 @@ namespace esphome
       std::deque<QueuedCommand> queue_; // FIFO queue (deque for efficient reordering)
       ITransport *transport_{nullptr};  // Transport layer interface
       uint32_t delay_until_ms_{0};      // Delay until this time before executing next command
+      std::function<void()> pending_callback_{nullptr}; // Callback to invoke after delay
 
       // Configuration
       uint32_t timeout_ms_{1000};                              // Default timeout (1 second)

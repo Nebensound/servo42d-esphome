@@ -13,18 +13,12 @@ esphome:
       - lambda: 'ESP_LOGI("test", "==========================================");'
       - delay: 3s
 
-      # SETUP: Clear any error states and prepare motor
-      - lambda: 'ESP_LOGI("test", "SETUP: Initializing motor hardware...");'
-      - lambda: 'ESP_LOGI("test", "  -> Clearing any error states...");'
-      - lambda: |-
-          id(test_motor)->release_protection();
-      - delay: 1s
-      - lambda: 'ESP_LOGI("test", "  -> Enabling motor...");'
-      - stepper.enable: test_motor
-      - delay: 1s
+      # SETUP: Motor should auto-recover from FAIL state during setup
+      - lambda: 'ESP_LOGI("test", "SETUP: Waiting for motor initialization...");'
+      - delay: 6s # Wait for release_protection + restart (4s delay) + configuration
 
-      - lambda: |-
-          ESP_LOGI("test", "  -> Motor ready at position: %d", (int)id(test_motor).current_position);
+      - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
+      - lambda: 'ESP_LOGI("test", "  -> Motor position: %d steps", (int)id(test_motor).current_position);'
       - lambda: 'ESP_LOGI("test", "  SETUP COMPLETE");'
       - delay: 2s
 
@@ -95,47 +89,13 @@ script:
       - delay: 1s
 
   # ========================================
-  # TEST 3: Homing with Endstop
+  # TEST 3: Move away and Home again
   # ========================================
-  - id: test_3_homing_endstop
+  - id: test_3_move_and_home
     mode: single
     then:
       - lambda: 'ESP_LOGI("test", "==========================================");'
-      - lambda: 'ESP_LOGI("test", "TEST 3: Homing with ENDSTOP");'
-      - lambda: 'ESP_LOGI("test", "==========================================");'
-      - delay: 1s
-
-      - lambda: |-
-          ESP_LOGI("test", "  -> Current position: %d steps", (int)id(test_motor).current_position);
-          ESP_LOGI("test", "  -> Starting ENDSTOP homing sequence...");
-          ESP_LOGI("test", "  -> Motor will move until endstop is triggered");
-
-      - stepper.home: test_motor
-
-      - lambda: 'ESP_LOGI("test", "  -> Homing command sent, waiting for completion...");'
-      - delay: 30s # Wait for homing to complete (max 30 seconds)
-
-      - lambda: |-
-          int final_pos = (int)id(test_motor).current_position;
-          ESP_LOGI("test", "  -> Homing completed");
-          ESP_LOGI("test", "  -> Final position: %d steps (should be 0)", final_pos);
-
-          if (final_pos == 0) {
-            ESP_LOGI("test", "  ✓ TEST 3 PASSED - Position correctly set to zero");
-          } else {
-            ESP_LOGW("test", "  ⚠ TEST 3 WARNING - Position is %d, expected 0", final_pos);
-          }
-
-      - delay: 2s
-
-  # ========================================
-  # TEST 4: Move away and Home again
-  # ========================================
-  - id: test_4_move_and_home
-    mode: single
-    then:
-      - lambda: 'ESP_LOGI("test", "==========================================");'
-      - lambda: 'ESP_LOGI("test", "TEST 4: Move Away and Return Home");'
+      - lambda: 'ESP_LOGI("test", "TEST 3: Move Away and Return Home");'
       - lambda: 'ESP_LOGI("test", "==========================================");'
       - delay: 1s
 
@@ -176,20 +136,16 @@ script:
     mode: single
     then:
       # Run TEST 1 (currently disabled)
-      #- script.execute: test_1_enable_disable
-      #- script.wait: test_1_enable_disable
+      - script.execute: test_1_enable_disable
+      - script.wait: test_1_enable_disable
 
       # Run TEST 2
-      #- script.execute: test_2_small_movement
-      #- script.wait: test_2_small_movement
+      - script.execute: test_2_small_movement
+      - script.wait: test_2_small_movement
 
       # Run TEST 3 - Homing
-      - script.execute: test_3_homing_endstop
-      - script.wait: test_3_homing_endstop
-
-      # Run TEST 4 - Move and Home
-      - script.execute: test_4_move_and_home
-      - script.wait: test_4_move_and_home
+      - script.execute: test_3_move_and_home
+      - script.wait: test_3_move_and_home
 
       # All tests complete
       - delay: 2s
@@ -281,9 +237,8 @@ stepper:
     homing:
       mode: ENDSTOP
       direction: CCW # Change to CW if your endstop is in the other direction
-      speed: 2 rpm
+      speed: 1 rps
       endstop_trigger: LOW # Change to HIGH if your endstop triggers on HIGH
-      at_startup: false # Don't auto-home at startup during tests
 
 # Sensors to monitor status
 sensor:
@@ -300,6 +255,14 @@ sensor:
       return id(test_motor).target_position;
     update_interval: 1s
     unit_of_measurement: "steps"
+
+# Text sensor for motor state
+text_sensor:
+  - platform: template
+    name: "Motor State"
+    lambda: |-
+      return id(test_motor)->get_state_string();
+    update_interval: 500ms
 
 # Simple control buttons
 button:
@@ -319,6 +282,32 @@ button:
       - stepper.enable: test_motor
       - lambda: 'ESP_LOGI("test", "Motor enabled");'
 
+  - platform: template
+    name: "Calibrate Encoder"
+    on_press:
+      - lambda: |-
+          ESP_LOGI("test", "========================================");
+          ESP_LOGI("test", "CALIBRATING ENCODER");
+          ESP_LOGI("test", "Motor will rotate 1-2 full turns");
+          ESP_LOGI("test", "This takes about 30 seconds...");
+          ESP_LOGI("test", "========================================");
+          id(test_motor)->calibrate();
+      - delay: 35s
+      - lambda: |-
+          ESP_LOGI("test", "Calibration should be complete");
+          ESP_LOGI("test", "Motor state: %s", id(test_motor)->get_state_string().c_str());
+          ESP_LOGI("test", "If still in Error, check motor connection!");
+
+  - platform: template
+    name: "Release Protection"
+    on_press:
+      - lambda: |-
+          ESP_LOGI("test", "Releasing motor protection state...");
+          id(test_motor)->release_protection();
+      - delay: 2s
+      - lambda: |-
+          ESP_LOGI("test", "Motor state: %s", id(test_motor)->get_state_string().c_str());
+
   # Manual test triggers
   - platform: template
     name: "Run Test 1"
@@ -333,12 +322,7 @@ button:
   - platform: template
     name: "Run Test 3 - Homing"
     on_press:
-      - script.execute: test_3_homing_endstop
-
-  - platform: template
-    name: "Run Test 4 - Move and Home"
-    on_press:
-      - script.execute: test_4_move_and_home
+      - script.execute: test_3_move_and_home
 
   - platform: template
     name: "Manual Home"

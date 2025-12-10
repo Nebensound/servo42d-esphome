@@ -4,7 +4,7 @@
 #include "esphome/core/hal.h"
 #include "servoxxd_command_queue.h"
 #include "servoxxd_commands.h"
-#include "servoxxd_command_codec.h"
+#include "servoxxd_command_decoder.h"
 #include "servoxxd_transport.h"
 #include "servoxxd_position.h"
 #include "servoxxd_speed.h"
@@ -56,13 +56,14 @@ namespace esphome
        */
       enum class State
       {
-        Disabled, // Motor disabled, no motion possible
-        Idle,     // Motor ready, waiting for commands
-        Moving,   // Position movement in progress (Position Mode only)
-        Running,  // Continuous rotation in progress (Speed Mode only)
-        Homing,   // Homing process in progress
-        Stopping, // Controlled stop in progress (with deceleration)
-        Error     // Error occurred (Protection, Modbus error, Timeout)
+        Disabled,    // Motor disabled, no motion possible
+        Idle,        // Motor ready, waiting for commands
+        Moving,      // Position movement in progress (Position Mode only)
+        Running,     // Continuous rotation in progress (Speed Mode only)
+        Homing,      // Homing process in progress
+        Calibrating, // Encoder calibration in progress
+        Stopping,    // Controlled stop in progress (with deceleration)
+        Error        // Error occurred (Protection, Modbus error, Timeout)
       };
 
       /**
@@ -320,6 +321,13 @@ namespace esphome
       static const char *state_to_string(State state);
 
       /**
+       * @brief Get current state as string
+       *
+       * @return Current state as string
+       */
+      std::string get_state_string() const { return state_to_string(state_); }
+
+      /**
        * @brief Get transport instance
        * @return Pointer to transport (may be nullptr if using CommandQueue's internal transport)
        */
@@ -365,32 +373,6 @@ namespace esphome
        * @param cb Callback function (parameter: true = enabled, false = disabled)
        */
       void set_motor_status_callback(std::function<void(bool)> cb);
-
-      // ============================================================================
-      // Transport Callbacks (Layer 4 Integration)
-      // ============================================================================
-
-      /**
-       * @brief Process transport response
-       *
-       * Called by CommandQueue when a successful response is received from transport layer.
-       * Decodes response data using CommandDecoder and updates internal state.
-       *
-       * @param cmd Command that generated this response
-       * @param data Raw response data
-       */
-      void on_transport_response(const Command &cmd);
-
-      /**
-       * @brief Process transport error
-       *
-       * Called by CommandQueue when transport layer reports an error (timeout, device error, etc.).
-       * Handles retries, logs errors, and transitions to Error state if necessary.
-       *
-       * @param cmd Command that failed
-       * @param error Error code
-       */
-      void on_transport_error(const Command &cmd, ErrorCode error);
 
     private:
       // ============================================================================
@@ -478,7 +460,7 @@ namespace esphome
        *
        * @param enabled Motor enabled (true/false)
        */
-      void process_motor_status_update(bool enabled);
+      void process_motor_status_update(CommandDecoder::MotorStatus status);
 
       /**
        * @brief Process protection status update

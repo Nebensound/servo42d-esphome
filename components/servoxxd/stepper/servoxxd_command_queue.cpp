@@ -38,11 +38,11 @@ namespace esphome
       // From spec: "Called each loop iteration to detect stuck commands"
       check_timeout();
 
-      // Opportunistic execution: start next command if idle
-      if (queue_.empty() || queue_.front().state != CommandState::EXECUTING)
-      {
-        execute_next();
-      }
+      // Always call execute_next() - it handles:
+      // 1. Pending callbacks waiting for delay_until_ms_
+      // 2. Starting next command when idle
+      // 3. Early exit if command is executing
+      execute_next();
     }
 
     void CommandQueue::enqueue(const Command &cmd, CommandCallback callback, Priority priority, uint32_t delay_before_next_ms, std::optional<bool> deduplicate)
@@ -95,21 +95,28 @@ namespace esphome
       ESP_LOGD(TAG, "Command 0x%02X completed (%zu bytes)",
                static_cast<uint8_t>(response_cmd.command_type), response_cmd.response.size());
 
-      // Invoke callback
-      if (current_cmd.callback)
-      {
-        current_cmd.callback(true, response_cmd);
-      }
-
       // Set delay for next command if specified
       if (current_cmd.delay_before_next_ms > 0)
       {
         delay_until_ms_ = millis() + current_cmd.delay_before_next_ms;
-        ESP_LOGD(TAG, "  Delaying next command for %ums", current_cmd.delay_before_next_ms);
+        ESP_LOGD(TAG, "  Waiting %ums before invoking callback and executing next command", current_cmd.delay_before_next_ms);
+        
+        // Store callback to invoke after delay
+        pending_callback_ = [callback = current_cmd.callback, response_cmd]() {
+          if (callback) {
+            callback(true, response_cmd);
+          }
+        };
       }
       else
       {
         delay_until_ms_ = 0;
+        
+        // Invoke callback immediately if no delay
+        if (current_cmd.callback)
+        {
+          current_cmd.callback(true, response_cmd);
+        }
       }
 
       // Remove completed command
@@ -209,6 +216,13 @@ namespace esphome
       if (delay_until_ms_ > 0 && millis() < delay_until_ms_)
       {
         return; // Still waiting for delay to elapse
+      }
+      
+      // Delay elapsed - invoke pending callback if present
+      if (pending_callback_)
+      {
+        pending_callback_();
+        pending_callback_ = nullptr;
       }
 
       // Prepare next command (sorts by effective time with age-based penalties)

@@ -379,15 +379,23 @@ namespace esphome
        * @brief Motor status states
        *
        * Hardware response values for READ_MOTOR_STATUS (0x3A):
-       * 0 = STOP       - Motor is stopped/idle
-       * 1 = MOVING     - Motor is in motion (positioning or speed mode)
-       * 2 = HOMING     - Motor is executing homing sequence
+       * 0 = FAIL       - Motor read fail
+       * 1 = STOP       - Motor is stopped
+       * 2 = SPEED_UP   - Motor is accelerating
+       * 3 = SPEED_DOWN - Motor is decelerating
+       * 4 = FULL_SPEED - Motor at full speed
+       * 5 = HOMING     - Motor is executing homing sequence
+       * 6 = CALIBRATING - Motor is calibrating
        */
       enum class MotorStatus : uint8_t
       {
-        STOP = 0,
-        MOVING = 1,
-        HOMING = 2
+        FAIL = 0,
+        STOP = 1,
+        SPEED_UP = 2,
+        SPEED_DOWN = 3,
+        FULL_SPEED = 4,
+        HOMING = 5,
+        CALIBRATING = 6
       };
 
       /**
@@ -396,36 +404,48 @@ namespace esphome
        * @details Commandtype::READ_MOTOR_STATUS (0x3A)
        * Function: 0x04 (Read Input Registers)
        * Register: 0x003A
-       * Response: 1 byte - [status] (0=STOP, 1=MOVING, 2=HOMING)
+       * Response: 1 byte - [status] (0=FAIL, 1=STOP, 2=SPEED_UP, 3=SPEED_DOWN, 4=FULL_SPEED, 5=HOMING, 6=CALIBRATING)
        *
        * Hardware Manual: "Read motor motion status"
-       * - STOP (0): Motor standstill, ready for commands
-       * - MOVING (1): Motor executing position or speed command
-       * - HOMING (2): Motor executing homing/zeroing sequence
+       * - FAIL (0): Motor read fail
+       * - STOP (1): Motor standstill, ready for commands
+       * - SPEED_UP (2): Motor accelerating
+       * - SPEED_DOWN (3): Motor decelerating
+       * - FULL_SPEED (4): Motor at constant full speed
+       * - HOMING (5): Motor executing homing/zeroing sequence
+       * - CALIBRATING (6): Motor calibrating
        *
        * @param cmd Command object with command_type=READ_MOTOR_STATUS and response data
-       * @return MotorStatus enum (STOP, MOVING, or HOMING)
+       * @return MotorStatus enum (FAIL, STOP, SPEED_UP, SPEED_DOWN, FULL_SPEED, HOMING, or CALIBRATING)
        */
       static MotorStatus read_motor_status(const Command &cmd)
       {
         if (!validate_command_type(cmd, Commandtype::READ_MOTOR_STATUS))
-          return MotorStatus::STOP;
+          return MotorStatus::FAIL;
 
         const auto &data = cmd.response;
         if (data.empty())
-          return MotorStatus::STOP;
+          return MotorStatus::FAIL;
 
         switch (data[0])
         {
         case 0:
-          return MotorStatus::STOP;
+          return MotorStatus::FAIL;
         case 1:
-          return MotorStatus::MOVING;
+          return MotorStatus::STOP;
         case 2:
+          return MotorStatus::SPEED_UP;
+        case 3:
+          return MotorStatus::SPEED_DOWN;
+        case 4:
+          return MotorStatus::FULL_SPEED;
+        case 5:
           return MotorStatus::HOMING;
+        case 6:
+          return MotorStatus::CALIBRATING;
         default:
           ESP_LOGW(TAG, "Unknown motor status value: %u", data[0]);
-          return MotorStatus::STOP;
+          return MotorStatus::FAIL;
         }
       }
 

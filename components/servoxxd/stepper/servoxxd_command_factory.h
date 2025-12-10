@@ -336,7 +336,7 @@ namespace esphome
        */
       inline Command set_nolimit_homing_params(const Position &reverse_angle = Position::from_ticks(2000),
                                                bool sensorless_enabled = false,
-                                               uint16_t home_current_ma = 100)
+                                               uint16_t home_current_ma = 1000)
       {
         std::vector<uint8_t> data;
         data.reserve(8);
@@ -348,14 +348,17 @@ namespace esphome
 
       /**
        * @brief Start homing sequence
-       * @return Command object with no payload
+       * @return Command object with 2-byte payload (0x0001 = start homing)
        *
        * @details Initiates the homing sequence using previously configured parameters.
-       * Payload: 0 bytes
+       * Payload: 2 bytes - [0x00][0x01]
        */
       inline Command go_home()
       {
-        return Command(Commandtype::GO_HOME);
+        std::vector<uint8_t> data;
+        data.reserve(2);
+        detail::encode_uint16_be(data, 0x0001); // 0x0001 = start homing
+        return Command(Commandtype::GO_HOME, data);
       }
 
       /**
@@ -451,15 +454,17 @@ namespace esphome
       }
 
       /**
-       * @brief Release protection state
-       * @return Command object with no payload
+       * @brief Release motor protection/error state
+       * @return Command object with 0x0001 payload
        *
-       * @details Clears motor protection/error state (e.g., stall detection).
-       * Payload: 0 bytes
+       * @details Clears motor protection/error state (e.g., stall detection, FAIL state).
+       * Payload: 2 bytes (0x0001)
        */
       inline Command release_protection()
       {
-        return Command(Commandtype::RELEASE_PROTECTION);
+        // Pack 0x0001 as two bytes (big-endian for Modbus)
+        std::vector<uint8_t> payload = {0x00, 0x01};
+        return Command(Commandtype::RELEASE_PROTECTION, payload);
       }
 
       /**

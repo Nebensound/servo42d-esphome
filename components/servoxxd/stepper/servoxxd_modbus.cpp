@@ -1,5 +1,5 @@
 #include "servoxxd_modbus.h"
-#include "servoxxd_command_codec.h"
+#include "servoxxd_command_decoder.h"
 #include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
 

@@ -2,7 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include <vector>
-#include "../../components/servoxxd/stepper/servoxxd_command_codec.h"
+#include "../../components/servoxxd/stepper/servoxxd_command_decoder.h"
 
 using namespace esphome::servoxxd;
 

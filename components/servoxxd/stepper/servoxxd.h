@@ -344,6 +344,14 @@ namespace esphome
       const HomingConfig &get_homing_config() const { return homing_; }
 
       /**
+       * @brief Get current state as string
+       *
+       * Returns the current state of the motor state machine:
+       * "Disabled", "Idle", "Moving", "Running", "Homing", "Calibrating", "Stopping", "Error"
+       */
+      std::string get_state_string() const;
+
+      /**
        * @brief Set homing mode (ENDSTOP, SENSORLESS, VIRTUAL)
        *
        * Called from Python/YAML. Destroys old union member and constructs new one.

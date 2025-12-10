@@ -75,7 +75,7 @@ namespace esphome
       STOP_POSITION_MODE_2 = 0xFF, /// Stop in Position Mode 2 (deceleration stop)
 
       // ==================== Special Commands (outside standard range) ====================
-      RELEASE_PROTECTION = 0x0E, /// Release protection state (clear error)
+      RELEASE_PROTECTION = 0x3D, /// Release protection state (clear error) - Register 0x003D
       RESTART = 0x41,            /// Restart/reset the motor controller
     };
 

@@ -1,4 +1,4 @@
-#include "servoxxd_command_codec.h"
+#include "servoxxd_command_decoder.h"
 
 namespace esphome
 {

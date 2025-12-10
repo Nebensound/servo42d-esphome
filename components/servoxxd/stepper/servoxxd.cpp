@@ -1,6 +1,6 @@
 #include "servoxxd.h"
 #include "servoxxd_stepper_engine.h"
-#include "servoxxd_command_codec.h"
+#include "servoxxd_command_decoder.h"
 #include "servoxxd_commands.h"
 
 namespace esphome
@@ -173,6 +173,15 @@ namespace esphome
       }
       if (this->engine_ != nullptr)
         this->engine_->home();
+    }
+
+    std::string ServoXxd::get_state_string() const
+    {
+      if (this->engine_ == nullptr)
+      {
+        return "Unknown";
+      }
+      return this->engine_->get_state_string();
     }
 
     void ServoXxd::stop(std::optional<Acceleration> decel)

@@ -1,6 +1,6 @@
 #include "servoxxd_stepper_engine.h"
 #include "servoxxd.h"
-#include "servoxxd_command_codec.h"
+#include "servoxxd_command_decoder.h"
 #include "servoxxd_commands.h"
 #include "servoxxd_command_factory.h"
 #include "servoxxd_transport.h"
@@ -75,52 +75,14 @@ namespace esphome
       // Expected response: status (uint8_t, 0=STOP, 1=MOVING, 2=HOMING) = 2 bytes (1 register)
       queue_->enqueue(CommandFactory::read_motor_status(), [this](bool success, const Command &cmd)
                       {
-        if (!success) {
+        if (!success)
+        {
           ESP_LOGW(TAG_ENGINE, "Failed to read motor status");
           return;
         }
 
         CommandDecoder::MotorStatus status = CommandDecoder::read_motor_status(cmd);
-        bool enabled = (status != CommandDecoder::MotorStatus::STOP);
-        process_motor_status_update(enabled);
-
-        // Handle homing state transitions (if currently in Homing state)
-        if (state_ == State::Homing) {
-          switch (status) {
-            case CommandDecoder::MotorStatus::HOMING:
-            {
-              ESP_LOGV(TAG_ENGINE, "Motor status: HOMING in progress");
-              // Continue waiting
-              break;
-            }
-
-            case CommandDecoder::MotorStatus::STOP:
-            {
-              ESP_LOGI(TAG_ENGINE, "Homing COMPLETED successfully (motor stopped)");
-
-              // Set position to zero after successful homing
-              Position zero_pos = Position::from_steps(0, parent_);
-              parent_->set_current_pos(zero_pos);
-
-              // Transition back to Idle
-              transition_to(State::Idle);
-              break;
-            }
-
-            case CommandDecoder::MotorStatus::MOVING:
-            {
-              // This should not happen during homing - likely an error
-              ESP_LOGW(TAG_ENGINE, "Unexpected motor state MOVING during homing");
-              break;
-            }
-
-            default:
-            {
-              ESP_LOGW(TAG_ENGINE, "Unknown motor status during homing");
-              break;
-            }
-          }
-        } }, Priority::BACKGROUND);
+        process_motor_status_update(status); }, Priority::BACKGROUND);
     }
 
     void StepperEngine::poll_protection_status()
@@ -147,10 +109,15 @@ namespace esphome
         return;
       }
 
-      ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor restart...");
+      ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor initialization sequence...");
 
-      // 0. Restart motor to ensure clean state (Commandtype 0x41 RESTART)
-      // Motor needs ~3s to reboot before accepting configuration commands
+      // 0. Clear any error/protection states first
+      // This ensures motor is not stuck in FAIL state from previous sessions
+      // Temporarily allow release_protection in Disabled state for setup
+      release_protection();
+
+      // 1. Restart motor to ensure clean state (Commandtype 0x41 RESTART)
+      // Motor needs ~3-4s to reboot before accepting configuration commands
       restart();
 
       ESP_LOGCONFIG(TAG_ENGINE, "  Motor restart initiated, configuration commands enqueued...");
@@ -396,17 +363,16 @@ namespace esphome
                             return;
                           }
 
-                          auto status = CommandDecoder::read_motor_status(cmd);
+                          CommandDecoder::MotorStatus status = CommandDecoder::read_motor_status(cmd);
 
                           // Only configure if motor is not currently homing
                           if (status != CommandDecoder::MotorStatus::HOMING)
                           {
                             ESP_LOGD(TAG_ENGINE, "Motor not homing, configuring 0_Mode now");
-                            queue_->enqueue(CommandFactory::set_zero_mode(
-                                                mode,
-                                                CommandFactory::ZeroModeTask::SET,
-                                                homing.level,
-                                                hw_direction),
+                            queue_->enqueue(CommandFactory::set_zero_mode(mode,
+                                                                          CommandFactory::ZeroModeTask::SET,
+                                                                          homing.level,
+                                                                          hw_direction),
                                             [this](bool success, const Command &)
                                             {
                                               if (success)
@@ -513,14 +479,14 @@ namespace esphome
 
     void StepperEngine::stop(std::optional<Acceleration> decel)
     {
-      // Validation: allowed in Moving, Running, Homing, Stopping states
+      // Validation: allowed in Moving, Running, Homing, Calibrating, Stopping states
       if (state_ == State::Idle)
       {
         ESP_LOGD(TAG_ENGINE, "stop(): Already stopped, no-op");
         return;
       }
 
-      if (!validate_command("stop", {State::Moving, State::Running, State::Homing, State::Stopping}))
+      if (!validate_command("stop", {State::Moving, State::Running, State::Homing, State::Calibrating, State::Stopping}))
       {
         return;
       }
@@ -677,8 +643,8 @@ namespace esphome
                           }
                           else
                           {
-                            ESP_LOGW(TAG_ENGINE, "✗ Failed to start ENDSTOP homing");
                             transition_to(State::Error);
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to start ENDSTOP homing");
                           }
                         });
         break;
@@ -778,7 +744,8 @@ namespace esphome
     {
       // During motion: buffer the command
       if (state_ == State::Moving || state_ == State::Running ||
-          state_ == State::Homing || state_ == State::Stopping)
+          state_ == State::Homing || state_ == State::Calibrating ||
+          state_ == State::Stopping)
       {
         ESP_LOGD(TAG_ENGINE, "disable(): Motor moving, buffering disable command");
         disable_pending_ = true;
@@ -806,22 +773,28 @@ namespace esphome
         return;
       }
 
-      if (!protection_triggered_ && !emergency_flag_)
-      {
-        ESP_LOGD(TAG_ENGINE, "release_protection(): No protection/emergency active, no-op");
-        return;
-      }
+      ESP_LOGD(TAG_ENGINE, "release_protection(): Attempting to clear error state");
 
-      ESP_LOGD(TAG_ENGINE, "release_protection(): Clearing protection/emergency");
-
+      // Always clear internal flags
       protection_triggered_ = false;
       emergency_flag_ = false;
 
-      // Send release protection command via queue (Commandtype 0x0E RELEASE_PROTECTION)
-      queue_->enqueue(CommandFactory::release_protection(), nullptr);
+      // Send release protection command via queue (Commandtype 0x3D RELEASE_PROTECTION)
+      queue_->enqueue(CommandFactory::release_protection(), [this](bool success, const Command &)
+                      {
+                        if (success)
+                        {
+                          ESP_LOGD(TAG_ENGINE, "✓ Release protection command sent");
+                        }
+                        else
+                        {
+                          ESP_LOGW(TAG_ENGINE, "✗ Failed to send release protection");
+                        } });
 
+      // Transition from Error to Idle to allow re-enabling
       if (state_ == State::Error)
       {
+        ESP_LOGD(TAG_ENGINE, "  Transitioning from Error to Idle");
         transition_to(State::Idle);
       }
     }
@@ -851,10 +824,27 @@ namespace esphome
 
     void StepperEngine::calibrate()
     {
+      if (!validate_command("calibrate", {State::Idle, State::Disabled}))
+      {
+        return;
+      }
+
       ESP_LOGD(TAG_ENGINE, "calibrate(): Starting encoder calibration");
 
       // Send calibrate encoder command via queue (Commandtype 0x80 CALIBRATE_ENCODER)
-      queue_->enqueue(CommandFactory::calibrate_encoder(), nullptr);
+      queue_->enqueue(CommandFactory::calibrate_encoder(), [this](bool success, const Command &)
+                      {
+                        if (success)
+                        {
+                          ESP_LOGD(TAG_ENGINE, "✓ Calibration command sent");
+                        }
+                        else
+                        {
+                          ESP_LOGW(TAG_ENGINE, "✗ Failed to start calibration");
+                          transition_to(State::Error);
+                        } });
+
+      transition_to(State::Calibrating);
     }
 
     void StepperEngine::key_lock()
@@ -904,7 +894,8 @@ namespace esphome
     bool StepperEngine::is_moving() const
     {
       return state_ == State::Moving || state_ == State::Running ||
-             state_ == State::Homing || state_ == State::Stopping;
+             state_ == State::Homing || state_ == State::Calibrating ||
+             state_ == State::Stopping;
     }
 
     const char *StepperEngine::state_to_string(State state)
@@ -921,6 +912,8 @@ namespace esphome
         return "Running";
       case State::Homing:
         return "Homing";
+      case State::Calibrating:
+        return "Calibrating";
       case State::Stopping:
         return "Stopping";
       case State::Error:
@@ -955,72 +948,8 @@ namespace esphome
     }
 
     // ============================================================================
-    // Transport Callbacks (Layer 4 Integration)
+    // Transport Access
     // ============================================================================
-
-    void StepperEngine::on_transport_response(const Command &cmd)
-    {
-      ESP_LOGD(TAG_ENGINE, "on_transport_response: cmd=0x%02X, %zu bytes", static_cast<uint8_t>(cmd.command_type), cmd.response.size());
-
-      // Decode response based on command type
-      switch (cmd.command_type)
-      {
-      case Commandtype::READ_ENCODER_CARRY:
-      {
-        auto position = CommandDecoder::read_encoder_carry(cmd, parent_);
-        process_encoder_update(position);
-        break;
-      }
-
-      case Commandtype::READ_CURRENT_SPEED:
-      {
-        auto speed = CommandDecoder::read_current_speed(cmd);
-        process_speed_update(speed);
-        break;
-      }
-
-      case Commandtype::READ_MOTOR_STATUS:
-      {
-        auto status = CommandDecoder::read_motor_status(cmd);
-        bool enabled = (status != CommandDecoder::MotorStatus::STOP);
-        process_motor_status_update(enabled);
-        break;
-      }
-
-      case Commandtype::READ_PROTECTION_STATUS:
-      {
-        auto ps = CommandDecoder::read_protection_status(cmd);
-        process_protection_update(ps.protected_state ? 1 : 0);
-        break;
-      }
-
-      default:
-        ESP_LOGD(TAG_ENGINE, "on_transport_response: Unhandled command 0x%02X", static_cast<uint8_t>(cmd.command_type));
-        break;
-      }
-    }
-
-    void StepperEngine::on_transport_error(const Command &cmd, ErrorCode error)
-    {
-      ESP_LOGW(TAG_ENGINE, "on_transport_error: cmd=0x%02X, error=%d", static_cast<uint8_t>(cmd.command_type), static_cast<int>(error));
-
-      // Error handling based on severity
-      if (error == ErrorCode::TIMEOUT)
-      {
-        ESP_LOGW(TAG_ENGINE, "Command timeout for 0x%02X", static_cast<uint8_t>(cmd.command_type));
-        // Timeouts are already handled by CommandQueue retry logic
-        // Only transition to Error state if critical movement command times out
-        if (cmd.command_type == Commandtype::MOVE_POSITION_MODE_2 || cmd.command_type == Commandtype::EMERGENCY_STOP)
-        {
-          handle_error("Critical command timeout");
-        }
-      }
-      else if (error == ErrorCode::DEVICE_ERROR)
-      {
-        ESP_LOGE(TAG_ENGINE, "Device error for command 0x%02X, transitioning to Error state", static_cast<uint8_t>(cmd.command_type));
-        transition_to(State::Error);
-      }
-    }
 
     ITransport *StepperEngine::get_transport() const
     {
@@ -1094,27 +1023,28 @@ namespace esphome
 
       switch (state_)
       {
-      case State::Moving:
-        // Maximum movement duration: 30 seconds
-        if (state_duration > 30000)
-        {
-          ESP_LOGE(TAG_ENGINE, "Movement timeout after %u ms", state_duration);
-          handle_error("Movement timeout");
-        }
-        break;
 
       case State::Homing:
-        // Maximum homing duration: 60 seconds
-        if (state_duration > 60000)
+        // Maximum homing duration: 600 seconds
+        if (state_duration > 600000)
         {
           ESP_LOGE(TAG_ENGINE, "Homing timeout after %u ms", state_duration);
           handle_error("Homing timeout");
         }
         break;
 
+      case State::Calibrating:
+        // Maximum calibration duration: 120 seconds
+        if (state_duration > 120000)
+        {
+          ESP_LOGE(TAG_ENGINE, "Calibration timeout after %u ms", state_duration);
+          handle_error("Calibration timeout");
+        }
+        break;
+
       case State::Stopping:
-        // Maximum stop duration: 5 seconds
-        if (state_duration > 5000)
+        // Maximum stop duration: 50 seconds
+        if (state_duration > 50000)
         {
           ESP_LOGE(TAG_ENGINE, "Stopping timeout after %u ms", state_duration);
           // Force transition to Idle even if not at standstill
@@ -1196,15 +1126,76 @@ namespace esphome
       }
     }
 
-    void StepperEngine::process_motor_status_update(bool enabled)
+    void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus status)
     {
+      // Track motor enable state for callback
+      bool enabled = (status != CommandDecoder::MotorStatus::STOP && status != CommandDecoder::MotorStatus::FAIL);
       bool old_enabled = motor_enabled_;
       motor_enabled_ = enabled;
 
-      // Invoke callback if status changed
+      // Notify parent if motor enable state changed
       if (enabled != old_enabled && motor_status_callback_)
       {
         motor_status_callback_(enabled);
+      }
+
+      // Log detailed status for debugging and handle state transitions
+      switch (status)
+      {
+      case CommandDecoder::MotorStatus::FAIL:
+        // Only transition to Error if not already in Error state
+        // This prevents spamming the logs and clearing the queue repeatedly
+        if (state_ != State::Error)
+        {
+          ESP_LOGW(TAG_ENGINE, "Motor status: FAIL - Hardware reports failure");
+          ESP_LOGW(TAG_ENGINE, "  Possible causes: locked rotor, motor not connected, calibration needed");
+          transition_to(State::Error);
+        }
+        break;
+      case CommandDecoder::MotorStatus::STOP:
+        // Only transition if currently in a motion state
+        if (state_ == State::Moving || state_ == State::Running ||
+            state_ == State::Homing || state_ == State::Calibrating)
+        {
+          transition_to(State::Stopping);
+          ESP_LOGV(TAG_ENGINE, "Motor status: STOP");
+        }
+        break;
+      case CommandDecoder::MotorStatus::SPEED_UP:
+        if (state_ != State::Moving && state_ != State::Running)
+        {
+          transition_to(State::Moving);
+        }
+        ESP_LOGV(TAG_ENGINE, "Motor status: SPEED_UP");
+        break;
+      case CommandDecoder::MotorStatus::SPEED_DOWN:
+        if (state_ != State::Moving && state_ != State::Running)
+        {
+          transition_to(State::Moving);
+        }
+        ESP_LOGV(TAG_ENGINE, "Motor status: SPEED_DOWN");
+        break;
+      case CommandDecoder::MotorStatus::FULL_SPEED:
+        if (state_ != State::Moving && state_ != State::Running)
+        {
+          transition_to(State::Moving);
+        }
+        ESP_LOGV(TAG_ENGINE, "Motor status: FULL_SPEED");
+        break;
+      case CommandDecoder::MotorStatus::HOMING:
+        if (state_ != State::Homing)
+        {
+          transition_to(State::Homing);
+        }
+        ESP_LOGV(TAG_ENGINE, "Motor status: HOMING");
+        break;
+      case CommandDecoder::MotorStatus::CALIBRATING:
+        if (state_ != State::Calibrating)
+        {
+          transition_to(State::Calibrating);
+        }
+        ESP_LOGV(TAG_ENGINE, "Motor status: CALIBRATING");
+        break;
       }
     }
 
