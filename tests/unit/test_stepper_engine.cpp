@@ -82,7 +82,7 @@ struct TestStats
 
 struct QueuedResponse
 {
-  Command cmd;
+  Commandtype cmd;
   std::vector<uint8_t> data;
   uint32_t deliver_at_ms;
 };
@@ -95,7 +95,7 @@ public:
   std::function<void(Command, ErrorCode)> error_callback_;
 
   // Track last command
-  Command last_command_;
+  Commandtype last_command_;
   std::vector<uint8_t> last_data_;
 
   // Simulated hardware state
@@ -104,17 +104,17 @@ public:
   uint8_t hw_motor_status_ = 0; // 0=stopped, 1=running
   uint8_t hw_protection_ = 0;   // 0=ok, >0=error
 
-  void set_response_callback(std::function<void(Command, const std::vector<uint8_t> &)> cb) override
+  void set_response_callback(std::function<void(Commandtype, const std::vector<uint8_t> &)> cb) override
   {
     response_callback_ = cb;
   }
 
-  void set_error_callback(std::function<void(Command, ErrorCode)> cb) override
+  void set_error_callback(std::function<void(Commandtype, ErrorCode)> cb) override
   {
     error_callback_ = cb;
   }
 
-  Result execute_command(Command cmd, const std::vector<uint8_t> &data) override
+  Result execute_command(Commandtype cmd, const std::vector<uint8_t> &data) override
   {
     last_command_ = cmd;
     last_data_ = data;
@@ -124,7 +124,7 @@ public:
     return {true, ErrorCode::OK};
   }
 
-  Result read_command(Command cmd) override
+  Result read_command(Commandtype cmd) override
   {
     last_command_ = cmd;
     last_data_.clear();
@@ -134,31 +134,31 @@ public:
 
     switch (cmd)
     {
-    case Command::READ_ENCODER_CARRY:
+    case Commandtype::READ_ENCODER_CARRY:
       // Upper 16 bits of encoder
       response_data = {
           static_cast<uint8_t>((hw_encoder_ >> 24) & 0xFF),
           static_cast<uint8_t>((hw_encoder_ >> 16) & 0xFF)};
       break;
 
-    case Command::READ_ENCODER_ADDITION:
+    case Commandtype::READ_ENCODER_ADDITION:
       // Lower 16 bits of encoder
       response_data = {
           static_cast<uint8_t>((hw_encoder_ >> 8) & 0xFF),
           static_cast<uint8_t>(hw_encoder_ & 0xFF)};
       break;
 
-    case Command::READ_CURRENT_SPEED:
+    case Commandtype::READ_CURRENT_SPEED:
       response_data = {
           static_cast<uint8_t>((hw_speed_rpm_ >> 8) & 0xFF),
           static_cast<uint8_t>(hw_speed_rpm_ & 0xFF)};
       break;
 
-    case Command::READ_MOTOR_STATUS:
+    case Commandtype::READ_MOTOR_STATUS:
       response_data = {hw_motor_status_};
       break;
 
-    case Command::READ_PROTECTION_STATUS:
+    case Commandtype::READ_PROTECTION_STATUS:
       response_data = {hw_protection_};
       break;
 
@@ -191,12 +191,12 @@ public:
     }
   }
 
-  void queue_response(Command cmd, const std::vector<uint8_t> &data, uint32_t delay_ms)
+  void queue_response(Commandtype cmd, const std::vector<uint8_t> &data, uint32_t delay_ms)
   {
     response_queue_.push({cmd, data, test_millis_value + delay_ms});
   }
 
-  void simulate_error(Command cmd, ErrorCode error)
+  void simulate_error(Commandtype cmd, ErrorCode error)
   {
     if (error_callback_)
     {
@@ -237,7 +237,7 @@ void test_01_initial_state(TestStats &stats)
   engine.enable();
   process_updates(transport, engine);
 
-  stats.check(transport.last_command_ == Command::ENABLE_MOTOR, "enable() sends ENABLE_MOTOR");
+  stats.check(transport.last_command_ == Commandtype::ENABLE_MOTOR, "enable() sends ENABLE_MOTOR");
   stats.check(engine.get_state() == State::Idle, "State transitions to Idle after enable");
 
   // Disable motor
@@ -269,7 +269,7 @@ void test_02_move_to_basic(TestStats &stats)
 
   process_updates(transport, engine);
 
-  stats.check(transport.last_command_ == Command::MOVE_POSITION_MODE_2, "move_to() sends MOVE_POSITION_MODE_2");
+  stats.check(transport.last_command_ == Commandtype::MOVE_POSITION_MODE_2, "move_to() sends MOVE_POSITION_MODE_2");
   stats.check(engine.get_state() == State::Moving, "State transitions to Moving");
 
   // Simulate arrival at target (requires multiple poll cycles)
@@ -304,7 +304,7 @@ void test_03_move_to_with_params(TestStats &stats)
   engine.move_to(target, speed, accel);
   process_updates(transport, engine);
 
-  stats.check(transport.last_command_ == Command::MOVE_POSITION_MODE_2, "move_to() with params sends command");
+  stats.check(transport.last_command_ == Commandtype::MOVE_POSITION_MODE_2, "move_to() with params sends command");
   stats.check(engine.get_state() == State::Moving, "State transitions to Moving");
 
   // move_to with only speed (accel = std::nullopt)
@@ -324,7 +324,7 @@ void test_03_move_to_with_params(TestStats &stats)
   transport.hw_speed_rpm_ = 100;
   process_updates(transport, engine);
 
-  stats.check(transport.last_command_ == Command::MOVE_POSITION_MODE_2, "move_to() with speed only works");
+  stats.check(transport.last_command_ == Commandtype::MOVE_POSITION_MODE_2, "move_to() with speed only works");
 }
 
 void test_04_stop_command(TestStats &stats)
@@ -348,7 +348,7 @@ void test_04_stop_command(TestStats &stats)
   stats.check(engine.get_state() == State::Moving, "Motor is moving");
 
   // Stop
-  Command cmd_before_stop = transport.last_command_;
+  Commandtype cmd_before_stop = transport.last_command_;
   engine.stop();
   transport.hw_speed_rpm_ = 0;
   transport.hw_motor_status_ = 0;
@@ -466,13 +466,13 @@ void test_08_state_validation(TestStats &stats)
   process_updates(transport, engine);
 
   stats.check(engine.get_state() == initial_state, "move_to() rejected while Disabled");
-  stats.check(transport.last_command_ != Command::MOVE_POSITION_MODE_2, "No movement command sent");
+  stats.check(transport.last_command_ != Commandtype::MOVE_POSITION_MODE_2, "No movement command sent");
 
   // Enable and verify command is now accepted
   engine.enable();
   process_updates(transport, engine);
 
-  Command cmd_after_enable = transport.last_command_;
+  Commandtype cmd_after_enable = transport.last_command_;
 
   engine.move_to(target);
   transport.hw_speed_rpm_ = 100;

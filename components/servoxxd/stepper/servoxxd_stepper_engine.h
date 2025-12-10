@@ -297,15 +297,6 @@ namespace esphome
       void poll_protection_status();
 
       /**
-       * @brief Poll homing status (only during Homing state)
-       *
-       * Sends Commandtype 0x3B to read homing progress.
-       * Used to detect homing completion and transition back to Idle.
-       * Only called when state_ == State::Homing.
-       */
-      void poll_homing_status();
-
-      /**
        * @brief Query encoder position (Commandtype 0x30)
        *
        * Reads encoder carry + value, calculates absolute position.

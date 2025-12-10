@@ -116,9 +116,9 @@ enum class State {
 ### Events and Processing
 
 - **Commands from Layer 1:** move_to(), home(), stop(), run_continuous(), enable(), disable(), emergency_stop()
-- **StepperEngine (Layer 2):** Processes commands, manages state machine, encodes data via ServoCommandCodec, decides transport commands
+- **StepperEngine (Layer 2):** Processes commands, manages state machine, encodes data via CommandDecoder, decides transport commands
 - **CommandQueue (Layer 3):** Serializes execution, manages timeouts
-- **Transport Responses (Layer 4):** Raw response bytes processed by Layer 2 using ServoCommandCodec decoders
+- **Transport Responses (Layer 4):** Raw response bytes processed by Layer 2 using CommandDecoder decoders
 - **Polling Events:** Regular queries trigger transitions (e.g. Moving → Idle when target reached)
 - **Error Events:** Protection, timeout, transport errors trigger Error state
 
@@ -181,8 +181,8 @@ ServoXxd::loop()           → engine_->update()
 - StepperEngine holds and manages the CommandQueue instance
 - `update()` calls `queue->execute_next()`, checks timeouts, processes responses/errors
 - Transport callbacks delegated to `engine->on_transport_response()` / `on_transport_error()`
-- Layer 2 uses `ServoCommandCodec` to encode movement parameters before passing to transport
-- Layer 2 uses `ServoCommandCodec` to decode responses from transport (encoder, speed, status, etc.)
+- Layer 2 uses `CommandDecoder` to encode movement parameters before passing to transport
+- Layer 2 uses `CommandDecoder` to decode responses from transport (encoder, speed, status, etc.)
 
 ## Benefits
 

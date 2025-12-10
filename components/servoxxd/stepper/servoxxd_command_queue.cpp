@@ -18,13 +18,13 @@ namespace esphome
       if (transport_)
       {
         transport_->set_response_callback(
-            [this](Command cmd, const std::vector<uint8_t> &data)
+            [this](const Command &cmd)
             {
-              this->on_response(cmd, data);
+              this->on_response(cmd);
             });
 
         transport_->set_error_callback(
-            [this](Command cmd, ErrorCode error)
+            [this](const Command &cmd, ErrorCode error)
             {
               this->on_error(cmd, error);
             });
@@ -45,7 +45,7 @@ namespace esphome
       }
     }
 
-    void CommandQueue::enqueue(Command cmd, const std::vector<uint8_t> &data, CommandCallback callback, Priority priority, uint32_t delay_before_next_ms, std::optional<bool> deduplicate)
+    void CommandQueue::enqueue(const Command &cmd, CommandCallback callback, Priority priority, uint32_t delay_before_next_ms, std::optional<bool> deduplicate)
     {
       // Determine deduplication: Auto-decision based on priority if not specified
       bool should_deduplicate = deduplicate.value_or(priority == Priority::BACKGROUND || priority == Priority::IDLE);
@@ -57,7 +57,7 @@ namespace esphome
         if (existing != queue_.end())
         {
           // Update existing command with new data
-          existing->data = data;
+          existing->command.payload = cmd.payload;
           existing->priority = std::min(priority, existing->priority);
           existing->delay_before_next_ms = delay_before_next_ms;
           existing->callback = callback;
@@ -65,40 +65,40 @@ namespace esphome
         }
       }
 
-      QueuedCommand queued_cmd(cmd, data, callback, priority, delay_before_next_ms, millis());
+      QueuedCommand queued_cmd(cmd, callback, priority, delay_before_next_ms, millis());
 
       ESP_LOGD(TAG, "Enqueuing command 0x%02X (prio=%d, queue size: %zu)",
-               static_cast<uint8_t>(cmd), static_cast<uint8_t>(priority), queue_.size());
+               static_cast<uint8_t>(cmd.command_type), static_cast<uint8_t>(priority), queue_.size());
       queue_.push_back(queued_cmd);
 
       // Try to execute immediately if idle
       execute_next();
     }
 
-    void CommandQueue::on_response(Command cmd, const std::vector<uint8_t> &data)
+    void CommandQueue::on_response(const Command &response_cmd)
     {
       if (queue_.empty() || queue_.front().state != CommandState::EXECUTING)
       {
         ESP_LOGW(TAG, "Unexpected response for command 0x%02X (no executing command)",
-                 static_cast<uint8_t>(cmd));
+                 static_cast<uint8_t>(response_cmd.command_type));
         return;
       }
 
       auto &current_cmd = queue_.front();
-      if (current_cmd.command != cmd)
+      if (current_cmd.command.command_type != response_cmd.command_type)
       {
         ESP_LOGW(TAG, "Response mismatch: expected 0x%02X, got 0x%02X",
-                 static_cast<uint8_t>(current_cmd.command), static_cast<uint8_t>(cmd));
+                 static_cast<uint8_t>(current_cmd.command.command_type), static_cast<uint8_t>(response_cmd.command_type));
         return;
       }
 
       ESP_LOGD(TAG, "Command 0x%02X completed (%zu bytes)",
-               static_cast<uint8_t>(cmd), data.size());
+               static_cast<uint8_t>(response_cmd.command_type), response_cmd.response.size());
 
       // Invoke callback
       if (current_cmd.callback)
       {
-        current_cmd.callback(true, data);
+        current_cmd.callback(true, response_cmd);
       }
 
       // Set delay for next command if specified
@@ -119,30 +119,31 @@ namespace esphome
       execute_next();
     }
 
-    void CommandQueue::on_error(Command cmd, ErrorCode error)
+    void CommandQueue::on_error(const Command &error_cmd, ErrorCode error)
     {
       if (queue_.empty() || queue_.front().state != CommandState::EXECUTING)
       {
         ESP_LOGW(TAG, "Unexpected error for command 0x%02X (no executing command)",
-                 static_cast<uint8_t>(cmd));
+                 static_cast<uint8_t>(error_cmd.command_type));
         return;
       }
 
       auto &current_cmd = queue_.front();
-      if (current_cmd.command != cmd)
+      if (current_cmd.command.command_type != error_cmd.command_type)
       {
         ESP_LOGW(TAG, "Error mismatch: expected 0x%02X, got 0x%02X",
-                 static_cast<uint8_t>(current_cmd.command), static_cast<uint8_t>(cmd));
+                 static_cast<uint8_t>(current_cmd.command.command_type), static_cast<uint8_t>(error_cmd.command_type));
         return;
       }
 
       ESP_LOGE(TAG, "Command 0x%02X failed: error %d",
-               static_cast<uint8_t>(cmd), static_cast<int>(error));
+               static_cast<uint8_t>(error_cmd.command_type), static_cast<int>(error));
 
       // Invoke callback with failure
       if (current_cmd.callback)
       {
-        current_cmd.callback(false, std::vector<uint8_t>{});
+        Command empty_cmd(error_cmd.command_type);
+        current_cmd.callback(false, empty_cmd);
       }
 
       // Remove failed command
@@ -170,14 +171,19 @@ namespace esphome
       {
         if (queue_[i].callback)
         {
-          queue_[i].callback(false, std::vector<uint8_t>{});
+          Command empty_cmd(queue_[i].command.command_type);
+          queue_[i].callback(false, empty_cmd);
         }
       }
 
       // Remove pending commands (keep executing command if present)
+      // Note: Can't use erase() or resize() because Command has const members
       if (start_index > 0)
       {
-        queue_.erase(queue_.begin() + 1, queue_.end());
+        // Keep only the executing command (first element) - rebuild queue
+        std::deque<QueuedCommand> new_queue;
+        new_queue.push_back(queue_[0]);
+        queue_ = std::move(new_queue);
       }
       else
       {
@@ -196,7 +202,7 @@ namespace esphome
       // From spec: "Single-flight guarantee - only one EXECUTING command at a time"
       if (queue_.front().state == CommandState::EXECUTING)
       {
-        return; // Command already executing
+        return; // Commandtype already executing
       }
 
       // Check if we need to delay before executing next command
@@ -214,11 +220,11 @@ namespace esphome
       cmd.state = CommandState::EXECUTING;
       cmd.sent_time = millis();
 
-      // Send via transport (transport handles read vs write based on Command enum)
-      transport_->execute_command(cmd.command, cmd.data);
+      // Send via transport - execute_command handles both read (0x04) and write (0x06/0x10)
+      transport_->execute_command(cmd.command);
 
       ESP_LOGD(TAG, "Executing command 0x%02X (prio=%d, age=%ums, queue depth: %zu)",
-               static_cast<uint8_t>(cmd.command), static_cast<uint8_t>(cmd.priority),
+               static_cast<uint8_t>(cmd.command.command_type), static_cast<uint8_t>(cmd.priority),
                millis() - cmd.enqueued_time, queue_.size());
     }
 
@@ -246,21 +252,31 @@ namespace esphome
       // Move best command to front if not already there
       if (best != queue_.begin())
       {
-        auto cmd_copy = *best;
-        queue_.erase(best);
-        queue_.push_front(cmd_copy);
+        // Can't use erase() with const members - rebuild queue with best element first
+        auto index = std::distance(queue_.begin(), best);
+        std::deque<QueuedCommand> new_queue;
+        
+        new_queue.push_back(*best); // Best command first
+        for (size_t i = 0; i < queue_.size(); ++i)
+        {
+          if (i != static_cast<size_t>(index))
+          {
+            new_queue.push_back(queue_[i]);
+          }
+        }
+        queue_ = std::move(new_queue);
 
         // Log if non-FIFO reordering happened
-        if (cmd_copy.priority == Priority::CRITICAL)
+        if (queue_[0].priority == Priority::CRITICAL)
         {
           ESP_LOGW(TAG, "Moving CRITICAL command 0x%02X to front (unexpected position)",
-                   static_cast<uint8_t>(cmd_copy.command));
+                   static_cast<uint8_t>(queue_[0].command.command_type));
         }
-        else if (cmd_copy.priority == Priority::BACKGROUND)
+        else if (queue_[0].priority == Priority::BACKGROUND)
         {
           ESP_LOGD(TAG, "Prioritizing BACKGROUND command 0x%02X (age=%ums, effective=%u)",
-                   static_cast<uint8_t>(cmd_copy.command),
-                   now - cmd_copy.enqueued_time,
+                   static_cast<uint8_t>(queue_[0].command.command_type),
+                   now - queue_[0].enqueued_time,
                    best_effective_time);
         }
       }
@@ -298,12 +314,13 @@ namespace esphome
       if (elapsed > timeout_ms_)
       {
         ESP_LOGW(TAG, "Command 0x%02X timed out after %ums (timeout=%ums)",
-                 static_cast<uint8_t>(current_cmd.command), elapsed, timeout_ms_);
+                 static_cast<uint8_t>(current_cmd.command.command_type), elapsed, timeout_ms_);
 
         // Invoke callback with failure
         if (current_cmd.callback)
         {
-          current_cmd.callback(false, std::vector<uint8_t>{});
+          Command empty_cmd(current_cmd.command.command_type);
+          current_cmd.callback(false, empty_cmd);
         }
 
         // Remove timed-out command
@@ -315,11 +332,11 @@ namespace esphome
     }
 
     std::deque<CommandQueue::QueuedCommand>::iterator
-    CommandQueue::find_duplicate(Command cmd)
+    CommandQueue::find_duplicate(const Command &cmd)
     {
       // Find duplicate command for deduplication
       // Requirements:
-      // 1. Same Command enum
+      // 1. Same Command (type AND payload)
       // 2. PENDING state (not EXECUTING or completed)
       // 3. Skip first command if it's EXECUTING
 
@@ -333,7 +350,10 @@ namespace esphome
       for (size_t i = start_index; i < queue_.size(); ++i)
       {
         auto &queued = queue_[i];
-        if (queued.command == cmd && queued.state == CommandState::PENDING)
+        // Match both command type and payload for true duplicate detection
+        if (queued.command.command_type == cmd.command_type &&
+            queued.command.payload == cmd.payload &&
+            queued.state == CommandState::PENDING)
         {
           return queue_.begin() + i;
         }

@@ -14,10 +14,10 @@
 **Components:** 
 1. `Command` enum - Type-safe command identifiers (0x30-0xFF)
 2. `ITransport` interface - Protocol-agnostic transport contract
-3. `ServoCommandCodec` - Encode/decode command payloads
+3. `CommandDecoder` - Encode/decode command payloads
 4. `ModbusTransport` / `SerialTransport` - Protocol implementations
 
-**Design Pattern:** Strategy (ITransport) + Codec (ServoCommandCodec)
+**Design Pattern:** Strategy (ITransport) + Codec (CommandDecoder)
 
 **Key Responsibilities:**
 - Abstract protocol details (Modbus-RTU, Serial FA/FB)
@@ -76,7 +76,7 @@ enum class Command : uint8_t {
 };
 ```
 
-**Key Insight:** Same command code can represent different operations (MOVE vs STOP) based on data payload. Upper layers use ServoCommandCodec to differentiate.
+**Key Insight:** Same command code can represent different operations (MOVE vs STOP) based on data payload. Upper layers use CommandDecoder to differentiate.
 
 ---
 
@@ -127,7 +127,7 @@ IDLE → (execute/read) → WAITING_RESPONSE → (response/timeout) → IDLE
 
 ---
 
-## Component 3: ServoCommandCodec
+## Component 3: CommandDecoder
 
 **Purpose:** Encode parameters to bytes (transmission) and decode bytes to structured types (responses).
 
@@ -138,7 +138,7 @@ IDLE → (execute/read) → WAITING_RESPONSE → (response/timeout) → IDLE
 ### Key Methods
 
 ```cpp
-class ServoCommandCodec {
+class CommandDecoder {
  public:
   // === Movement Encoders ===
   static std::vector<uint8_t> encode_move_position_mode_2(
@@ -235,7 +235,7 @@ class SerialTransport : public ITransport {
 
 ```cpp
 void StepperEngine::move_to(Position target, Speed speed, Acceleration accel) {
-  auto data = ServoCommandCodec::encode_move_position_mode_2(
+  auto data = CommandDecoder::encode_move_position_mode_2(
     target.to_pulses(), speed.to_motor_units(), accel.to_motor_units());
   
   transport_->execute_command(Command::MOVE_POSITION_MODE_2, data);
@@ -244,7 +244,7 @@ void StepperEngine::move_to(Position target, Speed speed, Acceleration accel) {
 void StepperEngine::update_speed() {
   std::vector<uint8_t> response;
   if (transport_->read_command(Command::READ_CURRENT_SPEED, response).success) {
-    int16_t rpm = ServoCommandCodec::decode_current_speed(response);
+    int16_t rpm = CommandDecoder::decode_current_speed(response);
     current_speed_ = Speed::from_rpm(rpm);
   }
 }
@@ -254,7 +254,7 @@ void StepperEngine::update_speed() {
 
 ```cpp
 void ServoXxd::set_working_current(float mA) {
-  auto data = ServoCommandCodec::encode_set_working_current(static_cast<uint16_t>(mA));
+  auto data = CommandDecoder::encode_set_working_current(static_cast<uint16_t>(mA));
   transport_->execute_command(Command::SET_WORKING_CURRENT, data);
 }
 ```

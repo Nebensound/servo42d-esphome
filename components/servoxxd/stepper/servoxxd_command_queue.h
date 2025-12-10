@@ -15,7 +15,7 @@ namespace esphome
   {
 
     /**
-     * @brief Command priority levels
+     * @brief Commandtype priority levels
      *
      * Time-penalty based scheduling with automatic age-promotion:
      * - CRITICAL: Emergency stop (effective_time = 0, always first)
@@ -32,21 +32,21 @@ namespace esphome
     };
 
     /**
-     * @brief Command state for state machine
+     * @brief Commandtype state for state machine
      *
      * From spec: "Each command follows a lifecycle state machine"
      */
     enum class CommandState : uint8_t
     {
-      PENDING = 0, // Command in queue, not yet sent
-      EXECUTING,   // Command sent to transport, waiting for response
+      PENDING = 0, // Commandtype in queue, not yet sent
+      EXECUTING,   // Commandtype sent to transport, waiting for response
       COMPLETED,   // Response received and processed successfully
       FAILED,      // Transport error received
       TIMEOUT      // No response within timeout period
     };
 
     /**
-     * @brief Command queue for serialized transport execution
+     * @brief Commandtype queue for serialized transport execution
      *
      * From spec (02c-layer3-command-queue.md):
      * - Single-flight execution: Only one command in EXECUTING state at any time
@@ -63,7 +63,7 @@ namespace esphome
      *
      * **Integration with Layer 4:**
      * - Uses ITransport interface for protocol-agnostic communication
-     * - Commands identified by Command enum, not raw function codes
+     * - Commands identified by Commandtype enum, not raw function codes
      * - Transport callbacks forwarded to StepperEngine (Layer 2)
      *
      * @see docs/specification/02c-layer3-command-queue.md
@@ -72,15 +72,15 @@ namespace esphome
     {
     public:
       /**
-       * @brief Command callback signature
+       * @brief Commandtype callback signature
        *
        * @param success True if command succeeded, false on error/timeout
-       * @param data Response data (for read commands), empty for write commands
+       * @param cmd Command object with populated response field (for read commands)
        */
-      using CommandCallback = std::function<void(bool success, const std::vector<uint8_t> &)>;
+      using CommandCallback = std::function<void(bool success, const Command &cmd)>;
 
       /**
-       * @brief Construct a new Command Queue object
+       * @brief Construct a new Commandtype Queue object
        *
        * @param transport Transport layer interface (Layer 4)
        * @param timeout_ms Default timeout for commands in milliseconds (default: 1000ms)
@@ -99,8 +99,7 @@ namespace esphome
       /**
        * @brief Enqueue a command
        *
-       * @param cmd Command enum value
-       * @param data Command payload (encoded by ServoCommandCodec)
+       * @param cmd Command object with type and payload
        * @param callback Callback to invoke when command completes
        * @param priority Command priority (CRITICAL/NORMAL/BACKGROUND/IDLE, default: NORMAL)
        * @param delay_before_next_ms Delay in milliseconds before executing next command (default: 0)
@@ -108,7 +107,7 @@ namespace esphome
        * @param deduplicate Optional: true=force dedup, false=force no dedup, nullopt=auto (default: nullopt)
        *                    Auto mode: BACKGROUND commands are deduplicated, others are not
        */
-      void enqueue(Command cmd, const std::vector<uint8_t> &data, CommandCallback callback,
+      void enqueue(const Command &cmd, CommandCallback callback,
                    Priority priority = Priority::NORMAL, uint32_t delay_before_next_ms = 0,
                    std::optional<bool> deduplicate = std::nullopt);
 
@@ -117,20 +116,19 @@ namespace esphome
        *
        * From spec: "Completes command, clears guard, calls execute_next()"
        *
-       * @param cmd Command that completed
-       * @param data Response data from transport
+       * @param cmd Command that completed (contains type and populated response field)
        */
-      void on_response(Command cmd, const std::vector<uint8_t> &data);
+      void on_response(const Command &cmd);
 
       /**
        * @brief Handle command error (from ITransport callback)
        *
        * From spec: "Fails command, clears guard, continues"
        *
-       * @param cmd Command that failed
+       * @param cmd Command that failed (contains type and original payload)
        * @param error Error code from transport
        */
-      void on_error(Command cmd, ErrorCode error);
+      void on_error(const Command &cmd, ErrorCode error);
 
       /**
        * @brief Clear all pending commands
@@ -164,8 +162,7 @@ namespace esphome
        */
       struct QueuedCommand
       {
-        Command command;               // Command enum value
-        std::vector<uint8_t> data;     // Command payload
+        Command command;               // Command object (contains type and payload)
         CommandCallback callback;      // Callback for command completion
         CommandState state;            // State machine state
         Priority priority;             // Command priority (for time-penalty scheduling)
@@ -173,9 +170,8 @@ namespace esphome
         uint32_t sent_time;            // millis() when sent (for timeout)
         uint32_t delay_before_next_ms; // Delay before next command (e.g. motor restart)
 
-        QueuedCommand(Command cmd, const std::vector<uint8_t> &payload, CommandCallback cb, Priority prio, uint32_t delay, uint32_t enqueued)
+        QueuedCommand(const Command &cmd, CommandCallback cb, Priority prio, uint32_t delay, uint32_t enqueued)
             : command(cmd),
-              data(payload),
               callback(cb),
               state(CommandState::PENDING),
               priority(prio),
@@ -220,7 +216,7 @@ namespace esphome
        * @brief Find duplicate command for deduplication
        *
        * Requirements:
-       * - Same Command enum value
+       * - Same Command (type AND payload)
        * - PENDING state (not EXECUTING or completed)
        * - Skips EXECUTING command at front of queue
        *
@@ -228,10 +224,10 @@ namespace esphome
        * - Higher priority (lower value) → Replace old command
        * - Same/Lower priority → Keep both
        *
-       * @param cmd Command enum to search for
+       * @param cmd Full Command object (type + payload) to search for
        * @return Iterator to existing command if found, queue_.end() otherwise
        */
-      std::deque<QueuedCommand>::iterator find_duplicate(Command cmd);
+      std::deque<QueuedCommand>::iterator find_duplicate(const Command &cmd);
 
       /**
        * @brief Prepare next command for execution with time-penalty scheduling
@@ -252,27 +248,13 @@ namespace esphome
       /**
        * @brief Calculate effective execution time for a command
        *
-       * @param cmd Command to calculate for
+       * @param cmd Commandtype to calculate for
        * @param now Current time (millis())
        * @return Effective time (lower values execute first)
        */
       uint32_t calculate_effective_time(const QueuedCommand &cmd, uint32_t now);
 
-      /**
-       * @brief Check if a Command is a read operation
-       */
-      bool is_read_command(Command cmd) const
-      {
-        return cmd == Command::READ_ENCODER_CARRY ||
-               cmd == Command::READ_ENCODER_ADDITION ||
-               cmd == Command::READ_CURRENT_SPEED ||
-               cmd == Command::READ_PULSE_COUNT ||
-               cmd == Command::READ_IO_STATUS ||
-               cmd == Command::READ_ANGLE_ERROR ||
-               cmd == Command::READ_MOTOR_STATUS ||
-               cmd == Command::READ_ZERO_RETURN_STATUS ||
-               cmd == Command::READ_PROTECTION_STATUS;
-      }
+     
     };
 
   } // namespace servoxxd

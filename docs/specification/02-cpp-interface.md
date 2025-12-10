@@ -53,7 +53,7 @@ graph TB
     subgraph Layer4["Layer 4: Transport Abstraction"]
         L4A["Command Enum<br/>(Type-safe 0x30-0xFF)"]
         L4B["ITransport Interface<br/>(execute/read_command)"]
-        L4C["ServoCommandCodec<br/>(encode/decode)"]
+        L4C["CommandDecoder<br/>(encode/decode)"]
         L4D["ModbusTransport, SerialTransport"]
     end
     
@@ -127,18 +127,18 @@ graph TB
 **Components:**
 - **Command enum:** Type-safe hardware command identifiers (0x30-0xFF)
 - **ITransport interface:** Protocol-agnostic contract (`execute_command`, `read_command`, `is_busy`, `update`)
-- **ServoCommandCodec:** Encode/decode command payloads (static functions)
+- **CommandDecoder:** Encode/decode command payloads (static functions)
 - **ModbusTransport:** Modbus-RTU implementation
 - **SerialTransport (future):** Serial FA/FB implementation
 
-**Design Pattern:** Strategy (ITransport) + Codec (ServoCommandCodec)
+**Design Pattern:** Strategy (ITransport) + Codec (CommandDecoder)
 
 **Key Responsibilities:**
 - Abstract protocol details (Modbus-RTU, Serial FA/FB frames)
 - Provide unified Command-based API for upper layers
 - Manage framing, addressing, CRC calculation
 - Handle request-response state machine (half-duplex)
-- Encode/decode command data via ServoCommandCodec
+- Encode/decode command data via CommandDecoder
 
 **Key Insight:** Hardware uses identical command codes (0x30-0xFF) for both Serial and Modbus protocols. Same code can represent different operations (MOVE vs STOP) based on data payload.
 

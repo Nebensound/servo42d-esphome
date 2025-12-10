@@ -158,12 +158,12 @@ Acceleration last_accel;              // Shared accel/decel (includes unit)
 **Layer 3 (CommandQueue):**
 - StepperEngine manages the queue (not ServoXxd directly)
 - ServoXxd only bridges transport callbacks to engine
-**Layer 4 (Transport + ServoCommandCodec):**
+**Layer 4 (Transport + CommandDecoder):**
 - ServoXxd inherits ModbusDevice (ESPHome framework requirement)
 - ESPHome protocol callbacks are forwarded to active ITransport implementation
 - Current implementation: ModbusTransport (via ModbusDevice callbacks)
 - Future: SerialTransport would use different ESPHome integration (e.g., uart component callbacks)
-- ServoCommandCodec (in Layer 4) provides encode/decode functions for all commands
+- CommandDecoder (in Layer 4) provides encode/decode functions for all commands
 - StepperEngine (Layer 2) uses codec to prepare command data and parse responses
 - Transport layer is completely abstracted - upper layers only see ITransport and Command enumds
 - StepperEngine (Layer 2) uses codec to prepare command data and parse responses

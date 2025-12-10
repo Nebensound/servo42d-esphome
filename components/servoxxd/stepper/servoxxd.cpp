@@ -256,7 +256,7 @@ namespace esphome
       // Send initial configuration via CommandQueue
       ESP_LOGCONFIG(TAG, "Enqueuing initial configuration commands...");
       this->engine_->setup_motor();
-      
+
       ESP_LOGCONFIG(TAG, "  Steps per Revolution: %.1f", this->steps_per_revolution_);
       ESP_LOGCONFIG(TAG, "  Microstepping: %u", this->microstepping_);
 
@@ -278,7 +278,7 @@ namespace esphome
           this->engine_->poll_hardware();
         } });
 
-      // Note: Homing at startup is handled by motor's 0_Mode feature (Command 0x9A)
+      // Note: Homing at startup is handled by motor's 0_Mode feature (Commandtype 0x9A)
       // When homing.at_startup=true and homing.mode=VIRTUAL, the motor automatically
       // returns to zero position after restart. No ESPHome-side action required.
       // For ENDSTOP/SENSORLESS modes, homing must be triggered manually via home() action.

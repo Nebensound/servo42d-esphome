@@ -189,7 +189,7 @@ namespace esphome
     {
     public:
       // ==== Action-API Methods ====
-      void set_control_mode(ControlMode mode);          // Change control mode at runtime (sends Command 0x82)
+      void set_control_mode(ControlMode mode);          // Change control mode at runtime (sends Commandtype 0x82)
       void set_speed(const Speed &speed);               // Update default speed for movements
       void set_acceleration(const Acceleration &accel); // Update default acceleration
       void set_zero();                                  // Store current position as zero (VIRTUAL homing)

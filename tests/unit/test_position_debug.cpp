@@ -14,7 +14,7 @@ int main() {
     // Test encoding
     Speed spd = Speed::from_rpm(100, nullptr);
     Acceleration acc = Acceleration::from_internal(50);
-    auto data = ServoCommandCodec::encode_move_position_mode_2(pos, spd, acc);
+    auto data = CommandDecoder::encode_move_position_mode_2(pos, spd, acc);
     
     std::cout << "\nEncoded bytes:" << std::endl;
     for(size_t i = 0; i < data.size(); i++) {

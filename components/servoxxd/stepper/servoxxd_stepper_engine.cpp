@@ -75,10 +75,51 @@ namespace esphome
       // Expected response: status (uint8_t, 0=STOP, 1=MOVING, 2=HOMING) = 2 bytes (1 register)
       queue_->enqueue(CommandFactory::read_motor_status(), [this](bool success, const Command &cmd)
                       {
-        if (success) {
-          auto status = CommandDecoder::read_motor_status(cmd);
-          bool enabled = (status.state != CommandDecoder::MotorStatus::STOP);
-          process_motor_status_update(enabled);
+        if (!success) {
+          ESP_LOGW(TAG_ENGINE, "Failed to read motor status");
+          return;
+        }
+
+        CommandDecoder::MotorStatus status = CommandDecoder::read_motor_status(cmd);
+        bool enabled = (status != CommandDecoder::MotorStatus::STOP);
+        process_motor_status_update(enabled);
+
+        // Handle homing state transitions (if currently in Homing state)
+        if (state_ == State::Homing) {
+          switch (status) {
+            case CommandDecoder::MotorStatus::HOMING:
+            {
+              ESP_LOGV(TAG_ENGINE, "Motor status: HOMING in progress");
+              // Continue waiting
+              break;
+            }
+
+            case CommandDecoder::MotorStatus::STOP:
+            {
+              ESP_LOGI(TAG_ENGINE, "Homing COMPLETED successfully (motor stopped)");
+
+              // Set position to zero after successful homing
+              Position zero_pos = Position::from_steps(0, parent_);
+              parent_->set_current_pos(zero_pos);
+
+              // Transition back to Idle
+              transition_to(State::Idle);
+              break;
+            }
+
+            case CommandDecoder::MotorStatus::MOVING:
+            {
+              // This should not happen during homing - likely an error
+              ESP_LOGW(TAG_ENGINE, "Unexpected motor state MOVING during homing");
+              break;
+            }
+
+            default:
+            {
+              ESP_LOGW(TAG_ENGINE, "Unknown motor status during homing");
+              break;
+            }
+          }
         } }, Priority::BACKGROUND);
     }
 
@@ -92,67 +133,6 @@ namespace esphome
           auto ps = CommandDecoder::read_protection_status(cmd);
           process_protection_update(ps.protected_state ? 1 : 0);
         } }, Priority::BACKGROUND);
-    }
-
-    void StepperEngine::poll_homing_status()
-    {
-      // TODO: Implement proper homing status polling
-      // Currently disabled - needs proper implementation
-      /*
-      // Enqueue read command for homing status (Commandtype 0x3B READ_ZERO_RETURN_STATUS)
-      // Expected response: homing_status (uint8_t) = 2 bytes (1 register)
-      // 0=IN_PROGRESS, 1=SUCCESS, 2=FAIL
-      queue_->enqueue(Command(Commandtype::READ_ZERO_RETURN_STATUS), [this](bool success, const std::vector<uint8_t> &data)
-                      {
-        if (!success) {
-          ESP_LOGW(TAG_ENGINE, "Failed to read homing status");
-          return;
-        }
-
-        if (data.empty()) {
-          ESP_LOGW(TAG_ENGINE, "Empty homing status response");
-          return;
-        }
-
-        auto hs = CommandDecoder::read_zero_return_status(data);
-
-        switch (hs) {
-          case CommandDecoder::ZeroReturnStatus::IN_PROGRESS:
-          {
-            ESP_LOGV(TAG_ENGINE, "Zero return status: IN_PROGRESS");
-            // Continue waiting
-            break;
-          }
-
-          case CommandDecoder::ZeroReturnStatus::SUCCESS:
-          {
-            ESP_LOGI(TAG_ENGINE, "Zero return COMPLETED successfully");
-
-            // Set position to zero after successful homing
-            Position zero_pos = Position::from_steps(0, parent_);
-            parent_->report_position(zero_pos);
-
-            // Transition back to Idle
-            transition_to(State::Idle);
-            break;
-          }
-
-          case CommandDecoder::ZeroReturnStatus::FAIL:
-          {
-            ESP_LOGE(TAG_ENGINE, "Zero return FAILED");
-
-            // Transition to Error state
-            transition_to(State::Error);
-            break;
-          }
-
-          default:
-          {
-            ESP_LOGW(TAG_ENGINE, "Unknown zero return status: %u", static_cast<uint8_t>(hs));
-            break;
-          }
-        } }, Priority::BACKGROUND);
-      */
     }
 
     // ============================================================================
@@ -399,7 +379,7 @@ namespace esphome
       {
         // VIRTUAL mode: Enable 0_Mode with direction and speed parameters
         // Only configure if currently disabled to avoid resetting zero point repeatedly
-        ESP_LOGD(TAG_ENGINE, "VIRTUAL homing: Checking 0_Mode status");
+        ESP_LOGD(TAG_ENGINE, "VIRTUAL homing: Checking motor status");
 
         CommandFactory::ZeroModeMode mode = homing.direction == HomingDirection::NEAREST
                                                 ? CommandFactory::ZeroModeMode::NEAR_MODE
@@ -407,21 +387,21 @@ namespace esphome
 
         Direction hw_direction = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
 
-        queue_->enqueue(CommandFactory::read_zero_return_status(),
+        queue_->enqueue(CommandFactory::read_motor_status(),
                         [this, mode, hw_direction, homing](bool success, const Command &cmd)
                         {
                           if (!success)
                           {
-                            ESP_LOGW(TAG_ENGINE, "✗ Failed to read zero return status");
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to read motor status");
                             return;
                           }
 
-                          auto status = CommandDecoder::read_zero_return_status(cmd);
+                          auto status = CommandDecoder::read_motor_status(cmd);
 
-                          // Only configure if not currently active (IN_PROGRESS or SUCCESS means active)
-                          if (status == CommandDecoder::ZeroReturnStatus::FAIL)
+                          // Only configure if motor is not currently homing
+                          if (status != CommandDecoder::MotorStatus::HOMING)
                           {
-                            ESP_LOGD(TAG_ENGINE, "0_Mode disabled, configuring now");
+                            ESP_LOGD(TAG_ENGINE, "Motor not homing, configuring 0_Mode now");
                             queue_->enqueue(CommandFactory::set_zero_mode(
                                                 mode,
                                                 CommandFactory::ZeroModeTask::SET,
@@ -441,7 +421,7 @@ namespace esphome
                           }
                           else
                           {
-                            ESP_LOGD(TAG_ENGINE, "✓ 0_Mode already active, skipping configuration");
+                            ESP_LOGD(TAG_ENGINE, "✓ Motor already homing, skipping 0_Mode configuration");
                           }
                         });
 
@@ -494,15 +474,9 @@ namespace esphome
       // Poll all status values in sequence
       poll_encoder_position();
       poll_motor_speed();
-      poll_motor_status();
+      poll_motor_status(); // Also handles homing state detection
       // TODO: Register 0x3E might not exist in hardware - investigate
       // poll_protection_status();
-
-      // Poll homing status if in Homing state
-      if (state_ == State::Homing)
-      {
-        poll_homing_status();
-      }
     }
 
     // ============================================================================
@@ -690,11 +664,8 @@ namespace esphome
 
       case HomingMode::ENDSTOP:
       {
-        // TODO: Implement ENDSTOP homing properly
-        ESP_LOGW(TAG_ENGINE, "ENDSTOP homing not yet implemented");
-        /*
         // ENDSTOP homing: Trigger homing sequence (parameters already set in setup)
-        ESP_LOGD(TAG_ENGINE, "  ENDSTOP homing: Starting sequence (speed=%.1f RPM)",
+        ESP_LOGD(TAG_ENGINE, "ENDSTOP homing: Starting sequence (speed=%.1f RPM)",
                  homing.speed.rpm());
 
         queue_->enqueue(CommandFactory::go_home(),
@@ -710,7 +681,6 @@ namespace esphome
                             transition_to(State::Error);
                           }
                         });
-        */
         break;
       }
 
@@ -1012,7 +982,7 @@ namespace esphome
       case Commandtype::READ_MOTOR_STATUS:
       {
         auto status = CommandDecoder::read_motor_status(cmd);
-        bool enabled = (status.state != CommandDecoder::MotorStatus::STOP);
+        bool enabled = (status != CommandDecoder::MotorStatus::STOP);
         process_motor_status_update(enabled);
         break;
       }

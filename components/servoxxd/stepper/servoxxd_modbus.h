@@ -17,7 +17,7 @@ namespace esphome
      * @brief Modbus-RTU implementation of ITransport for ServoXxd communication
      *
      * Implements the ITransport interface using Modbus-RTU protocol over RS485.
-     * Command enum values map directly to Modbus register addresses.
+     * Commandtype enum values map directly to Modbus register addresses.
      *
      * Protocol details:
      * - Read: Function 0x04 (Read Input Registers)
@@ -39,12 +39,11 @@ namespace esphome
       ModbusTransport(modbus::ModbusDevice *device, uint8_t slave_address);
 
       // ITransport interface implementation
-      Result execute_command(Command cmd, const std::vector<uint8_t> &data = {}) override;
-      Result read_command(Command cmd) override;
+      Result execute_command(const Command &cmd) override;
       bool is_busy() const override;
       void update() override;
-      void set_response_callback(std::function<void(Command, const std::vector<uint8_t> &)> cb) override;
-      void set_error_callback(std::function<void(Command, ErrorCode)> cb) override;
+      void set_response_callback(std::function<void(const Command &)> cb) override;
+      void set_error_callback(std::function<void(const Command &, ErrorCode)> cb) override;
 
       /**
        * @brief Set command timeout in milliseconds
@@ -87,23 +86,12 @@ namespace esphome
       modbus::ModbusDevice *device_;
       uint8_t slave_address_;
       State state_{State::IDLE};
-      Command pending_command_;
-      uint8_t pending_function_code_{0};      // Modbus function code (0x06 or 0x10)
-      uint16_t pending_register_address_{0};  // Register address for validation
-      std::vector<uint8_t> pending_data_;     // Sent data for validation
+      Commandtype pending_command_;
       uint32_t timeout_ms_{1000};
       uint32_t timeout_start_ms_{0};
 
-      std::function<void(Command, const std::vector<uint8_t> &)> response_callback_;
-      std::function<void(Command, ErrorCode)> error_callback_;
-
-      /**
-       * @brief Map Command to Modbus register address
-       */
-      uint16_t command_to_register(Command cmd) const
-      {
-        return static_cast<uint16_t>(cmd);
-      }
+      std::function<void(const Command &)> response_callback_;
+      std::function<void(const Command &, ErrorCode)> error_callback_;
 
       /**
        * @brief Check for timeout and invoke error callback

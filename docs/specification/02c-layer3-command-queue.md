@@ -121,7 +121,7 @@ Only **one command** may be in EXECUTING state at any time. This ensures seriali
 ## Example Command Lifecycle
 
 1. StepperEngine enqueues move_to command → CommandQueue adds to queue (PENDING)
-   - Uses Command::MOVE_POSITION_MODE_2 with data encoded by ServoCommandCodec
+   - Uses Command::MOVE_POSITION_MODE_2 with data encoded by CommandDecoder
 2. ServoXxd::loop() calls queue->execute_next()
    → Queue checks guard (false), dequeues command, sends via ITransport, sets guard=true (EXECUTING)
 3. Transport response received → queue->on_response_received(Command, data)
