@@ -31,7 +31,7 @@ ENGINE_SOURCES = \
 	$(COMPONENT_DIR)/servoxxd_position.cpp
 
 # Test executables (all active tests)
-TESTS = test_speed test_acceleration test_position test_command_queue test_stepper_engine test_command_codec
+TESTS = test_speed test_acceleration test_position test_command_queue test_stepper_engine test_command_decoder test_command_factory test_command
 
 # Colors for output
 GREEN = \033[0;32m
@@ -63,7 +63,15 @@ test_stepper_engine: test_stepper_engine.cpp $(ENGINE_SOURCES)
 	@echo "Building $@..."
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-test_command_codec: test_command_codec.cpp $(COMPONENT_DIR)/servoxxd_speed.cpp $(COMPONENT_DIR)/servoxxd_acceleration.cpp $(COMPONENT_DIR)/servoxxd_position.cpp
+test_command_decoder: test_command_decoder.cpp $(COMPONENT_DIR)/servoxxd_speed.cpp $(COMPONENT_DIR)/servoxxd_acceleration.cpp $(COMPONENT_DIR)/servoxxd_position.cpp
+	@echo "Building $@..."
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+test_command_factory: test_command_factory.cpp $(COMPONENT_DIR)/servoxxd_speed.cpp $(COMPONENT_DIR)/servoxxd_acceleration.cpp $(COMPONENT_DIR)/servoxxd_position.cpp
+	@echo "Building $@..."
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+test_command: test_command.cpp
 	@echo "Building $@..."
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 

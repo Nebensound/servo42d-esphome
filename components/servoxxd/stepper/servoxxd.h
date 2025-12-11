@@ -24,6 +24,9 @@ namespace esphome
 
     // Forward declarations
     class StepperEngine;
+    
+    // State enum (defined in servoxxd_stepper_engine.h)
+    enum class State;
 
     // Enum definitions for YAML configuration
     enum class ServoType : uint8_t
@@ -185,7 +188,7 @@ namespace esphome
      * - Modbus communication setup
      * - Helper methods for unit conversions (steps ↔ ticks)
      */
-    class ServoXxd : public Component, public stepper::Stepper, public modbus::ModbusDevice
+    class ServoXxd : virtual public Component, public stepper::Stepper, public modbus::ModbusDevice
     {
     public:
       // ==== Action-API Methods ====
@@ -270,6 +273,20 @@ namespace esphome
        * Used by Speed, Acceleration, Position classes for unit conversions.
        */
       virtual float get_steps_per_revolution() const { return steps_per_revolution_; }
+
+      /**
+       * @brief Get State
+       *
+       * @return State Current state of the motor state machine
+       */
+      State get_state();
+
+      /**
+       * @brief Get state as string
+       *
+       * @return std::string Current state as string
+       */
+      std::string get_state_as_string();
 
       /**
        * @brief Set microstepping subdivision (per specification)

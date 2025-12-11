@@ -49,30 +49,27 @@ namespace esphome
 
         inline void encode_uint16_be(std::vector<uint8_t> &data, uint16_t value)
         {
-          // Use ESPHome's convert_big_endian for platform-independent byte order conversion
-          uint16_t be_value = convert_big_endian(value);
-          data.push_back(static_cast<uint8_t>((be_value >> 8) & 0xFF));
-          data.push_back(static_cast<uint8_t>(be_value & 0xFF));
+          // Encode as big-endian: high byte first, then low byte
+          data.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+          data.push_back(static_cast<uint8_t>(value & 0xFF));
         }
 
         inline void encode_int32_be(std::vector<uint8_t> &data, int32_t value)
         {
-          // Use ESPHome's convert_big_endian for platform-independent byte order conversion
-          int32_t be_value = convert_big_endian(value);
-          data.push_back(static_cast<uint8_t>((be_value >> 24) & 0xFF));
-          data.push_back(static_cast<uint8_t>((be_value >> 16) & 0xFF));
-          data.push_back(static_cast<uint8_t>((be_value >> 8) & 0xFF));
-          data.push_back(static_cast<uint8_t>(be_value & 0xFF));
+          // Encode as big-endian: most significant byte first
+          data.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+          data.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+          data.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+          data.push_back(static_cast<uint8_t>(value & 0xFF));
         }
 
         inline void encode_uint32_be(std::vector<uint8_t> &data, uint32_t value)
         {
-          // Use ESPHome's convert_big_endian for platform-independent byte order conversion
-          uint32_t be_value = convert_big_endian(value);
-          data.push_back(static_cast<uint8_t>((be_value >> 24) & 0xFF));
-          data.push_back(static_cast<uint8_t>((be_value >> 16) & 0xFF));
-          data.push_back(static_cast<uint8_t>((be_value >> 8) & 0xFF));
-          data.push_back(static_cast<uint8_t>(be_value & 0xFF));
+          // Encode as big-endian: most significant byte first
+          data.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+          data.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+          data.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+          data.push_back(static_cast<uint8_t>(value & 0xFF));
         }
       } // namespace detail
 

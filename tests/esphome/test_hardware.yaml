@@ -41,14 +41,22 @@ script:
       # Test disable
       - lambda: 'ESP_LOGI("test", "  -> Disabling motor...");'
       - stepper.disable: test_motor
-      - delay: 2s
+      - wait_until:
+          condition:
+            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Disabled;'
+          timeout: 5s
+      - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
       - lambda: 'ESP_LOGI("test", "  -> Motor disabled (shaft should move freely)");'
       - delay: 2s
 
       # Test enable
       - lambda: 'ESP_LOGI("test", "  -> Enabling motor...");'
       - stepper.enable: test_motor
-      - delay: 2s
+      - wait_until:
+          condition:
+            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;'
+          timeout: 5s
+      - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
       - lambda: 'ESP_LOGI("test", "  -> Motor enabled (you should feel holding torque)");'
       - delay: 2s
 
@@ -79,11 +87,20 @@ script:
           esphome::servoxxd::Position pos(target_pos, esphome::servoxxd::PositionUnit::STEPS, id(test_motor));
           id(test_motor)->move_to(pos);
 
-      - delay: 5s
+      - wait_until:
+          condition:
+            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Moving;'
+          timeout: 2s
+      - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
+      - wait_until:
+          condition:
+            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;'
+          timeout: 10s
 
       - lambda: |-
           int final_pos = (int)id(test_motor).current_position;
           ESP_LOGI("test", "  -> Final position: %d steps", final_pos);
+          ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());
 
       - lambda: 'ESP_LOGI("test", "  ✓ TEST 2 PASSED");'
       - delay: 1s
@@ -104,21 +121,39 @@ script:
           esphome::servoxxd::Position target(1000.0f, esphome::servoxxd::PositionUnit::STEPS, id(test_motor));
           id(test_motor)->move_to(target);
 
-      - delay: 8s
+      - wait_until:
+          condition:
+            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Moving;'
+          timeout: 2s
+      - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
+      - wait_until:
+          condition:
+            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;'
+          timeout: 15s
 
       - lambda: |-
           int pos_after_move = (int)id(test_motor).current_position;
           ESP_LOGI("test", "  -> Position after move: %d steps", pos_after_move);
+          ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());
 
       - delay: 1s
       - lambda: 'ESP_LOGI("test", "  -> Starting homing sequence again...");'
       - stepper.home: test_motor
 
-      - delay: 30s # Wait for homing
+      - wait_until:
+          condition:
+            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Homing;'
+          timeout: 5s
+      - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
+      - wait_until:
+          condition:
+            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;'
+          timeout: 60s
 
       - lambda: |-
           int final_pos = (int)id(test_motor).current_position;
           ESP_LOGI("test", "  -> Homing completed");
+          ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());
           ESP_LOGI("test", "  -> Final position: %d steps (should be 0)", final_pos);
 
           if (final_pos == 0) {
@@ -261,7 +296,13 @@ text_sensor:
   - platform: template
     name: "Motor State"
     lambda: |-
-      return id(test_motor)->get_state_string();
+      static std::string last_state = "";
+      std::string current_state = id(test_motor)->get_state_string();
+      if (current_state != last_state) {
+        last_state = current_state;
+        return current_state;
+      }
+      return {};  // Return empty optional = no update
     update_interval: 500ms
 
 # Simple control buttons

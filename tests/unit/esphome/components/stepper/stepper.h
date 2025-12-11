@@ -10,7 +10,7 @@ namespace esphome
   namespace stepper
   {
 
-    class Stepper : public Component
+    class Stepper : virtual public Component
     {
     public:
       virtual ~Stepper() = default;

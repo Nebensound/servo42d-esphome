@@ -10,7 +10,31 @@ namespace esphome
 
     static const char *const TAG = "servoxxd";
 
-    // ==== Action-API Methoden ====
+    // ============================================================================
+    // State Query Methods
+    // ============================================================================
+
+    State ServoXxd::get_state()
+    {
+      if (engine_ != nullptr)
+      {
+        return engine_->get_state();
+      }
+      return State::SettingUp; // Default state before engine initialized
+    }
+
+    std::string ServoXxd::get_state_as_string()
+    {
+      if (engine_ != nullptr)
+      {
+        return engine_->get_state_string();
+      }
+      return "Not Initialized";
+    }
+
+    // ============================================================================
+    // Action-API Methods
+    // ============================================================================
 
     void ServoXxd::set_control_mode(ControlMode mode)
     {

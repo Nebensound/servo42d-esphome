@@ -12,6 +12,7 @@
 #include <functional>
 #include <cmath>
 #include <optional>
+#include <string>
 
 namespace esphome
 {
@@ -31,6 +32,25 @@ namespace esphome
     using servoxxd::SpeedUnit;
 
     /**
+     * @brief State machine states
+     *
+     * States define what operations are allowed and how the motor responds to commands.
+     * See specification 02-cpp-interface.md for complete state transition table.
+     */
+    enum class State
+    {
+      Disabled,    // Motor disabled, no motion possible
+      SettingUp,   // Motor initialization in progress (setup_motor running)
+      Idle,        // Motor ready, waiting for commands
+      Moving,      // Position movement in progress (Position Mode only)
+      Running,     // Continuous rotation in progress (Speed Mode only)
+      Homing,      // Homing process in progress
+      Calibrating, // Encoder calibration in progress
+      Stopping,    // Controlled stop in progress (with deceleration)
+      Error        // Error occurred (Protection, Modbus error, Timeout)
+    };
+
+    /**
      * @brief Core movement and state machine logic for Servo42D motor
      *
      * StepperEngine encapsulates all movement, homing, and stop logic as state machine.
@@ -48,23 +68,6 @@ namespace esphome
     class StepperEngine
     {
     public:
-      /**
-       * @brief State machine states
-       *
-       * States define what operations are allowed and how the motor responds to commands.
-       * See specification 02-cpp-interface.md for complete state transition table.
-       */
-      enum class State
-      {
-        Disabled,    // Motor disabled, no motion possible
-        Idle,        // Motor ready, waiting for commands
-        Moving,      // Position movement in progress (Position Mode only)
-        Running,     // Continuous rotation in progress (Speed Mode only)
-        Homing,      // Homing process in progress
-        Calibrating, // Encoder calibration in progress
-        Stopping,    // Controlled stop in progress (with deceleration)
-        Error        // Error occurred (Protection, Modbus error, Timeout)
-      };
 
       /**
        * @brief Constructor
@@ -311,6 +314,13 @@ namespace esphome
        * @return Current state machine state
        */
       State get_state() const { return state_; }
+
+      /**
+       * @brief Set state (for testing only)
+       *
+       * @param new_state State to set
+       */
+      void set_state(State new_state) { state_ = new_state; }
 
       /**
        * @brief Get state name (for logging/debugging)

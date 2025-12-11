@@ -117,18 +117,22 @@ namespace esphome
 
     inline uint8_t Command::function_code() const
     {
-      // Read commands use Function 0x04 (Read Input Registers)
-      if (command_type >= Commandtype::READ_ENCODER_CARRY && command_type <= Commandtype::READ_ZERO_RETURN_STATUS)
-      {
-        return 0x04;
-      }
-
-      // Write commands: Function code depends on command type (not payload size!)
-      // - Function 0x06 (Write Single Register): Simple configuration commands
-      // - Function 0x10 (Write Multiple Registers): Complex multi-parameter commands
       switch (command_type)
       {
-      // Function 0x10 (Write Multiple Registers) - Complex commands with multiple parameters
+      // Function 0x04 (Read Input Registers) - All read commands
+      case Commandtype::READ_ENCODER_CARRY:
+      case Commandtype::READ_ENCODER_ADDITION:
+      case Commandtype::READ_CURRENT_SPEED:
+      case Commandtype::READ_PULSE_COUNT:
+      case Commandtype::READ_IO_STATUS:
+      case Commandtype::READ_ANGLE_ERROR:
+      case Commandtype::READ_ENABLE_STATUS:
+      case Commandtype::READ_ZERO_RETURN_STATUS:
+      case Commandtype::READ_PROTECTION_STATUS: // 0x3E
+      case Commandtype::READ_MOTOR_STATUS:      // 0xF1
+        return 0x04;
+
+      // Function 0x10 (Write Multiple Registers) - Complex multi-parameter commands
       case Commandtype::SET_HOMING_PARAMETERS:     // 0x90: 5 bytes (trigger, direction, speed, endlimit)
       case Commandtype::SET_NOLIMIT_HOMING_PARAMS: // 0x94: 8 bytes
       case Commandtype::SET_ZERO_MODE:             // 0x9A: 4 bytes (mode, enable, speed, direction)
@@ -147,30 +151,33 @@ namespace esphome
 
     inline uint8_t Command::expected_response_length() const
     {
-      // Only read commands have response data
-      if (command_type < Commandtype::READ_ENCODER_CARRY || command_type > Commandtype::READ_ZERO_RETURN_STATUS)
-      {
-        return 0; // Write commands have no payload response
-      }
-
       // Read command payload lengths
+      // Note: Write commands return 0 by default in the switch
       switch (command_type)
       {
+      // 6 bytes response (48-bit values)
       case Commandtype::READ_ENCODER_CARRY:
         return 6; // carry (4 bytes) + value (2 bytes)
       case Commandtype::READ_ENCODER_ADDITION:
         return 6; // int48_t position
+
+      // 4 bytes response (32-bit values)
       case Commandtype::READ_PULSE_COUNT:
       case Commandtype::READ_ANGLE_ERROR:
         return 4; // int32_t
+
+      // 2 bytes response (16-bit values)
       case Commandtype::READ_CURRENT_SPEED:
       case Commandtype::READ_MOTOR_STATUS:
       case Commandtype::READ_PROTECTION_STATUS:
       case Commandtype::READ_IO_STATUS:
       case Commandtype::READ_ZERO_RETURN_STATUS:
+      case Commandtype::READ_ENABLE_STATUS:
         return 2; // uint16_t / int16_t
+
+      // All write commands have no response payload
       default:
-        return 2; // Default to 1 register = 2 bytes
+        return 0;
       }
     }
 

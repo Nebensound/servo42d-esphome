@@ -21,7 +21,7 @@ namespace esphome
                                  uint32_t command_timeout_ms)
         : parent_(parent),
           queue_(nullptr),
-          state_(State::Disabled),
+          state_(State::SettingUp),
           emergency_flag_(false),
           current_speed_(0.0f, SpeedUnit::RPM, parent),
           motor_enabled_(false),
@@ -109,11 +109,14 @@ namespace esphome
         return;
       }
 
+      // Explicitly transition to SettingUp state
+      transition_to(State::SettingUp);
+
       ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor initialization sequence...");
 
       // 0. Clear any error/protection states first
       // This ensures motor is not stuck in FAIL state from previous sessions
-      // Temporarily allow release_protection in Disabled state for setup
+      // Temporarily allow release_protection in SettingUp state for setup
       release_protection();
 
       // 1. Restart motor to ensure clean state (Commandtype 0x41 RESTART)
@@ -405,7 +408,28 @@ namespace esphome
         home();
       }
 
-      ESP_LOGCONFIG(TAG_ENGINE, "Setup: %d commands enqueued (will execute via CommandQueue)", 7);
+      // 8. Final setup completion marker
+      // Enqueue a final "dummy" command to mark setup completion
+      // When this callback executes, we know all setup commands completed successfully
+      queue_->enqueue(CommandFactory::read_motor_status(), [this](bool success, const Command &)
+                      {
+                        if (success)
+                        {
+                          ESP_LOGI(TAG_ENGINE, "✓ Motor setup completed successfully");
+                          // Only transition to Idle if not already in Homing state
+                          // (homing at_startup may have already started)
+                          if (state_ == State::SettingUp)
+                          {
+                            transition_to(State::Idle);
+                          }
+                        }
+                        else
+                        {
+                          ESP_LOGE(TAG_ENGINE, "✗ Motor setup failed - final status check unsuccessful");
+                          transition_to(State::Error);
+                        } }, Priority::NORMAL);
+
+      ESP_LOGCONFIG(TAG_ENGINE, "Setup: %d commands enqueued (will execute via CommandQueue)", 8);
     }
 
     // ============================================================================
@@ -457,7 +481,7 @@ namespace esphome
       Acceleration accel_units = accel.has_value() ? accel.value() : parent_->get_default_acceleration();
 
       // Validation: only allowed in Idle state (Position Mode)
-      if (!validate_command("move_to", {State::Idle, State::Moving, State::Stopping}))
+      if (!validate_command(__func__, {State::Idle, State::Moving, State::Stopping}))
       {
         return;
       }
@@ -486,7 +510,7 @@ namespace esphome
         return;
       }
 
-      if (!validate_command("stop", {State::Moving, State::Running, State::Homing, State::Calibrating, State::Stopping}))
+      if (!validate_command(__func__, {State::Moving, State::Running, State::Homing, State::Calibrating, State::Stopping}))
       {
         return;
       }
@@ -695,7 +719,7 @@ namespace esphome
                                        std::optional<Acceleration> accel)
     {
       // Validation: allowed in Idle or Running states (Speed Mode)
-      if (!validate_command("run_continuous", {State::Idle, State::Running}))
+      if (!validate_command(__func__, {State::Idle, State::Running}))
       {
         return;
       }
@@ -720,7 +744,7 @@ namespace esphome
     void StepperEngine::enable()
     {
       // Allow enable from Disabled, Idle, or Error states
-      if (!validate_command("enable", {State::Disabled, State::Idle}))
+      if (!validate_command(__func__, {State::Disabled, State::Idle}))
       {
         return;
       }
@@ -742,19 +766,25 @@ namespace esphome
 
     void StepperEngine::disable()
     {
-      // During motion: buffer the command
-      if (state_ == State::Moving || state_ == State::Running ||
-          state_ == State::Homing || state_ == State::Calibrating ||
-          state_ == State::Stopping)
+      // Validate allowed states (explicitly reject Homing and Calibrating)
+      if (!validate_command(__func__, {State::Idle, State::Disabled, State::Error, State::Moving, State::Running, State::Stopping}))
       {
-        ESP_LOGD(TAG_ENGINE, "disable(): Motor moving, buffering disable command");
-        disable_pending_ = true;
-        stop(); // Stop first
         return;
       }
 
-      if (!validate_command("disable", {State::Idle, State::Error}))
+      // During motion: stop first, then disable will be triggered after stop completes
+      if (state_ == State::Moving || state_ == State::Running || state_ == State::Stopping)
       {
+        ESP_LOGI(TAG_ENGINE, "disable(): Motor in motion - stopping motor first, disable will follow after stop completes");
+        disable_pending_ = true;
+        stop(); // Stop first, disable() will be called again from update() when Idle is reached
+        return;
+      }
+
+      // Already disabled - no-op
+      if (state_ == State::Disabled)
+      {
+        ESP_LOGD(TAG_ENGINE, "disable(): Motor already disabled");
         return;
       }
 
@@ -768,7 +798,7 @@ namespace esphome
 
     void StepperEngine::release_protection()
     {
-      if (!validate_command("release_protection", {State::Error, State::Idle, State::Disabled}))
+      if (!validate_command(__func__, {State::Error, State::Idle, State::Disabled}))
       {
         return;
       }
@@ -824,7 +854,7 @@ namespace esphome
 
     void StepperEngine::calibrate()
     {
-      if (!validate_command("calibrate", {State::Idle, State::Disabled}))
+      if (!validate_command(__func__, {State::Idle, State::Disabled}))
       {
         return;
       }
@@ -865,7 +895,7 @@ namespace esphome
 
     void StepperEngine::set_zero()
     {
-      if (!validate_command("set_zero", {State::Idle}))
+      if (!validate_command(__func__, {State::Idle}))
       {
         return;
       }
@@ -904,6 +934,8 @@ namespace esphome
       {
       case State::Disabled:
         return "Disabled";
+      case State::SettingUp:
+        return "SettingUp";
       case State::Idle:
         return "Idle";
       case State::Moving:
@@ -999,9 +1031,27 @@ namespace esphome
       }
     }
 
-    bool StepperEngine::validate_command(const char *command_name,
+    bool StepperEngine::validate_command(const char *func_name,
                                          std::initializer_list<State> allowed_states)
     {
+      // Special handling for SettingUp state: Only allow critical commands
+      if (state_ == State::SettingUp)
+      {
+        // During setup, only allow emergency stop, normal stop, and protection release
+        bool is_critical = (strcmp(func_name, "emergency_stop") == 0 ||
+                            strcmp(func_name, "stop") == 0 ||
+                            strcmp(func_name, "release_protection") == 0);
+
+        if (!is_critical)
+        {
+          ESP_LOGW(TAG_ENGINE, "%s(): Rejected during setup - motor still initializing",
+                   func_name);
+          return false;
+        }
+        // Critical command during SettingUp - allow it
+        return true;
+      }
+
       for (State allowed : allowed_states)
       {
         if (state_ == allowed)
@@ -1011,7 +1061,7 @@ namespace esphome
       }
 
       // Command not allowed in current state
-      ESP_LOGW(TAG_ENGINE, "%s: Rejected (state=%s)", command_name, state_to_string(state_));
+      ESP_LOGW(TAG_ENGINE, "%s(): Rejected (state=%s)", func_name, state_to_string(state_));
       return false;
     }
 
@@ -1023,6 +1073,14 @@ namespace esphome
 
       switch (state_)
       {
+      case State::SettingUp:
+        // Maximum setup duration: 15 seconds
+        if (state_duration > 15000)
+        {
+          ESP_LOGE(TAG_ENGINE, "Setup timeout after %u ms", state_duration);
+          handle_error("Setup timeout - motor not responding");
+        }
+        break;
 
       case State::Homing:
         // Maximum homing duration: 600 seconds
@@ -1067,20 +1125,12 @@ namespace esphome
         if (success) {
           auto position = CommandDecoder::read_encoder_carry(cmd, parent_);
           process_encoder_update(position);
+          parent_->set_current_pos(position);
         
-
-        // Check if target reached (in Moving state)
-        if (state_ == State::Moving && is_target_reached())
-        {
-          ESP_LOGD(TAG_ENGINE, "Target position reached");
-          transition_to(State::Idle);
-        } 
-        parent_->set_current_pos(position);
-        
-        // Invoke user callback if provided
-        if (callback) {
-          callback(position);
-        }
+          // Invoke user callback if provided
+          if (callback) {
+            callback(position);
+          }
         } }, Priority::BACKGROUND);
     }
 
@@ -1115,7 +1165,7 @@ namespace esphome
       // Check if standstill reached (in Stopping state)
       if (state_ == State::Stopping && speed.rpm() == 0)
       {
-        ESP_LOGD(TAG_ENGINE, "Standstill reached");
+        ESP_LOGV(TAG_ENGINE, "Standstill reached (speed=0), transitioning to Idle");
         transition_to(State::Idle);
       }
 
@@ -1139,12 +1189,12 @@ namespace esphome
         motor_status_callback_(enabled);
       }
 
-      // Log detailed status for debugging and handle state transitions
+      // Hardware status validates Engine state - Engine state is leading
+      // Only handle critical errors or completion signals
       switch (status)
       {
       case CommandDecoder::MotorStatus::FAIL:
-        // Only transition to Error if not already in Error state
-        // This prevents spamming the logs and clearing the queue repeatedly
+        // Critical error: Always transition to Error state
         if (state_ != State::Error)
         {
           ESP_LOGW(TAG_ENGINE, "Motor status: FAIL - Hardware reports failure");
@@ -1152,49 +1202,60 @@ namespace esphome
           transition_to(State::Error);
         }
         break;
+
       case CommandDecoder::MotorStatus::STOP:
-        // Only transition if currently in a motion state
-        if (state_ == State::Moving || state_ == State::Running ||
-            state_ == State::Homing || state_ == State::Calibrating)
+        // Hardware reports standstill - validate against Engine expectations
+        // If Engine expects motion but hardware stopped → Error
+        if (state_ == State::Moving || state_ == State::Running)
         {
+          ESP_LOGW(TAG_ENGINE, "Unexpected stop: Engine expected motion but hardware stopped");
           transition_to(State::Stopping);
-          ESP_LOGV(TAG_ENGINE, "Motor status: STOP");
         }
+        // If Engine is Stopping and hardware confirms → Idle
+        else if (state_ == State::Stopping)
+        {
+          ESP_LOGV(TAG_ENGINE, "Motor status: STOP confirmed, transitioning to Idle");
+          transition_to(State::Idle);
+        }
+        // If Engine is Homing/Calibrating and hardware stopped → Check completion separately
         break;
+
       case CommandDecoder::MotorStatus::SPEED_UP:
-        if (state_ != State::Moving && state_ != State::Running)
-        {
-          transition_to(State::Moving);
-        }
-        ESP_LOGV(TAG_ENGINE, "Motor status: SPEED_UP");
-        break;
       case CommandDecoder::MotorStatus::SPEED_DOWN:
-        if (state_ != State::Moving && state_ != State::Running)
-        {
-          transition_to(State::Moving);
-        }
-        ESP_LOGV(TAG_ENGINE, "Motor status: SPEED_DOWN");
-        break;
       case CommandDecoder::MotorStatus::FULL_SPEED:
-        if (state_ != State::Moving && state_ != State::Running)
+        // Hardware reports motion - validate against Engine expectations
+        // If Engine expects Idle but hardware moving → Inconsistency warning
+        if (state_ == State::Idle || state_ == State::Disabled)
         {
-          transition_to(State::Moving);
+          ESP_LOGW(TAG_ENGINE, "Unexpected motion: Hardware moving but engine state is %s",
+                   state_to_string(state_));
+          // Don't change state - let engine commands control state
         }
-        ESP_LOGV(TAG_ENGINE, "Motor status: FULL_SPEED");
         break;
+
       case CommandDecoder::MotorStatus::HOMING:
+        // Hardware reports homing - validate against Engine expectations
+        // If Engine is NOT in Homing state → Someone else started homing (physical buttons?)
         if (state_ != State::Homing)
         {
+          ESP_LOGW(TAG_ENGINE, "Unexpected homing: Hardware homing but engine state is %s",
+                   state_to_string(state_));
+          ESP_LOGW(TAG_ENGINE, "  Possible cause: Manual homing via physical buttons");
+          // Sync engine state to hardware reality
           transition_to(State::Homing);
         }
-        ESP_LOGV(TAG_ENGINE, "Motor status: HOMING");
         break;
+
       case CommandDecoder::MotorStatus::CALIBRATING:
+        // Hardware reports calibration - validate against Engine expectations
+        // If Engine is NOT in Calibrating state → Manual calibration started
         if (state_ != State::Calibrating)
         {
+          ESP_LOGW(TAG_ENGINE, "Unexpected calibration: Hardware calibrating but engine state is %s",
+                   state_to_string(state_));
+          // Sync engine state to hardware reality
           transition_to(State::Calibrating);
         }
-        ESP_LOGV(TAG_ENGINE, "Motor status: CALIBRATING");
         break;
       }
     }

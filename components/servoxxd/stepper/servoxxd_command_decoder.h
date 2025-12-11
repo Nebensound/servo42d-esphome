@@ -137,7 +137,14 @@ namespace esphome
         if (!validate_command_type(cmd, Commandtype::READ_ANGLE_ERROR))
           return Position(nullptr);
 
-        return read_pulse_count(cmd);
+        const auto &data = cmd.response;
+        if (data.size() < 4)
+          return Position(nullptr);
+        int32_t ticks = (static_cast<int32_t>(data[0]) << 24) |
+                        (static_cast<int32_t>(data[1]) << 16) |
+                        (static_cast<int32_t>(data[2]) << 8) |
+                        static_cast<int32_t>(data[3]);
+        return Position::from_ticks(ticks);
       }
 
       /**
