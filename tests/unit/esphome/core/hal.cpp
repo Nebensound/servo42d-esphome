@@ -6,11 +6,14 @@
 #include "hal.h"
 #include <chrono>
 
-// Simple millis() implementation for unit tests
-// Returns milliseconds since epoch (not since boot, but sufficient for testing)
-uint32_t millis() {
-  auto now = std::chrono::steady_clock::now();
-  auto duration = now.time_since_epoch();
-  auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-  return static_cast<uint32_t>(millis.count());
+// Mock millis() implementation for unit tests
+// Define test_millis_value in esphome namespace so it's shared across all compilation units
+namespace esphome
+{
+  uint32_t test_millis_value = 0;
+}
+
+uint32_t millis()
+{
+  return esphome::test_millis_value;
 }

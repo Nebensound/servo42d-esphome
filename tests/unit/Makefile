@@ -25,10 +25,12 @@ ENGINE_SOURCES = \
 	$(COMPONENT_DIR)/servoxxd.cpp \
 	$(COMPONENT_DIR)/servoxxd_stepper_engine.cpp \
 	$(COMPONENT_DIR)/servoxxd_command_queue.cpp \
+	$(COMPONENT_DIR)/servoxxd_command_decoder.cpp \
 	$(COMPONENT_DIR)/servoxxd_modbus.cpp \
 	$(COMPONENT_DIR)/servoxxd_speed.cpp \
 	$(COMPONENT_DIR)/servoxxd_acceleration.cpp \
-	$(COMPONENT_DIR)/servoxxd_position.cpp
+	$(COMPONENT_DIR)/servoxxd_position.cpp \
+	$(MOCK_DIR)/hal.cpp
 
 # Test executables (all active tests)
 TESTS = test_speed test_acceleration test_position test_command_queue test_stepper_engine test_command_decoder test_command_factory test_command

@@ -42,69 +42,42 @@ namespace esphome
         break;
       }
 
-      case 0x06: // Write Single Register
+      case 0x06:
+      case 0x10:
       {
         const std::vector<uint8_t> &data = cmd.payload;
 
-        // Function 0x06 (Write Single Register) expects exactly 2 bytes
-        // CommandFactory already encodes values as big-endian bytes
-        uint8_t value_bytes[2];
+        // Pad data if necessary (Modbus registers are 16-bit)
+        std::vector<uint8_t> padded(data.begin(), data.end());
+        if (padded.size() % 2 != 0)
+          padded.push_back(0x00);
 
-        if (data.size() == 1)
+        uint16_t register_count = padded.size() / 2;
+
+        if (function_code == 0x06)
         {
-          // 1-byte payload: expand to 2 bytes with high byte = 0x00
-          // Example: {0x01} → {0x00, 0x01}
-          value_bytes[0] = 0x00;
-          value_bytes[1] = data[0];
-        }
-        else if (data.size() >= 2)
-        {
-          // 2-byte payload: use as-is (already big-endian from CommandFactory)
-          // Example: {0x00, 0x01} → {0x00, 0x01}
-          value_bytes[0] = data[0];
-          value_bytes[1] = data[1];
+          if (padded.size() != 2)
+          {
+            ESP_LOGE(TAG, "0x06 requires exactly 1 register (2 bytes), got %u",
+                     (unsigned)padded.size());
+            return {false, ErrorCode::PROTOCOL_ERROR};
+          }
+          // ESPHome requires rc = 0 for 0x06
+          device_->send(0x06, register_address, 0, 2, padded.data());
         }
         else
         {
-          ESP_LOGE(TAG, "Invalid payload size %d for function 0x06 (expected 1 or 2 bytes)",
-                   data.size());
-          return {false, ErrorCode::PROTOCOL_ERROR};
+          // 0x10: MUST NOT use rc=0
+          device_->send(0x10, register_address, register_count,
+                        padded.size(), padded.data());
         }
-
-        // ESPHome Modbus library API requires value bytes as payload parameter
-        // Format: send(function, register, 0, payload_len, payload_bytes)
-        device_->send(function_code, register_address, 0, 2, value_bytes);
 
         state_ = State::WAITING_WRITE;
         pending_command_.emplace(cmd);
         timeout_start_ms_ = millis();
 
-        ESP_LOGD(TAG, "Write command 0x%02X, register 0x%04X, value [0x%02X 0x%02X]",
-                 static_cast<uint8_t>(cmd.command_type), register_address, value_bytes[0], value_bytes[1]);
-        break;
-      }
-
-      case 0x10: // Write Multiple Registers
-      {
-        const std::vector<uint8_t> &data = cmd.payload;
-        uint16_t register_count = (data.size() + 1) / 2;
-        uint8_t padded_size = register_count * 2;
-
-        // Pad data if necessary (Modbus registers are 16-bit)
-        std::vector<uint8_t> padded_data(data.begin(), data.end());
-        if (padded_data.size() % 2 != 0)
-        {
-          padded_data.push_back(0x00);
-        }
-
-        device_->send(function_code, register_address, register_count, padded_size, padded_data.data());
-
-        state_ = State::WAITING_WRITE;
-        pending_command_.emplace(cmd);
-        timeout_start_ms_ = millis();
-
-        ESP_LOGD(TAG, "Write command 0x%02X, register 0x%04X, %d bytes",
-                 static_cast<uint8_t>(cmd.command_type), register_address, data.size());
+        ESP_LOGD(TAG, "Write command 0x%02X, register 0x%04X",
+                 static_cast<uint8_t>(cmd.command_type), register_address);
         break;
       }
 
@@ -258,10 +231,29 @@ namespace esphome
         switch (function_code)
         {
         case 0x06:
-          // Send and reseved payload should match
+        {
+          // Check if motor rejected the command (returns 0xFFFF for failed writes)
+          uint16_t response_value = (static_cast<uint16_t>(data[2]) << 8) | data[3];
+          if (response_value == 0xFFFF)
+          {
+            ESP_LOGW(TAG, "Motor rejected command for register 0x%04X (response: 0xFFFF = write failed)", 
+                     response_register);
+            state_ = State::IDLE;
+            if (error_callback_)
+            {
+              error_callback_(pending_command_.value(), ErrorCode::MODBUS_ERROR);
+            }
+            return;
+          }
+          
+          // Send and received payload should match (for successful writes)
           if (send_payload != data)
           {
-            ESP_LOGW(TAG, "Write response value mismatch for register 0x%04X", response_register);
+            ESP_LOGW(TAG, "Write response value mismatch for register 0x%04X (expected echo, got different value)", 
+                     response_register);
+            ESP_LOGW(TAG, "  Sent: [%02X %02X %02X %02X], Received: [%02X %02X %02X %02X]",
+                     send_payload[0], send_payload[1], send_payload[2], send_payload[3],
+                     data[0], data[1], data[2], data[3]);
             state_ = State::IDLE;
             if (error_callback_)
             {
@@ -270,6 +262,7 @@ namespace esphome
             return;
           }
           break;
+        }
         case 0x10:
         {
           // Response contains register count

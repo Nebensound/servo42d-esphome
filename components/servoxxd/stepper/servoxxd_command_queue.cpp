@@ -146,6 +146,12 @@ namespace esphome
       ESP_LOGE(TAG, "Command 0x%02X failed: error %d",
                static_cast<uint8_t>(error_cmd.command_type), static_cast<int>(error));
 
+      // Check if command has a delay_before_next_ms - respect it even on failure
+      // This is critical for commands like RESTART that need time to complete
+      // even if the motor rejects the command (e.g., 0xFFFF response)
+      bool has_delay = current_cmd.delay_before_next_ms > 0;
+      uint32_t delay_ms = current_cmd.delay_before_next_ms;
+
       // Invoke callback with failure
       if (current_cmd.callback)
       {
@@ -156,8 +162,18 @@ namespace esphome
       // Remove failed command
       queue_.pop_front();
 
-      // Tail-recursive processing: continue with next command
-      execute_next();
+      // If command had a delay, respect it even on failure
+      if (has_delay)
+      {
+        delay_until_ms_ = millis() + delay_ms;
+        ESP_LOGD(TAG, "  Command failed, but waiting %ums before next command (as specified)", delay_ms);
+        // execute_next() will be called by update() after delay
+      }
+      else
+      {
+        // Tail-recursive processing: continue with next command immediately
+        execute_next();
+      }
     }
 
     void CommandQueue::clear()

@@ -33,7 +33,7 @@ namespace esphome
 #define ESP_LOGD(tag, ...) ((void)0)
 #define ESP_LOGI(tag, ...) ((void)0)
 #define ESP_LOGW(tag, ...) ((void)0)
-#define ESP_LOGE(tag, ...) ((void)0)
+#define ESP_LOGE(tag, format, ...) printf("[ERROR][%s] " format "\n", tag, ##__VA_ARGS__)
 #define ESP_LOGCONFIG(tag, ...) ((void)0)
 #define ESP_LOGV(tag, ...) ((void)0)
 #define ESP_LOGVV(tag, ...) ((void)0)

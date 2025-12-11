@@ -116,16 +116,29 @@ namespace esphome
 
       ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor initialization sequence...");
 
-      // 0. Clear any error/protection states first
-      // This ensures motor is not stuck in FAIL state from previous sessions
-      // Temporarily allow release_protection in SettingUp state for setup
-      release_protection();
+      // 0. OPTIONAL: Clear any error/protection states first
+      // Only send if motor is actually in error state (motor will reject with 0xFFFF otherwise)
+      // Note: This is non-critical and failure is expected if motor is healthy
+      queue_->enqueue(CommandFactory::release_protection(), 
+                      [this](bool success, const Command &)
+                      {
+                        if (success)
+                        {
+                          ESP_LOGD(TAG_ENGINE, "✓ Protection state cleared");
+                        }
+                        else
+                        {
+                          ESP_LOGD(TAG_ENGINE, "  Release protection not needed (motor not in error state)");
+                        }
+                      });
 
-      // 1. Restart motor to ensure clean state (Commandtype 0x41 RESTART)
+      // 1. OPTIONAL: Restart motor to ensure clean state (Commandtype 0x41 RESTART)
       // Motor needs ~3-4s to reboot before accepting configuration commands
-      restart();
+      // NOTE: This clears the command queue, so it must be done carefully
+      // For now, we skip restart during normal setup to avoid queue clearing issues
+      // restart();
 
-      ESP_LOGCONFIG(TAG_ENGINE, "  Motor restart initiated, configuration commands enqueued...");
+      ESP_LOGCONFIG(TAG_ENGINE, "  Configuration commands enqueued...");
 
       // 1. Set microstepping (Commandtype 0x84 SET_SUBDIVISION)
       {
@@ -1073,20 +1086,12 @@ namespace esphome
       uint32_t now = millis();
       uint32_t state_duration = now - state_enter_time_;
 
-      // Debug: Always print when in SettingUp state
-      if (state_ == State::SettingUp)
-      {
-        printf("[DEBUG] check_state_timeouts(): SettingUp state - now=%u, state_enter_time_=%u, duration=%u\n",
-               now, state_enter_time_, state_duration);
-      }
-
       switch (state_)
       {
       case State::SettingUp:
         // Maximum setup duration: 30 seconds
         if (state_duration > 30000)
         {
-          printf("[DEBUG] SettingUp timeout triggered! duration=%u > 30000\n", state_duration);
           ESP_LOGE(TAG_ENGINE, "Setup timeout after %u ms", state_duration);
           handle_error("Setup timeout - motor not responding");
         }

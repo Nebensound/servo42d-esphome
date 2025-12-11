@@ -8,13 +8,11 @@
 namespace esphome
 {
 
-  // Mock millis() function for timing
+  // Mock millis() function for timing - uses test_millis_value
+  extern uint32_t test_millis_value;
   inline uint32_t millis()
   {
-    auto now = std::chrono::steady_clock::now();
-    auto duration = now.time_since_epoch();
-    return static_cast<uint32_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
+    return test_millis_value;
   }
 
   // Mock micros() function for precision timing
