@@ -221,7 +221,7 @@ namespace esphome
           response_callback_(cmd_with_response);
         }
         ESP_LOGD(TAG, "Read response validated for command 0x%02X: %d bytes",
-                 static_cast<uint8_t>(pending_command_.value()), data.size());
+                 static_cast<uint8_t>(cmd_with_response.command_type), data.size());
       }
       else if (function_code == 0x06 || function_code == 0x10)
       {
@@ -292,7 +292,7 @@ namespace esphome
           response_callback_(cmd_with_response);
         }
         ESP_LOGD(TAG, "Write response validated for command 0x%02X (function 0x%02X)",
-                 static_cast<uint8_t>(pending_command_.command_type), function_code);
+                 static_cast<uint8_t>(cmd_with_response.command_type), function_code);
       }
       else
       {
@@ -310,7 +310,7 @@ namespace esphome
       // Modbus error response received - clear transport state immediately!
       // This prevents the 4-second timeout wait when motor rejects a command
       ESP_LOGW(TAG, "Modbus error for command 0x%02X: function=0x%02X, exception=%d",
-               static_cast<uint8_t>(pending_command_.command_type), function_code, exception_code);
+               static_cast<uint8_t>(pending_command_->command_type), function_code, exception_code);
 
       state_ = State::IDLE;
 
