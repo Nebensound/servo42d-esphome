@@ -5,8 +5,8 @@
 # Run with: esphome compile tests/test_compile_host.yaml
 
 esphome:
-  name: servo42d-host-test
-  friendly_name: "Servo42D Host Test"
+  name: servoxxd-host-test
+  friendly_name: "ServoXXD Host Test"
 
 # Use host platform for fast compilation without hardware
 host:

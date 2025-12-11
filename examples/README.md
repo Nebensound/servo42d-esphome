@@ -1,6 +1,6 @@
-# Servo42D RS485 Examples
+# ServoXXD Examples
 
-This directory contains example configurations for the `servo42d_rs485` ESPHome component.
+This directory contains example configurations for the `servoxxd` ESPHome component.
 
 ## Setup
 
@@ -23,23 +23,23 @@ This directory contains example configurations for the `servo42d_rs485` ESPHome 
 
 ## Prerequisites
 
-Before using these examples, ensure your MKS Servo42D/57D motor is properly configured:
+Before using these examples, ensure your MKS ServoXXD (28D/35D/42D/57D) motor is properly configured:
 
 1. **Enable MODBUS-RTU Mode** (Critical!)
    - Use the motor's built-in display and buttons
-   - Navigate to register `0x008E` 
-   - Set value to `1` (Enable)
+   - Navigate to menu: `Mb_RTU`
+   - Set value to `Enable`
    - Without this, the motor won't respond to MODBUS commands!
 
 2. **Set Communication Parameters**
-   - Baud rate: `38400` (recommended) or `115200`
-   - Parity: `EVEN`
-   - Stop bits: `1`
-   - Motor address: `1` (or any unique value for multi-motor setups)
+   - Baud rate (`UartBaud`): `9600` or `38400` (recommended)
+   - Parity: `EVEN` (default)
+   - Stop bits: `1` (default)
+   - Motor address (`UartAddr`): `1` (or any unique value 1-247 for multi-motor setups)
 
-3. **Configure Work Mode**
-   - Set to `SR_vFOC` (mode 5) for best performance with serial control
-   - Or `SR_CLOSE` (mode 4) for closed-loop position control
+3. **Configure Work Mode** (Optional - can be set via YAML)
+   - Recommended: `SR_VFOC` (mode 5) for best performance
+   - Alternative: `SR_CLOSE` (mode 4) for closed-loop position control
 
 4. **Wire RS485 Connection**
    - ESP TX -> RS485 module DI (Data Input)

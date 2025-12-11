@@ -1,9 +1,9 @@
-# Comprehensive example showing all Servo42D features
+# Comprehensive example showing all ServoXXD features
 # This demonstrates the complete YAML API with all available settings and actions
 
 esphome:
-  name: servo42d-comprehensive
-  friendly_name: "Servo42D Comprehensive Example"
+  name: servoxxd-comprehensive
+  friendly_name: "ServoXXD Comprehensive Example"
 
 esp32:
   board: esp32dev
@@ -15,8 +15,8 @@ logger:
 
 # Load component from GitHub
 external_components:
-  - source: github://Nebensound/servo42d-esphome
-    components: [servo42d_rs485]
+  - source: github://Nebensound/servoxxd-esphome
+    components: [servoxxd]
 
 # RS485 Communication
 uart:
@@ -32,42 +32,41 @@ modbus:
   id: modbus1
   uart_id: uart_bus
 
-# Servo42D Stepper Motor with all configuration options
+# ServoXXD Stepper Motor with all configuration options
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd
     id: my_stepper
     modbus_id: modbus1
     address: 0x01
 
-    # Basic stepper configuration
-    steps_per_revolution: 3200 # 200 steps/rev × 16 microsteps
-    # Motor model (affects working current default and max limit)
-    servo_type: SERVO42D # SERVO28D | SERVO35D | SERVO42D | SERVO57D
-    microsteps: 16 # 1-256 subdivisions
-    max_speed: 1000 steps/s # Can use: steps/s, RPM, revolutions/s
-    acceleration: inf # Can use: steps/s^2, revolutions/s^2
-    deceleration: inf
-
-    # Motor control mode
-    control_mode: SR_VFOC # SR_OPEN (400 RPM) | SR_CLOSE (1500 RPM) | SR_VFOC (3000 RPM, best)
+    # Basic stepper configuration (Required)
+    steps_per_revolution: 3200  # 200 steps/rev × 16 microsteps
+    servo_type: SERVO42D         # SERVO28D | SERVO35D | SERVO42D | SERVO57D
+    
+    # Optional settings
+    microsteps: 16               # 1-256 subdivisions
+    control_mode: SR_VFOC        # SR_OPEN (400 RPM) | SR_CLOSE (1500 RPM) | SR_VFOC (3000 RPM, best)
+    speed: 1000 steps/s          # Can use: steps/s, RPM, rev/s, deg/s, deg/min, deg/h
+    acceleration: 500 steps/s^2  # Can use: steps/s^2, RPM/s, rev/s^2
+    mode: POSITION               # POSITION | SPEED
 
     # Current settings
-    # If omitted, default is based on servo_type:
-    # 28D: 600mA | 35D: 800mA | 42D: 1600mA | 57D: 3200mA
-    # Max depends on servo_type: 28D/35D/42D = 3000mA, 57D = 5200mA
-    working_current: 1500mA # or 1.5A
-    holding_current_percent: 30% # or 0.3 (ratio) - Range: 10%-90% of working_current (only SR_OPEN/SR_CLOSE, not vFOC)
+    # Defaults based on servo_type: 28D=600mA, 35D=800mA, 42D=1600mA, 57D=3200mA
+    # Max: 28D/35D/42D=3000mA, 57D=5200mA
+    working_current: 1.5A        # or 1500mA
+    holding_current_percent: 30% # Range: 10%-90% (only for SR_OPEN/SR_CLOSE, not VFOC)
 
-    # Homing configuration - choose one method:
+    # EN pin behavior
+    en_pin_active: ALWAYS        # LOW | HIGH | ALWAYS
+    auto_screen_off: true        # Auto-off display after 15s
+    lock_keys_at_startup: false  # Lock display buttons
 
-    # Option A: Real homing with endstop switch
-    home_at_startup: true
-    use_virtual_home: false
-    homing_speed: 500 # RPM
-    homing_direction: CW # CW or CCW (for real homing)
-
-    # Option B: Virtual homing (no endstop needed)
-    # home_at_startup: true
+    # Homing configuration (optional)
+    homing:
+      mode: VIRTUAL              # ENDSTOP | SENSORLESS | VIRTUAL
+      direction: NEAREST         # CW | CCW | NEAREST (NEAREST only for VIRTUAL)
+      speed: 600 rpm             # Homing speed
+      at_startup: false          # Run homing on boot
     # use_virtual_home: true
     # virtual_home_angle: 180     # 0-359 degrees - motor returns to this angle on power-up
     # homing_speed: 1000          # RPM

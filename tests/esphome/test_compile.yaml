@@ -11,8 +11,8 @@
 # Run with: esphome compile tests/test_compile.yaml
 
 esphome:
-  name: servo42d-esp32-test
-  friendly_name: "Servo42D ESP32 Test"
+  name: servoxxd-esp32-test
+  friendly_name: "ServoXXD ESP32 Test"
 
 esp32:
   board: esp32dev
