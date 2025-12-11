@@ -480,7 +480,10 @@ namespace esphome
       poll_encoder_position();
       poll_motor_speed();
       poll_motor_status(); // Also handles homing state detection
-      // TODO: Register 0x3E might not exist in hardware - investigate
+      
+      // Note: Protection status polling (register 0x3E) is currently disabled
+      // as this register may not be available on all hardware variants.
+      // Protection errors are still detected via motor status register (0x3A).
       // poll_protection_status();
     }
 
@@ -580,8 +583,9 @@ namespace esphome
       {
       case HomingMode::VIRTUAL:
       {
-        // TODO: Implement VIRTUAL homing properly
-        ESP_LOGW(TAG_ENGINE, "VIRTUAL homing not yet implemented");
+        // Note: VIRTUAL homing is not fully implemented in V1.0.0
+        // Users should use stepper.set_target with position 0 for similar behavior
+        ESP_LOGW(TAG_ENGINE, "VIRTUAL homing not yet implemented - use stepper.set_target with position 0 instead");
         /*
         // Virtual homing: Move to position 0 using normal positioning
         // Movement limited to ±180° (one revolution max)
@@ -691,8 +695,9 @@ namespace esphome
 
       case HomingMode::SENSORLESS:
       {
-        // TODO: Implement SENSORLESS homing properly
-        ESP_LOGW(TAG_ENGINE, "SENSORLESS homing not yet implemented");
+        // Note: SENSORLESS homing is not fully implemented in V1.0.0
+        // The configuration is written to motor but the homing sequence needs further testing
+        ESP_LOGW(TAG_ENGINE, "SENSORLESS homing not yet fully implemented");
         /*
         // SENSORLESS homing: Start movement (stall detection parameters already set)
         ESP_LOGD(TAG_ENGINE, "  SENSORLESS homing: Starting movement (current=%umA, speed=%.1f RPM)",

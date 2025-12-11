@@ -676,4 +676,5 @@ script:
 
 - [ESPHome Modbus Component](https://esphome.io/components/modbus.html)
 - [ESPHome Stepper Component](https://esphome.io/components/stepper/)
-- [MKS Servo42&57D RS485 User Manual V1.0.5](docs/MKS%20SERVO42%2657D_RS485%20User%20Manual%20V1.0.5.pdf)
+- [MKS Servo42&57D RS485 User Manual V1.0.6](docs/servo_hardware_doc/MKS%20SERVO42%2657D_RS485%20User%20Manual%20V1.0.6.pdf)
+- [MKS Servo42&57D RS485 User Manual V1.0.5](docs/servo_hardware_doc/MKS%20SERVO42%2657D_RS485%20User%20Manual%20V1.0.5.pdf)
