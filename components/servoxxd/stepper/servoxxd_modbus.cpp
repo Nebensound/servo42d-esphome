@@ -49,7 +49,7 @@ namespace esphome
         // Function 0x06 (Write Single Register) expects exactly 2 bytes
         // CommandFactory already encodes values as big-endian bytes
         uint8_t value_bytes[2];
-        
+
         if (data.size() == 1)
         {
           // 1-byte payload: expand to 2 bytes with high byte = 0x00
@@ -180,6 +180,7 @@ namespace esphome
 
       Command temp_cmd(pending_command_);
       uint8_t function_code = temp_cmd.function_code();
+      std::vector<uint8_t> send_payload = temp_cmd.response;
 
       if (data.size() < 1)
       {
@@ -240,12 +241,12 @@ namespace esphome
         }
 
         // Extract and validate register address
-        uint16_t response_address = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-        uint16_t expected_address = temp_cmd.register_address();
-        if (response_address != expected_address)
+        uint16_t response_register = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+        uint16_t expected_register = temp_cmd.register_address();
+        if (response_register != expected_register)
         {
-          ESP_LOGW(TAG, "Write response address mismatch: sent 0x%04X, received 0x%04X",
-                   expected_address, response_address);
+          ESP_LOGW(TAG, "Write response register mismatch: sent 0x%04X, received 0x%04X",
+                   expected_register, response_register);
           state_ = State::IDLE;
           if (error_callback_)
           {
@@ -255,12 +256,31 @@ namespace esphome
         }
 
         // Function-specific logging
-        if (function_code == 0x10)
+        switch (function_code)
         {
-          // Function 0x10: Response contains register count
+        case 0x06:
+          // Send and reseved payload should match
+          if (send_payload != data)
+          {
+            ESP_LOGW(TAG, "Write response value mismatch for register 0x%04X", response_register);
+            state_ = State::IDLE;
+            if (error_callback_)
+            {
+              error_callback_(Command(pending_command_), ErrorCode::INVALID_RESPONSE);
+            }
+            return;
+          }
+          break;
+        case 0x10:
+        {
+          // Response contains register count
           uint16_t response_count = (static_cast<uint16_t>(data[2]) << 8) | data[3];
-          ESP_LOGV(TAG, "Function 0x10 validated: address 0x%04X, count %d",
-                   response_address, response_count);
+          ESP_LOGV(TAG, "Function 0x10 validated: register 0x%04X, count %d",
+                   response_register, response_count);
+          break;
+        }
+        default:
+          break;
         }
 
         // Write response validated successfully
