@@ -584,8 +584,7 @@ namespace esphome
       {
       case HomingMode::VIRTUAL:
       {
-        // Note: VIRTUAL homing is not fully implemented in V1.0.0
-        // Users should use stepper.set_target with position 0 for similar behavior
+        // Note: VIRTUAL homing is not fully implemented in V1.0.0 - use stepper.set_target with position 0 instead
         ESP_LOGW(TAG_ENGINE, "VIRTUAL homing not yet implemented - use stepper.set_target with position 0 instead");
         /*
         // Virtual homing: Move to position 0 using normal positioning
