@@ -237,7 +237,7 @@ stepper:
     homing:
       mode: ENDSTOP
       direction: CCW # Change to CW if your endstop is in the other direction
-      speed: 1 rps
+      speed: 2 rpm
       endstop_trigger: LOW # Change to HIGH if your endstop triggers on HIGH
 
 # Sensors to monitor status
