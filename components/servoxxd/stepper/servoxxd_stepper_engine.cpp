@@ -29,6 +29,8 @@ namespace esphome
           state_enter_time_(0),
           disable_pending_(false)
     {
+      // Initialize state entry time to current time for proper timeout tracking
+      state_enter_time_ = millis();
 
       // Create CommandQueue (Layer 3) if transport provided
       if (transport != nullptr)
@@ -1071,12 +1073,20 @@ namespace esphome
       uint32_t now = millis();
       uint32_t state_duration = now - state_enter_time_;
 
+      // Debug: Always print when in SettingUp state
+      if (state_ == State::SettingUp)
+      {
+        printf("[DEBUG] check_state_timeouts(): SettingUp state - now=%u, state_enter_time_=%u, duration=%u\n",
+               now, state_enter_time_, state_duration);
+      }
+
       switch (state_)
       {
       case State::SettingUp:
-        // Maximum setup duration: 15 seconds
-        if (state_duration > 15000)
+        // Maximum setup duration: 30 seconds
+        if (state_duration > 30000)
         {
+          printf("[DEBUG] SettingUp timeout triggered! duration=%u > 30000\n", state_duration);
           ESP_LOGE(TAG_ENGINE, "Setup timeout after %u ms", state_duration);
           handle_error("Setup timeout - motor not responding");
         }

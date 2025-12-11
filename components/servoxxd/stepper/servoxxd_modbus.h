@@ -7,6 +7,7 @@
 #include <vector>
 #include <functional>
 #include <queue>
+#include <optional>
 
 namespace esphome
 {
@@ -86,7 +87,7 @@ namespace esphome
       modbus::ModbusDevice *device_;
       uint8_t slave_address_;
       State state_{State::IDLE};
-      Commandtype pending_command_;
+      std::optional<Command> pending_command_;
       uint32_t timeout_ms_{1000};
       uint32_t timeout_start_ms_{0};
 

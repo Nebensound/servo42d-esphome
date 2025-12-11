@@ -34,7 +34,7 @@ namespace esphome
         device_->send(function_code, register_address, register_count, 0, nullptr);
 
         state_ = State::WAITING_READ;
-        pending_command_ = cmd.command_type;
+        pending_command_.emplace(cmd);
         timeout_start_ms_ = millis();
 
         ESP_LOGD(TAG, "Read command 0x%02X, register 0x%04X, expecting %d bytes payload",
@@ -76,7 +76,7 @@ namespace esphome
         device_->send(function_code, register_address, 0, 2, value_bytes);
 
         state_ = State::WAITING_WRITE;
-        pending_command_ = cmd.command_type;
+        pending_command_.emplace(cmd);
         timeout_start_ms_ = millis();
 
         ESP_LOGD(TAG, "Write command 0x%02X, register 0x%04X, value [0x%02X 0x%02X]",
@@ -100,7 +100,7 @@ namespace esphome
         device_->send(function_code, register_address, register_count, padded_size, padded_data.data());
 
         state_ = State::WAITING_WRITE;
-        pending_command_ = cmd.command_type;
+        pending_command_.emplace(cmd);
         timeout_start_ms_ = millis();
 
         ESP_LOGD(TAG, "Write command 0x%02X, register 0x%04X, %d bytes",
@@ -137,11 +137,11 @@ namespace esphome
       // Check for timeout
       if (check_timeout())
       {
-        ESP_LOGW(TAG, "Command 0x%02X timed out", static_cast<uint8_t>(pending_command_));
+        ESP_LOGW(TAG, "Command 0x%02X timed out", static_cast<uint8_t>(pending_command_->command_type));
         state_ = State::IDLE;
         if (error_callback_)
         {
-          error_callback_(Command(pending_command_), ErrorCode::TIMEOUT);
+          error_callback_(pending_command_.value(), ErrorCode::TIMEOUT);
         }
         return;
       }
@@ -177,10 +177,9 @@ namespace esphome
       // - Read (0x04):  [data...] (just the raw register values)
       // - Write (0x06): [addr_hi][addr_lo][value_hi][value_lo]
       // - Write (0x10): [addr_hi][addr_lo][count_hi][count_lo]
-
-      Command temp_cmd(pending_command_);
-      uint8_t function_code = temp_cmd.function_code();
-      std::vector<uint8_t> send_payload = temp_cmd.response;
+      ;
+      uint8_t function_code = pending_command_->function_code();
+      std::vector<uint8_t> send_payload = pending_command_->payload;
 
       if (data.size() < 1)
       {
@@ -188,7 +187,7 @@ namespace esphome
         state_ = State::IDLE;
         if (error_callback_)
         {
-          error_callback_(Command(pending_command_), ErrorCode::PROTOCOL_ERROR);
+          error_callback_(pending_command_.value(), ErrorCode::PROTOCOL_ERROR);
         }
         return;
       }
@@ -199,7 +198,7 @@ namespace esphome
         // ESPHome payload: Just the raw data bytes (NO byte_count prefix!)
         // The motor sends: [0x04][byte_count][data...], but ESPHome strips both function and byte_count
 
-        uint8_t expected_payload_length = temp_cmd.expected_response_length();
+        uint8_t expected_payload_length = pending_command_->expected_response_length();
         if (data.size() != expected_payload_length)
         {
           ESP_LOGW(TAG, "Read response size mismatch: expected %d bytes, received %d",
@@ -207,13 +206,13 @@ namespace esphome
           state_ = State::IDLE;
           if (error_callback_)
           {
-            error_callback_(Command(pending_command_), ErrorCode::PROTOCOL_ERROR);
+            error_callback_(pending_command_.value(), ErrorCode::PROTOCOL_ERROR);
           }
           return;
         }
 
         // Response data is valid - set response and pass to callback
-        Command cmd_with_response(pending_command_);
+        Command cmd_with_response = pending_command_.value();
         cmd_with_response.response = data;
 
         state_ = State::IDLE;
@@ -222,7 +221,7 @@ namespace esphome
           response_callback_(cmd_with_response);
         }
         ESP_LOGD(TAG, "Read response validated for command 0x%02X: %d bytes",
-                 static_cast<uint8_t>(pending_command_), data.size());
+                 static_cast<uint8_t>(pending_command_.value()), data.size());
       }
       else if (function_code == 0x06 || function_code == 0x10)
       {
@@ -235,14 +234,14 @@ namespace esphome
           state_ = State::IDLE;
           if (error_callback_)
           {
-            error_callback_(Command(pending_command_), ErrorCode::PROTOCOL_ERROR);
+            error_callback_(pending_command_.value(), ErrorCode::PROTOCOL_ERROR);
           }
           return;
         }
 
         // Extract and validate register address
         uint16_t response_register = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-        uint16_t expected_register = temp_cmd.register_address();
+        uint16_t expected_register = pending_command_.value().register_address();
         if (response_register != expected_register)
         {
           ESP_LOGW(TAG, "Write response register mismatch: sent 0x%04X, received 0x%04X",
@@ -250,7 +249,7 @@ namespace esphome
           state_ = State::IDLE;
           if (error_callback_)
           {
-            error_callback_(Command(pending_command_), ErrorCode::PROTOCOL_ERROR);
+            error_callback_(pending_command_.value(), ErrorCode::PROTOCOL_ERROR);
           }
           return;
         }
@@ -266,7 +265,7 @@ namespace esphome
             state_ = State::IDLE;
             if (error_callback_)
             {
-              error_callback_(Command(pending_command_), ErrorCode::INVALID_RESPONSE);
+              error_callback_(pending_command_.value(), ErrorCode::INVALID_RESPONSE);
             }
             return;
           }
@@ -284,7 +283,7 @@ namespace esphome
         }
 
         // Write response validated successfully
-        Command cmd_with_response(pending_command_);
+        Command cmd_with_response = pending_command_.value();
         cmd_with_response.response = std::vector<uint8_t>{}; // Empty response for writes
 
         state_ = State::IDLE;
@@ -293,7 +292,7 @@ namespace esphome
           response_callback_(cmd_with_response);
         }
         ESP_LOGD(TAG, "Write response validated for command 0x%02X (function 0x%02X)",
-                 static_cast<uint8_t>(pending_command_), function_code);
+                 static_cast<uint8_t>(pending_command_.command_type), function_code);
       }
       else
       {
@@ -301,7 +300,7 @@ namespace esphome
         state_ = State::IDLE;
         if (error_callback_)
         {
-          error_callback_(Command(pending_command_), ErrorCode::PROTOCOL_ERROR);
+          error_callback_(Command(pending_command_->command_type), ErrorCode::PROTOCOL_ERROR);
         }
       }
     }
@@ -311,14 +310,14 @@ namespace esphome
       // Modbus error response received - clear transport state immediately!
       // This prevents the 4-second timeout wait when motor rejects a command
       ESP_LOGW(TAG, "Modbus error for command 0x%02X: function=0x%02X, exception=%d",
-               static_cast<uint8_t>(pending_command_), function_code, exception_code);
+               static_cast<uint8_t>(pending_command_.command_type), function_code, exception_code);
 
       state_ = State::IDLE;
 
       // Invoke error callback
       if (error_callback_)
       {
-        error_callback_(Command(pending_command_), ErrorCode::MODBUS_ERROR);
+        error_callback_(pending_command_.value(), ErrorCode::MODBUS_ERROR);
       }
     }
 
