@@ -5,6 +5,7 @@
 #include "servoxxd_command_factory.h"
 #include "servoxxd_transport.h"
 #include <cmath>
+#include <cstring>
 
 namespace esphome
 {
