@@ -119,7 +119,7 @@ namespace esphome
       // 0. OPTIONAL: Clear any error/protection states first
       // Only send if motor is actually in error state (motor will reject with 0xFFFF otherwise)
       // Note: This is non-critical and failure is expected if motor is healthy
-      queue_->enqueue(CommandFactory::release_protection(), 
+      queue_->enqueue(CommandFactory::release_protection(),
                       [this](bool success, const Command &)
                       {
                         if (success)
