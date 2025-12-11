@@ -46,18 +46,23 @@ namespace esphome
       {
         const std::vector<uint8_t> &data = cmd.payload;
 
-        // Function 0x06 expects exactly 1 register (2 bytes)
-        // Handle both 1-byte and 2-byte payloads
-        uint16_t register_value;
+        // Function 0x06 (Write Single Register) expects exactly 2 bytes
+        // CommandFactory already encodes values as big-endian bytes
+        uint8_t value_bytes[2];
+        
         if (data.size() == 1)
         {
-          // 1-byte payload: treat as low byte, high byte is 0x00
-          register_value = data[0];
+          // 1-byte payload: expand to 2 bytes with high byte = 0x00
+          // Example: {0x01} → {0x00, 0x01}
+          value_bytes[0] = 0x00;
+          value_bytes[1] = data[0];
         }
         else if (data.size() >= 2)
         {
-          // 2-byte payload: normal encoding
-          register_value = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+          // 2-byte payload: use as-is (already big-endian from CommandFactory)
+          // Example: {0x00, 0x01} → {0x00, 0x01}
+          value_bytes[0] = data[0];
+          value_bytes[1] = data[1];
         }
         else
         {
@@ -66,14 +71,16 @@ namespace esphome
           return {false, ErrorCode::PROTOCOL_ERROR};
         }
 
-        device_->send(function_code, register_address, register_value, 0, nullptr);
+        // ESPHome Modbus library API requires value bytes as payload parameter
+        // Format: send(function, register, 0, payload_len, payload_bytes)
+        device_->send(function_code, register_address, 0, 2, value_bytes);
 
         state_ = State::WAITING_WRITE;
         pending_command_ = cmd.command_type;
         timeout_start_ms_ = millis();
 
-        ESP_LOGD(TAG, "Write command 0x%02X, register 0x%04X, value 0x%04X (%d bytes payload)",
-                 static_cast<uint8_t>(cmd.command_type), register_address, register_value, data.size());
+        ESP_LOGD(TAG, "Write command 0x%02X, register 0x%04X, value [0x%02X 0x%02X]",
+                 static_cast<uint8_t>(cmd.command_type), register_address, value_bytes[0], value_bytes[1]);
         break;
       }
 

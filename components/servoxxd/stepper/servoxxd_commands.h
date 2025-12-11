@@ -41,7 +41,7 @@ namespace esphome
       READ_PULSE_COUNT = 0x33,        /// Read pulse count (step counter)
       READ_IO_STATUS = 0x34,          /// Read IO port status (limit switches, inputs)
       READ_ANGLE_ERROR = 0x39,        /// Read angle error (position deviation)
-      READ_MOTOR_STATUS = 0x3A,       /// Read motor status (moving, stopped, homing, etc.)
+      READ_ENABLE_STATUS = 0x3A,      /// Read enable pin status (0=disabled, 1=enabled)
       READ_ZERO_RETURN_STATUS = 0x3B, /// Read the go back to zero status (0_Mode auto-return)
       READ_PROTECTION_STATUS = 0x3E,  /// Read protection status (over-current, stall, etc.)
       RESTART_CONTROLLER = 0x3F,      /// Restart/reset the controller
@@ -65,6 +65,7 @@ namespace esphome
       SET_ZERO_MODE = 0x9A,               /// Set 0_Mode auto-return parameters (Fn 0x10, Reg 0x009A, 4 bytes)
 
       // ==================== Movement Commands (0xF0-0xFF) ====================
+      READ_MOTOR_STATUS = 0xF1,    /// Read motor status (0=fail, 1=stop, 2=speed_up, 3=speed_down, 4=full_speed, 5=homing, 6=calibrating)
       ENABLE_MOTOR = 0xF3,         /// Enable or disable motor (0x01=enable, 0x00=disable)
       MOVE_POSITION_MODE_3 = 0xF4, /// Position Mode 3: Move to absolute/relative position
       MOVE_POSITION_MODE_4 = 0xF5, /// Position Mode 4: Move to position with multi-segment profile

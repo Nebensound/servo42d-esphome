@@ -17,6 +17,7 @@
 #pragma once
 
 #include "servoxxd_commands.h"
+#include "esphome/core/helpers.h"
 #include <cmath>
 
 namespace esphome
@@ -31,12 +32,12 @@ namespace esphome
      * - Self-documenting: Function names clearly indicate purpose
      * - DRY: No repetition of Commandtype enum in caller code
      * - Maintainable: All encoding logic in one place
-     * - Zero dependencies: No need for CommandDecoder encode functions
+     * - Uses ESPHome's built-in byte conversion helpers for consistency
      */
     namespace CommandFactory
     {
       // ============================================================================
-      // Internal Encoding Helpers
+      // Internal Encoding Helpers (using ESPHome core helpers)
       // ============================================================================
 
       namespace detail
@@ -48,24 +49,30 @@ namespace esphome
 
         inline void encode_uint16_be(std::vector<uint8_t> &data, uint16_t value)
         {
-          data.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-          data.push_back(static_cast<uint8_t>(value & 0xFF));
+          // Use ESPHome's convert_big_endian for platform-independent byte order conversion
+          uint16_t be_value = convert_big_endian(value);
+          data.push_back(static_cast<uint8_t>((be_value >> 8) & 0xFF));
+          data.push_back(static_cast<uint8_t>(be_value & 0xFF));
         }
 
         inline void encode_int32_be(std::vector<uint8_t> &data, int32_t value)
         {
-          data.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
-          data.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
-          data.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-          data.push_back(static_cast<uint8_t>(value & 0xFF));
+          // Use ESPHome's convert_big_endian for platform-independent byte order conversion
+          int32_t be_value = convert_big_endian(value);
+          data.push_back(static_cast<uint8_t>((be_value >> 24) & 0xFF));
+          data.push_back(static_cast<uint8_t>((be_value >> 16) & 0xFF));
+          data.push_back(static_cast<uint8_t>((be_value >> 8) & 0xFF));
+          data.push_back(static_cast<uint8_t>(be_value & 0xFF));
         }
 
         inline void encode_uint32_be(std::vector<uint8_t> &data, uint32_t value)
         {
-          data.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
-          data.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
-          data.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-          data.push_back(static_cast<uint8_t>(value & 0xFF));
+          // Use ESPHome's convert_big_endian for platform-independent byte order conversion
+          uint32_t be_value = convert_big_endian(value);
+          data.push_back(static_cast<uint8_t>((be_value >> 24) & 0xFF));
+          data.push_back(static_cast<uint8_t>((be_value >> 16) & 0xFF));
+          data.push_back(static_cast<uint8_t>((be_value >> 8) & 0xFF));
+          data.push_back(static_cast<uint8_t>(be_value & 0xFF));
         }
       } // namespace detail
 
@@ -186,11 +193,16 @@ namespace esphome
        * @param decel Deceleration value for controlled stop
        * @return Command object with encoded payload (4 bytes)
        *
-       * @details Payload: 4 bytes - [0x00][0x00][0x00][decel]
+       * @details Payload: 4 bytes - [dir=0x00][acc][speed_hi=0x00][speed_lo=0x00]
        */
       inline Command stop_speed_mode(const Acceleration &decel)
       {
-        return Command(Commandtype::MOVE_SPEED_MODE, {0x00, 0x00, 0x00, decel.acc_internal()});
+        std::vector<uint8_t> data;
+        data.reserve(4);
+        detail::encode_uint8(data, 0x00);                 // direction = 0 (stop)
+        detail::encode_uint8(data, decel.acc_internal()); // deceleration
+        detail::encode_uint16_be(data, 0x0000);           // speed = 0 (stop)
+        return Command(Commandtype::MOVE_SPEED_MODE, data);
       }
 
       // ============================================================================
@@ -462,9 +474,10 @@ namespace esphome
        */
       inline Command release_protection()
       {
-        // Pack 0x0001 as two bytes (big-endian for Modbus)
-        std::vector<uint8_t> payload = {0x00, 0x01};
-        return Command(Commandtype::RELEASE_PROTECTION, payload);
+        std::vector<uint8_t> data;
+        data.reserve(2);
+        detail::encode_uint16_be(data, 0x0001); // 0x0001 = release protection
+        return Command(Commandtype::RELEASE_PROTECTION, data);
       }
 
       /**
