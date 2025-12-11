@@ -368,10 +368,9 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_speed in ServoXxd first
-        // float value = this->value_.value(x...);
-        // Speed speed(value, unit_, parent_);
-        // parent_->set_speed(speed);
+        float value = this->value_.value(x...);
+        Speed speed(value, unit_, parent_);
+        parent_->set_speed(speed);
       }
 
     protected:
@@ -398,10 +397,9 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_acceleration in ServoXxd first
-        // float value = this->value_.value(x...);
-        // Acceleration acc(value, unit_, parent_);
-        // parent_->set_acceleration(acc);
+        float value = this->value_.value(x...);
+        Acceleration acc(value, unit_, parent_);
+        parent_->set_acceleration(acc);
       }
 
     protected:
@@ -455,9 +453,8 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_working_current in ServoXxd first
-        // uint16_t current = this->current_.value(x...);
-        // parent_->set_working_current(current);
+        uint16_t current = this->current_.value(x...);
+        parent_->set_working_current(current);
       }
 
     protected:
@@ -481,9 +478,8 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement set_holding_current_percent in ServoXxd first
-        // uint8_t percent = this->percent_.value(x...);
-        // parent_->set_holding_current_percent(percent);
+        uint8_t percent = this->percent_.value(x...);
+        parent_->set_holding_current_percent(percent);
       }
 
     protected:
@@ -533,8 +529,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement release_protection in ServoXxd first
-        // parent_->release_protection();
+        parent_->release_protection();
       }
 
     protected:
@@ -556,8 +551,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement restart in ServoXxd first
-        // parent_->restart();
+        parent_->restart();
       }
 
     protected:
@@ -579,8 +573,7 @@ namespace esphome
 
       void play(Ts... x) override
       {
-        // TODO: Implement calibrate in ServoXxd first
-        // parent_->calibrate();
+        parent_->calibrate();
       }
 
     protected:
