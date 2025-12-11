@@ -236,7 +236,7 @@ namespace esphome
           uint16_t response_value = (static_cast<uint16_t>(data[2]) << 8) | data[3];
           if (response_value == 0xFFFF)
           {
-            ESP_LOGW(TAG, "Motor rejected command for register 0x%04X (response: 0xFFFF = write failed)", 
+            ESP_LOGW(TAG, "Motor rejected command for register 0x%04X (response: 0xFFFF = write failed)",
                      response_register);
             state_ = State::IDLE;
             if (error_callback_)
@@ -245,11 +245,11 @@ namespace esphome
             }
             return;
           }
-          
+
           // Send and received payload should match (for successful writes)
           if (send_payload != data)
           {
-            ESP_LOGW(TAG, "Write response value mismatch for register 0x%04X (expected echo, got different value)", 
+            ESP_LOGW(TAG, "Write response value mismatch for register 0x%04X (expected echo, got different value)",
                      response_register);
             ESP_LOGW(TAG, "  Sent: [%02X %02X %02X %02X], Received: [%02X %02X %02X %02X]",
                      send_payload[0], send_payload[1], send_payload[2], send_payload[3],
