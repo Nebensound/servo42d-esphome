@@ -37,11 +37,7 @@ jobs:
     strategy:
       matrix:
         yaml-file:
-          - tests/esphome/test_compile.yaml
-          - tests/esphome/test_hardware.yaml
-          - tests/esphome/test_hardware_movement.yaml
-          - tests/esphome/test_new_units.yaml
-          - tests/esphome/hw_setup_test.yaml
+            - tests/esphome/*.yaml
 
     steps:
       - name: Checkout code
