@@ -17,7 +17,7 @@ namespace esphome
     {
       if (state_ != State::IDLE)
       {
-        ESP_LOGW(TAG, "Transport busy, cannot execute command 0x%02X", static_cast<uint8_t>(cmd.command_type));
+        ESP_LOGW(TAG, "Transport busy, cannot execute command 0x%04X", cmd.register_address());
         return {false, ErrorCode::BUSY};
       }
 
@@ -37,8 +37,8 @@ namespace esphome
         pending_command_.emplace(cmd);
         timeout_start_ms_ = millis();
 
-        ESP_LOGD(TAG, "Read command 0x%02X, register 0x%04X, expecting %d bytes payload",
-                 static_cast<uint8_t>(cmd.command_type), register_address, expected_payload_length);
+        ESP_LOGD(TAG, "Read command 0x%04X, register 0x%04X, expecting %d bytes payload",
+                 cmd.register_address(), register_address, expected_payload_length);
         break;
       }
 
@@ -76,14 +76,14 @@ namespace esphome
         pending_command_.emplace(cmd);
         timeout_start_ms_ = millis();
 
-        ESP_LOGD(TAG, "Write command 0x%02X, register 0x%04X",
-                 static_cast<uint8_t>(cmd.command_type), register_address);
+        ESP_LOGD(TAG, "Write command 0x%04X, register 0x%04X",
+                 cmd.register_address(), register_address);
         break;
       }
 
       default:
-        ESP_LOGE(TAG, "Invalid function code 0x%02X for command 0x%02X",
-                 function_code, static_cast<uint8_t>(cmd.command_type));
+        ESP_LOGE(TAG, "Invalid function code 0x%02X for command 0x%04X",
+                 function_code, cmd.register_address());
         return {false, ErrorCode::PROTOCOL_ERROR};
       }
 
@@ -110,7 +110,7 @@ namespace esphome
       // Check for timeout
       if (check_timeout())
       {
-        ESP_LOGW(TAG, "Command 0x%02X timed out", static_cast<uint8_t>(pending_command_->command_type));
+        ESP_LOGW(TAG, "Command 0x%04X timed out", pending_command_->register_address());
         state_ = State::IDLE;
         if (error_callback_)
         {
@@ -193,8 +193,8 @@ namespace esphome
         {
           response_callback_(cmd_with_response);
         }
-        ESP_LOGD(TAG, "Read response validated for command 0x%02X: %d bytes",
-                 static_cast<uint8_t>(cmd_with_response.command_type), data.size());
+        ESP_LOGD(TAG, "Read response validated for command 0x%04X: %d bytes",
+                 cmd_with_response.register_address(), data.size());
       }
       else if (function_code == 0x06 || function_code == 0x10)
       {
@@ -284,8 +284,8 @@ namespace esphome
         {
           response_callback_(cmd_with_response);
         }
-        ESP_LOGD(TAG, "Write response validated for command 0x%02X (function 0x%02X)",
-                 static_cast<uint8_t>(cmd_with_response.command_type), function_code);
+        ESP_LOGD(TAG, "Write response validated for command 0x%04X (function 0x%02X)",
+                 cmd_with_response.register_address(), function_code);
       }
       else
       {
@@ -302,8 +302,8 @@ namespace esphome
     {
       // Modbus error response received - clear transport state immediately!
       // This prevents the 4-second timeout wait when motor rejects a command
-      ESP_LOGW(TAG, "Modbus error for command 0x%02X: function=0x%02X, exception=%d",
-               static_cast<uint8_t>(pending_command_->command_type), function_code, exception_code);
+      ESP_LOGW(TAG, "Modbus error for command 0x%04X: function=0x%02X, exception=%d",
+               pending_command_->register_address(), function_code, exception_code);
 
       state_ = State::IDLE;
 

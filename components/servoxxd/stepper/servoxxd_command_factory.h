@@ -576,6 +576,187 @@ namespace esphome
         return Command(Commandtype::READ_ZERO_RETURN_STATUS);
       }
 
+      // ============================================================================
+      // Bulk Read/Write Commands
+      // ============================================================================
+
+      /**
+       * @brief Write all configuration parameters (bulk write)
+       * @param mode Control mode (SR_OPEN, SR_CLOSE, SR_VFOC, etc.)
+       * @param holding_current_percent Holding current percentage (0-100)
+       * @param working_current_ma Working current in mA
+       * @param subdivision Microstepping subdivision (1, 2, 4, 8, 16, etc.)
+       * @param en_pin_active EN pin active level
+       * @param shaft_reversed True if shaft direction is reversed
+       * @param auto_screen_off Auto screen off after 15s
+       * @param protect_enable Protection enable flag
+       * @param mplyer Multiplier value
+       * @param baud_rate Baud rate code (1-7)
+       * @param slave_address Slave address (1-247)
+       * @param group_address Group address (0x00-0xFF)
+       * @param respond_enable Response enable flag
+       * @param active_enable Active reporting enable flag
+       * @param modbus_enable MODBUS-RTU protocol enable
+       * @param key_lock Lock hardware keys
+       * @param homing_trigger Homing trigger level (for ENDSTOP mode)
+       * @param homing_direction Homing direction
+       * @param homing_speed Homing speed
+       * @param endlimit_enable Endstop limit enable
+       * @param nolimit_reverse_angle Reverse angle for sensorless homing
+       * @param nolimit_mode Sensorless homing mode enable
+       * @param nolimit_current_ma Current threshold for sensorless homing
+       * @param limit_port_remap Remap limit switch ports
+       * @param zero_mode 0_Mode configuration
+       * @param zero_task Zero task (CLEAN or SET)
+       * @param zero_speed Zeroing speed (0-4)
+       * @param zero_direction Zeroing direction
+       * @return Command object with encoded payload (38 bytes)
+       *
+       * @details Writes all configuration parameters in a single Modbus transaction.
+       * Register address: 0x1046
+       * Note: This is an advanced command. Use individual setters for normal configuration.
+       */
+      inline Command write_all_config(
+          ControlMode mode,
+          uint8_t holding_current_percent,
+          uint16_t working_current_ma,
+          uint8_t subdivision,
+          EnPinActive en_pin_active,
+          bool shaft_reversed,
+          bool auto_screen_off,
+          uint8_t protect_enable,
+          uint8_t mplyer,
+          uint8_t baud_rate,
+          uint8_t slave_address,
+          uint8_t group_address,
+          bool respond_enable,
+          bool active_enable,
+          bool modbus_enable,
+          bool key_lock,
+          EndstopTrigger homing_trigger,
+          Direction homing_direction,
+          const Speed &homing_speed,
+          bool endlimit_enable,
+          const Position &nolimit_reverse_angle,
+          bool nolimit_mode,
+          uint16_t nolimit_current_ma,
+          bool limit_port_remap,
+          ZeroModeMode zero_mode,
+          ZeroModeTask zero_task,
+          ZeroingSpeed zero_speed,
+          Direction zero_direction)
+      {
+        std::vector<uint8_t> data;
+        data.reserve(38);
+
+        // REG1: Mode (2 bytes)
+        detail::encode_uint8(data, static_cast<uint8_t>(mode));
+        detail::encode_uint8(data, 0x00); // Reserved
+
+        // REG2: Hold current (2 bytes)
+        uint8_t hw_hold = (holding_current_percent >= 90) ? 8 : ((holding_current_percent >= 20) ? (holding_current_percent / 10) - 1 : 0);
+        detail::encode_uint8(data, hw_hold);
+        detail::encode_uint8(data, 0x00); // Reserved
+
+        // REG3: Work current (2 bytes)
+        detail::encode_uint16_be(data, working_current_ma);
+
+        // REG4: Subdivision (2 bytes)
+        detail::encode_uint8(data, subdivision);
+        detail::encode_uint8(data, 0x00); // Reserved
+
+        // REG5: En + Dir (2 bytes)
+        detail::encode_uint8(data, static_cast<uint8_t>(en_pin_active));
+        detail::encode_uint8(data, shaft_reversed ? 0x01 : 0x00);
+
+        // REG6: AutoSDD + Protect (2 bytes)
+        detail::encode_uint8(data, auto_screen_off ? 0x01 : 0x00);
+        detail::encode_uint8(data, protect_enable);
+
+        // REG7: Mplyer + NULL (2 bytes)
+        detail::encode_uint8(data, mplyer);
+        detail::encode_uint8(data, 0x00); // Reserved
+
+        // REG8: Baud rate + Slave address (2 bytes)
+        detail::encode_uint8(data, baud_rate);
+        detail::encode_uint8(data, slave_address);
+
+        // REG9: Group address + Respond/Active (2 bytes)
+        detail::encode_uint8(data, group_address);
+        uint8_t respond_active = (respond_enable ? 0x01 : 0x00) | ((active_enable ? 0x01 : 0x00) << 8);
+        detail::encode_uint8(data, respond_active);
+
+        // REG10: MODBUS + Key lock (2 bytes)
+        detail::encode_uint8(data, modbus_enable ? 0x01 : 0x00);
+        detail::encode_uint8(data, key_lock ? 0x01 : 0x00);
+
+        // REG11-13: Homing parameters (6 bytes)
+        detail::encode_uint8(data, static_cast<uint8_t>(homing_trigger));
+        detail::encode_uint8(data, static_cast<uint8_t>(homing_direction));
+        detail::encode_uint16_be(data, static_cast<uint16_t>(std::abs(homing_speed.rpm_internal())));
+        detail::encode_uint8(data, 0x00); // NULL
+        detail::encode_uint8(data, endlimit_enable ? 0x01 : 0x00);
+
+        // REG14-16: No-limit homing (8 bytes)
+        detail::encode_uint32_be(data, nolimit_reverse_angle.get_ticks());
+        detail::encode_uint16_be(data, nolimit_mode ? 0x01 : 0x00);
+        detail::encode_uint16_be(data, nolimit_current_ma);
+
+        // REG17: Remap + NULL (2 bytes)
+        detail::encode_uint8(data, 0x00); // NULL
+        detail::encode_uint8(data, limit_port_remap ? 0x01 : 0x00);
+
+        // REG18-19: 0_Mode parameters (4 bytes)
+        detail::encode_uint8(data, static_cast<uint8_t>(zero_mode));
+        detail::encode_uint8(data, static_cast<uint8_t>(zero_task));
+        detail::encode_uint8(data, static_cast<uint8_t>(zero_speed));
+        detail::encode_uint8(data, static_cast<uint8_t>(zero_direction));
+
+        return Command(Commandtype::WRITE_ALL_CONFIG, data);
+      }
+
+      /**
+       * @brief Read all configuration parameters (bulk read)
+       * @return Command object for read operation
+       *
+       * @details Reads all configuration parameters in a single Modbus transaction:
+       * Response: 38 bytes (19 registers) containing all motor configuration.
+       * See write_all_config() for detailed register breakdown.
+       *
+       * This is useful for:
+       * - Verifying configuration after setup
+       * - Backup/restore of motor configuration
+       * - Debugging configuration mismatches
+       *
+       * Register address: 0x1147
+       */
+      inline Command read_all_config()
+      {
+        return Command(Commandtype::READ_ALL_CONFIG);
+      }
+
+      /**
+       * @brief Read all status parameters (bulk read)
+       * @return Command object for read operation
+       *
+       * @details Reads all status information in a single Modbus transaction:
+       * Response: 28 bytes (14 registers) containing:
+       * - REG1: Motor status (1 byte) + IO status (1 byte)
+       * - REG2-3: Encoder value (4 bytes)
+       * - REG4-5: Speed (4 bytes)
+       * - REG6-8: Pulses (6 bytes)
+       * - REG9-11: RAW encoder value (6 bytes)
+       * - REG12-13: Error (4 bytes)
+       * - REG14: En status (1 byte) + 0_status (1 byte) + Protect status (1 byte) + NULL (1 byte)
+       *
+       * This is much more efficient than reading each status individually.
+       * Register address: 0x1248
+       */
+      inline Command read_all_status()
+      {
+        return Command(Commandtype::READ_ALL_STATUS);
+      }
+
     } // namespace CommandFactory
 
   } // namespace servoxxd

@@ -33,8 +33,8 @@ namespace esphome
       {
         if (cmd.command_type != expected)
         {
-          ESP_LOGE(TAG, "Invalid command type: expected 0x%02X, got 0x%02X",
-                   static_cast<uint8_t>(expected), static_cast<uint8_t>(cmd.command_type));
+          ESP_LOGE(TAG, "Invalid command type: expected 0x%04X, got 0x%04X",
+                   static_cast<uint16_t>(expected), cmd.register_address());
           return false;
         }
         return true;

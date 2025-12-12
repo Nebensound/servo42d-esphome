@@ -255,6 +255,32 @@ namespace esphome
                         });
       }
 
+      // 5a. Set holding current percentage (Commandtype 0x9B SET_HOLDING_CURRENT_PERCENT)
+      // Note: Only for OPEN mode and CLOSE mode, vFOC mode is invalid
+      {
+        ControlMode control_mode = parent_->get_control_mode();
+        if (control_mode == ControlMode::SR_OPEN || control_mode == ControlMode::SR_CLOSE)
+        {
+          uint8_t holding_percent = parent_->get_holding_current_percent();
+          queue_->enqueue(CommandFactory::set_holding_current_percent(holding_percent),
+                          [this, holding_percent](bool success, const Command &)
+                          {
+                            if (success)
+                            {
+                              ESP_LOGD(TAG_ENGINE, "✓ Holding current: %u%%", holding_percent);
+                            }
+                            else
+                            {
+                              ESP_LOGW(TAG_ENGINE, "✗ Failed to set holding current percentage");
+                            }
+                          });
+        }
+        else
+        {
+          ESP_LOGD(TAG_ENGINE, "  Holding current: skipped (not applicable in vFOC mode)");
+        }
+      }
+
       // Note: SET_ZERO command is NOT called here during setup.
       // Position zeroing should be done explicitly via set_zero() or during homing.
       // Automatically resetting position during motor initialization could cause unexpected behavior.
@@ -461,7 +487,7 @@ namespace esphome
                           transition_to(State::Error);
                         } }, Priority::NORMAL);
 
-      ESP_LOGCONFIG(TAG_ENGINE, "Setup: %d commands enqueued (will execute via CommandQueue)", 9);
+      ESP_LOGCONFIG(TAG_ENGINE, "Setup: %d commands enqueued (will execute via CommandQueue)", 10);
     }
 
     // ============================================================================
