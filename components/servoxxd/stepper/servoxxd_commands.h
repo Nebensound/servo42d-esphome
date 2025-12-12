@@ -107,10 +107,7 @@ namespace esphome
       uint8_t function_code() const;
 
       /// Get register address (same as command code)
-      uint16_t register_address() const
-      {
-        return static_cast<uint16_t>(command_type);
-      }
+      uint16_t register_address() const;
 
       /// Get expected response length (computed from command type)
       uint8_t expected_response_length() const;
