@@ -205,6 +205,23 @@ namespace esphome
                         });
       }
 
+      // 4a. Set EN trigger and position error protection (Commandtype 0x9D SET_EN_TRIGGER_CONFIG)
+      // Set to safe defaults: both disabled
+      {
+        queue_->enqueue(CommandFactory::set_en_trigger_config(),
+                        [this](bool success, const Command &)
+                        {
+                          if (success)
+                          {
+                            ESP_LOGD(TAG_ENGINE, "✓ EN trigger config: both disabled (safe defaults)");
+                          }
+                          else
+                          {
+                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
+                          }
+                        });
+      }
+
       // 5. Set control mode (Commandtype 0x82 SET_WORK_MODE)
       {
         ControlMode control_mode = parent_->get_control_mode();
@@ -444,7 +461,7 @@ namespace esphome
                           transition_to(State::Error);
                         } }, Priority::NORMAL);
 
-      ESP_LOGCONFIG(TAG_ENGINE, "Setup: %d commands enqueued (will execute via CommandQueue)", 8);
+      ESP_LOGCONFIG(TAG_ENGINE, "Setup: %d commands enqueued (will execute via CommandQueue)", 9);
     }
 
     // ============================================================================

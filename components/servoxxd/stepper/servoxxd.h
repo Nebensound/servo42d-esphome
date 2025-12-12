@@ -24,7 +24,7 @@ namespace esphome
 
     // Forward declarations
     class StepperEngine;
-    
+
     // State enum (defined in servoxxd_stepper_engine.h)
     enum class State;
 

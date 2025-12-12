@@ -63,6 +63,7 @@ namespace esphome
       SET_NOLIMIT_HOMING_PARAMS = 0x94,   /// Set the parameter of "noLimit" go home (Fn 0x10, Reg 0x0094, 8 bytes)
       SET_LIMIT_PORT_REMAP = 0x95,        /// Remap limit switch ports - swap IN1/IN2 (Fn 0x10, Reg 0x0095, 1 byte)
       SET_ZERO_MODE = 0x9A,               /// Set 0_Mode auto-return parameters (Fn 0x10, Reg 0x009A, 4 bytes)
+      SET_EN_TRIGGER_CONFIG = 0x9D,       /// Set EN trigger zero and position error protection (Fn 0x10, Reg 0x009D, 6 bytes)
 
       // ==================== Movement Commands (0xF0-0xFF) ====================
       READ_MOTOR_STATUS = 0xF1,    /// Read motor status (0=fail, 1=stop, 2=speed_up, 3=speed_down, 4=full_speed, 5=homing, 6=calibrating)
@@ -136,6 +137,7 @@ namespace esphome
       case Commandtype::SET_HOMING_PARAMETERS:     // 0x90: 5 bytes (trigger, direction, speed, endlimit)
       case Commandtype::SET_NOLIMIT_HOMING_PARAMS: // 0x94: 8 bytes
       case Commandtype::SET_ZERO_MODE:             // 0x9A: 4 bytes (mode, enable, speed, direction)
+      case Commandtype::SET_EN_TRIGGER_CONFIG:     // 0x9D: 6 bytes (g0Enable, pEnable, Tim, Errs)
       case Commandtype::MOVE_POSITION_MODE_1:      // 0xFD: 8 bytes (dir, acc, speed, pulses)
       case Commandtype::MOVE_POSITION_MODE_2:      // 0xFE: 8 bytes (acc, speed, absPulses)
       case Commandtype::MOVE_POSITION_MODE_3:      // 0xF4: variable bytes

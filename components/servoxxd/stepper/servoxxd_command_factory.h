@@ -422,6 +422,34 @@ namespace esphome
         return Command(Commandtype::SET_LIMIT_PORT_REMAP, {static_cast<uint8_t>(enable ? 0x01 : 0x00)});
       }
 
+      /**
+       * @brief Set EN trigger zero and position error protection parameters
+       * @param en_trigger_zero_enable Enable EN trigger return to zero function (200ms pulse triggers single-turn zero)
+       * @param position_error_protection_enable Enable position error protection
+       * @param error_time_ms Error statistics time length (in ~15ms units, default: 100 = ~1.5s)
+       * @param error_threshold Number of errors before protection triggers (28000 = 360° misalignment)
+       * @return Command object with encoded payload (6 bytes)
+       *
+       * @details Payload: 6 bytes - [g0Enable][pEnable][Tim_hi][Tim_lo][Errs_hi][Errs_lo]
+       * - g0Enable: 0=disable EN trigger zero, 1=enable (motor auto-zeros on ~200ms EN pulse)
+       * - pEnable: 0=disable position error protection, 1=enable
+       * - Tim: uint16_t error statistics time (1 unit ≈ 15ms)
+       * - Errs: uint16_t error threshold (28000 = 360° misalignment)
+       */
+      inline Command set_en_trigger_config(bool en_trigger_zero_enable = false,
+                                           bool position_error_protection_enable = false,
+                                           uint16_t error_time_units = 100,
+                                           uint16_t error_threshold = 28000)
+      {
+        std::vector<uint8_t> data;
+        data.reserve(6);
+        detail::encode_uint8(data, en_trigger_zero_enable ? 0x01 : 0x00);
+        detail::encode_uint8(data, position_error_protection_enable ? 0x01 : 0x00);
+        detail::encode_uint16_be(data, error_time_units);
+        detail::encode_uint16_be(data, error_threshold);
+        return Command(Commandtype::SET_EN_TRIGGER_CONFIG, data);
+      }
+
       // ============================================================================
       // System Commands
       // ============================================================================
