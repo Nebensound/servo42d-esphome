@@ -10,8 +10,8 @@ namespace esphome
 
     static const char *const TAG = "servoxxd.modbus";
 
-    ModbusTransport::ModbusTransport(modbus::ModbusDevice *device, uint8_t slave_address)
-        : device_(device), slave_address_(slave_address) {}
+    ModbusTransport::ModbusTransport(modbus::ModbusDevice *device, [[maybe_unused]] uint8_t slave_address)
+        : device_(device) {}
 
     Result ModbusTransport::execute_command(const Command &cmd)
     {
@@ -266,7 +266,7 @@ namespace esphome
         case 0x10:
         {
           // Response contains register count
-          uint16_t response_count = (static_cast<uint16_t>(data[2]) << 8) | data[3];
+          [[maybe_unused]] uint16_t response_count = (static_cast<uint16_t>(data[2]) << 8) | data[3];
           ESP_LOGV(TAG, "Function 0x10 validated: register 0x%04X, count %d",
                    response_register, response_count);
           break;
@@ -298,7 +298,7 @@ namespace esphome
       }
     }
 
-    void ModbusTransport::handle_error_response(uint8_t function_code, uint8_t exception_code)
+    void ModbusTransport::handle_error_response([[maybe_unused]] uint8_t function_code, [[maybe_unused]] uint8_t exception_code)
     {
       // Modbus error response received - clear transport state immediately!
       // This prevents the 4-second timeout wait when motor rejects a command

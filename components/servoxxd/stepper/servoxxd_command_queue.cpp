@@ -312,7 +312,7 @@ namespace esphome
       }
     }
 
-    uint32_t CommandQueue::calculate_effective_time(const QueuedCommand &cmd, uint32_t now)
+    uint32_t CommandQueue::calculate_effective_time(const QueuedCommand &cmd, [[maybe_unused]] uint32_t now)
     {
       switch (cmd.priority)
       {

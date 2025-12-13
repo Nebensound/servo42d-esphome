@@ -223,7 +223,8 @@ void process_updates(RealisticMockTransport &transport, StepperEngine &engine, i
 void setup_and_wait(RealisticMockTransport &transport, StepperEngine &engine)
 {
   engine.setup_motor();
-  for (int i = 0; i < 50; i++)
+  // Need more iterations due to restart (4000ms delay) + 13 commands
+  for (int i = 0; i < 250; i++)
   {
     transport.update();
     engine.update();
@@ -910,7 +911,8 @@ void test_13_settingup_state(TestStats &stats)
   // Process all queued commands - setup should complete successfully
   // Note: In real scenario, transport would respond to all commands
   // Here we just verify the final callback logic
-  for (int i = 0; i < 100; i++)
+  // Need more iterations due to restart (4000ms delay) + 13 commands instead of 11
+  for (int i = 0; i < 250; i++)
   {
     transport.update();
     engine3.update();

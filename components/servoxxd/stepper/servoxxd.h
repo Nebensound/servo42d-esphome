@@ -191,6 +191,12 @@ namespace esphome
     class ServoXxd : virtual public Component, public stepper::Stepper, public modbus::ModbusDevice
     {
     public:
+      // ==== Stepper Base Class Overrides ====
+      void set_target(int32_t steps) override;     // Override to use ServoXxd's Position tracking
+      void set_max_speed(float speed) override;    // Override to use ServoXxd's Speed objects
+      void set_deceleration(float decel) override; // Override to use ServoXxd's Acceleration (decel = accel)
+      void set_acceleration(float decel) override; // Override to use ServoXxd's Acceleration
+
       // ==== Action-API Methods ====
       void set_control_mode(ControlMode mode);          // Change control mode at runtime (sends Commandtype 0x82)
       void set_speed(const Speed &speed);               // Update default speed for movements
@@ -483,8 +489,8 @@ namespace esphome
       }
 
       // Configuration setters for motor parameters
-      void set_address(uint8_t addr) { this->address_ = addr; }
-      void set_servo_type(ServoType type) { /* Store servo type */ }
+      void set_address(uint8_t addr) override { this->address_ = addr; }
+      void set_servo_type(ServoType type [[maybe_unused]]) { /* Store servo type */ }
       void set_working_current(uint16_t ma) { working_current_ = ma; }
       void set_holding_current_percent(uint8_t percent)
       {
@@ -499,7 +505,7 @@ namespace esphome
       void set_auto_screen_off(bool enable) { auto_screen_off_ = enable; }
       void set_lock_keys_at_startup(bool lock) { lock_keys_at_startup_ = lock; }
       void set_mode(OperatingMode mode) { operating_mode_ = mode; }
-      void set_sleep_when_done(uint32_t ms) { /* Store sleep delay */ }
+      void set_sleep_when_done(uint32_t ms [[maybe_unused]]) { /* Store sleep delay */ }
 
       // ============================================================================
       // Public API (called from Actions)

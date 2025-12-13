@@ -56,6 +56,9 @@ namespace esphome
       // Copy constructor (explicit for debugging)
       Position(const Position &other);
 
+      // Copy assignment operator (required because we have user-provided copy constructor)
+      Position &operator=(const Position &other);
+
       // Factory methods - direct unit conversion
       static Position from_ticks(int64_t ticks);
       static Position from_ticks(int64_t ticks, const ServoXxd *parent);

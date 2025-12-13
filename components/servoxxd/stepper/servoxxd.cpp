@@ -50,6 +50,51 @@ namespace esphome
       this->engine_->setup_motor();
     }
 
+    // ============================================================================
+    // Stepper Base Class Overrides
+    // ============================================================================
+
+    void ServoXxd::set_target(int32_t steps)
+    {
+      // Convert int32_t steps to Position and delegate to set_target_pos
+      Position target = Position::from_steps(steps, this);
+      this->set_target_pos(target);
+    }
+
+    void ServoXxd::set_max_speed(float speed)
+    {
+      // Convert float RPM to Speed object and delegate to set_speed
+      // Assume base class uses RPM as unit (ESPHome standard)
+      Speed speed_obj(speed, SpeedUnit::RPM, this);
+      this->set_speed(speed_obj);
+      // Also update base class member for compatibility
+      this->max_speed_ = speed;
+    }
+
+    void ServoXxd::set_deceleration(float decel)
+    {
+      // ServoXxd uses same value for acceleration and deceleration
+      // Convert to Acceleration object
+      Acceleration accel(decel, AccelerationUnit::RPM_PER_SEC, this);
+      this->set_acceleration(accel);
+      // Also update base class member for compatibility
+      this->deceleration_ = decel;
+    }
+    
+    void ServoXxd::set_acceleration(float accel)
+    {
+      // ServoXxd uses same value for acceleration and deceleration
+      // Convert to Acceleration object
+      Acceleration accel(accel, AccelerationUnit::RPM_PER_SEC, this);
+      this->set_acceleration(accel);
+      // Also update base class member for compatibility
+      this->acceleration_ = accel;
+    }
+
+    // ============================================================================
+    // Action-API Methods
+    // ============================================================================
+
     void ServoXxd::set_speed(const Speed &speed)
     {
       this->default_speed_ = speed;
@@ -346,11 +391,11 @@ namespace esphome
       LOG_STEPPER(this);
 
       // Operating mode (determines available features)
-      const char *op_modes[] = {"POSITION", "SPEED"};
+      [[maybe_unused]] const char *op_modes[] = {"POSITION", "SPEED"};
       ESP_LOGCONFIG(TAG, "  Operating Mode: %s", op_modes[static_cast<uint8_t>(this->operating_mode_)]);
 
       // Control mode (hardware loop type)
-      const char *ctrl_modes[] = {"", "", "", "SR_OPEN", "SR_CLOSE", "SR_VFOC"};
+      [[maybe_unused]] const char *ctrl_modes[] = {"", "", "", "SR_OPEN", "SR_CLOSE", "SR_VFOC"};
       ESP_LOGCONFIG(TAG, "  Control Mode: %s", ctrl_modes[static_cast<uint8_t>(this->control_mode_)]);
 
       // Motor configuration
@@ -366,7 +411,7 @@ namespace esphome
 
       // Motor behavior
       ESP_LOGCONFIG(TAG, "  Shaft Direction: %s", this->shaft_reversed_ ? "Reversed" : "Normal");
-      const char *en_modes[] = {"LOW", "HIGH", "ALWAYS"};
+      [[maybe_unused]] const char *en_modes[] = {"LOW", "HIGH", "ALWAYS"};
       ESP_LOGCONFIG(TAG, "  EN Pin Active: %s", en_modes[static_cast<uint8_t>(this->en_pin_active_)]);
       ESP_LOGCONFIG(TAG, "  Auto Screen Off: %s", this->auto_screen_off_ ? "enabled" : "disabled");
       ESP_LOGCONFIG(TAG, "  Lock Keys at Startup: %s", this->lock_keys_at_startup_ ? "yes" : "no");
@@ -376,17 +421,17 @@ namespace esphome
       {
         if (this->homing_.mode != HomingMode::NO_HOMING)
         {
-          const char *homing_modes[] = {"NO_HOMING", "ENDSTOP", "SENSORLESS", "VIRTUAL"};
+          [[maybe_unused]] const char *homing_modes[] = {"NO_HOMING", "ENDSTOP", "SENSORLESS", "VIRTUAL"};
           ESP_LOGCONFIG(TAG, "  Homing Mode: %s", homing_modes[static_cast<uint8_t>(this->homing_.mode)]);
           ESP_LOGCONFIG(TAG, "  Homing at Startup: %s", this->homing_.at_startup ? "YES" : "NO");
 
-          const char *homing_dirs[] = {"CW", "CCW", "NEAREST"};
+          [[maybe_unused]] const char *homing_dirs[] = {"CW", "CCW", "NEAREST"};
           ESP_LOGCONFIG(TAG, "  Homing Direction: %s", homing_dirs[static_cast<uint8_t>(this->homing_.direction)]);
 
           // Speed formatting depends on mode
           if (this->homing_.mode == HomingMode::VIRTUAL)
           {
-            const char *speed_levels[] = {"VERY_SLOW", "SLOW", "MEDIUM", "FAST", "VERY_FAST"};
+            [[maybe_unused]] const char *speed_levels[] = {"VERY_SLOW", "SLOW", "MEDIUM", "FAST", "VERY_FAST"};
             ESP_LOGCONFIG(TAG, "  Homing Speed: %s (level %u)", speed_levels[static_cast<uint8_t>(this->homing_.level)], static_cast<uint8_t>(this->homing_.level));
           }
           else
@@ -397,7 +442,7 @@ namespace esphome
           // Mode-specific settings
           if (this->homing_.mode == HomingMode::ENDSTOP)
           {
-            const char *endstop_triggers[] = {"LOW", "HIGH"};
+            [[maybe_unused]] const char *endstop_triggers[] = {"LOW", "HIGH"};
             ESP_LOGCONFIG(TAG, "  Endstop Trigger: %s", endstop_triggers[static_cast<uint8_t>(this->homing_.endstop_trigger)]);
           }
           else if (this->homing_.mode == HomingMode::SENSORLESS)
