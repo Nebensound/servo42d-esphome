@@ -80,28 +80,66 @@ These overrides bridge ESPHome's standard interfaces to the motor-specific imple
 
 (backed by [01-yaml-api.md](./01-yaml-api.md))
 
+### Motor Hardware Configuration (ConfigData)
+
+All motor hardware settings are stored in a single `ConfigData` structure, which serves as the single source of truth and matches the hardware READ_ALL_CONFIG format (38 bytes, 19 registers):
+
 ```cpp
-// Basic configuration
-float steps_per_revolution;           // Required for unit conversions (YAML: steps_per_revolution)
-uint16_t microsteps;                  // 1..256 (YAML: microsteps)
-WorkMode control_mode;                // SR_OPEN, SR_CLOSE, SR_VFOC (YAML: control_mode)
-uint16_t working_current_ma;          // YAML: working_current
-uint8_t holding_current_percent;      // Ignored in SR_VFOC (YAML: holding_current_percent)
-uint32_t sleep_when_done_ms;          // UINT32_MAX=disabled, 0=immediate, 1+=delay (YAML: sleep_when_done)
-bool auto_screen_off;                 // YAML: auto_screen_off
-bool lock_keys_at_startup;            // YAML: lock_keys_at_startup
+struct ConfigData
+{
+  // Core motor settings (YAML-configurable)
+  ControlMode mode;                   // SR_OPEN, SR_CLOSE, SR_VFOC (YAML: control_mode)
+  uint8_t holding_current_percent;    // 0-100% (YAML: holding_current_percent)
+  uint16_t working_current_ma;        // mA (YAML: working_current)
+  uint8_t subdivision;                // Microstepping 1-256 (YAML: microsteps)
+  EnPinActive en_pin_active;          // EN_LOW, EN_HIGH, EN_ALWAYS (YAML: en_pin_active)
+  bool shaft_reversed;                // Reverse shaft direction
+  bool auto_screen_off;               // Auto screen off after 15s (YAML: auto_screen_off)
+  bool key_lock;                      // Physical key lock (YAML: lock_keys_at_startup)
+  
+  // Homing configuration (subset from YAML homing.*)
+  EndstopTrigger homing_trigger;      // TRIGGER_LOW, TRIGGER_HIGH (YAML: homing.endstop_trigger)
+  Direction homing_direction;         // CW, CCW (YAML: homing.direction → Direction)
+  uint16_t homing_speed_rpm;          // RPM (YAML: homing.speed → converted to RPM)
+  bool endlimit_enable;               // Endstop limit enable
+  uint32_t nolimit_reverse_angle_ticks; // Sensorless reverse angle
+  bool nolimit_mode;                  // Sensorless homing mode
+  uint16_t nolimit_current_ma;        // Sensorless current threshold (YAML: homing.current)
+  
+  // Zero mode configuration (VIRTUAL homing)
+  ZeroModeMode zero_mode;             // MODE_DISABLED, DIR_MODE, NEAR_MODE
+  ZeroModeTask zero_task;             // CLEAN, SET
+  ZeroingSpeed zero_speed;            // VERY_SLOW..VERY_FAST (YAML: homing.speed as zeroing_speed)
+  Direction zero_direction;           // CW, CCW
+  
+  // Hardware-only settings (not exposed in YAML - use safe defaults)
+  uint8_t protect_enable;             // Protection flags (default: 0 = all disabled)
+  uint8_t mplyer;                     // Multiplier (default: 0)
+  uint8_t baud_rate;                  // Baud rate code (default: 1 = 9600)
+  uint8_t slave_address;              // Modbus address (set via platform, not ConfigData)
+  uint8_t group_address;              // Group address (default: 0)
+  bool respond_enable;                // Response enable (default: true)
+  bool active_enable;                 // Active reporting (default: false)
+  bool modbus_enable;                 // MODBUS protocol (default: true)
+  bool limit_port_remap;              // Limit port remapping (default: false)
+};
+```
 
-// Position mode configuration (homing.*)
-bool homing_at_startup;               // YAML: homing.at_startup
+**Note on ConfigData vs YAML**: Not all fields in ConfigData are directly YAML-configurable. Hardware-only fields use safe defaults to ensure consistent motor behavior after setup.
+
+### Additional Configuration (not in ConfigData)
+
+```cpp
+// Unit conversion
+float steps_per_revolution_;          // Required for Speed/Position/Acceleration conversions
+
+// Homing configuration (HomingConfig struct)
 HomingMode homing_mode;               // ENDSTOP, SENSORLESS, VIRTUAL (YAML: homing.mode)
-HomingDirection homing_direction;     // CW, CCW, NEAREST (NEAREST only for VIRTUAL) (YAML: homing.direction)
-Speed homing_speed;                   // YAML: homing.speed
-uint16_t homing_current_ma;           // SENSORLESS threshold (YAML: homing.current)
-EndstopTrigger homing_endstop_trigger; // If ENDSTOP mode (YAML: homing.endstop_trigger)
-uint8_t zero_mode_speed_level;        // 0..4 for VIRTUAL mode (YAML: homing.speed as zeroing_speed)
+bool homing_at_startup;               // YAML: homing.at_startup
+// Speed stored as union: Speed (ENDSTOP/SENSORLESS) or ZeroingSpeed (VIRTUAL)
 
-// Speed mode configuration
-// (no additional config - uses initial_speed and initial_acceleration)
+// Sleep configuration
+uint32_t sleep_when_done_ms;          // UINT32_MAX=disabled, 0=immediate, 1+=delay (YAML: sleep_when_done)
 ```
 
 ## Runtime State
