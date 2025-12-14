@@ -146,18 +146,22 @@ namespace esphome
                           // Decode and log individual configuration values
                           auto config = CommandDecoder::read_all_config(cmd);
                           
+                          // Define common string arrays for configuration value names
+                          static const char *mode_names[] = {"CR_OPEN", "CR_CLOSE", "CR_vFOC", "SR_OPEN", "SR_CLOSE", "SR_vFOC"};
+                          static constexpr size_t mode_names_count = sizeof(mode_names) / sizeof(mode_names[0]);
+                          static const char *en_pin_names[] = {"LOW", "HIGH", "ALWAYS"};
+                          static constexpr size_t en_pin_names_count = sizeof(en_pin_names) / sizeof(en_pin_names[0]);
+                          
                           // Log control settings
-                          const char *mode_names[] = {"CR_OPEN", "CR_CLOSE", "CR_vFOC", "SR_OPEN", "SR_CLOSE", "SR_vFOC"};
                           uint8_t mode_idx = static_cast<uint8_t>(config.mode);
-                          ESP_LOGD(TAG_ENGINE, "  Control mode: %s", (mode_idx < 6) ? mode_names[mode_idx] : "UNKNOWN");
+                          ESP_LOGD(TAG_ENGINE, "  Control mode: %s", (mode_idx < mode_names_count) ? mode_names[mode_idx] : "UNKNOWN");
                           ESP_LOGD(TAG_ENGINE, "  Working current: %u mA", config.working_current_ma);
                           ESP_LOGD(TAG_ENGINE, "  Holding current: %u%%", config.holding_current_percent);
                           ESP_LOGD(TAG_ENGINE, "  Microstepping: 1/%u", config.subdivision);
                           
                           // Log pin settings
-                          const char *en_pin_names[] = {"LOW", "HIGH", "ALWAYS"};
                           uint8_t en_pin_idx = static_cast<uint8_t>(config.en_pin_active);
-                          ESP_LOGD(TAG_ENGINE, "  EN pin active: %s", (en_pin_idx < 3) ? en_pin_names[en_pin_idx] : "UNKNOWN");
+                          ESP_LOGD(TAG_ENGINE, "  EN pin active: %s", (en_pin_idx < en_pin_names_count) ? en_pin_names[en_pin_idx] : "UNKNOWN");
                           ESP_LOGD(TAG_ENGINE, "  Shaft reversed: %s", config.shaft_reversed ? "yes" : "no");
                           
                           // Log display and protection
@@ -215,18 +219,16 @@ namespace esphome
                           EnPinActive desired_en_pin = parent_->get_en_pin_active();
                           if (config.en_pin_active != desired_en_pin)
                           {
-                            const char *en_names[] = {"LOW", "HIGH", "ALWAYS"};
                             ESP_LOGD(TAG_ENGINE, "  EN pin active differs: %s → %s", 
-                                     en_names[static_cast<uint8_t>(config.en_pin_active)],
-                                     en_names[static_cast<uint8_t>(desired_en_pin)]);
+                                     en_pin_names[static_cast<uint8_t>(config.en_pin_active)],
+                                     en_pin_names[static_cast<uint8_t>(desired_en_pin)]);
                             queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin),
-                                            [desired_en_pin](bool success, const Command &)
+                                            [desired_en_pin, en_pin_names](bool success, const Command &)
                                             {
                                               if (success)
                                               {
-                                                const char *mode_names[] = {"LOW", "HIGH", "ALWAYS"};
                                                 ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", 
-                                                         mode_names[static_cast<uint8_t>(desired_en_pin)]);
+                                                         en_pin_names[static_cast<uint8_t>(desired_en_pin)]);
                                               }
                                               else
                                               {
@@ -311,24 +313,13 @@ namespace esphome
                           ControlMode desired_mode = parent_->get_control_mode();
                           if (config.mode != desired_mode)
                           {
-                            const char *mode_names_full[] = {"CR_OPEN", "CR_CLOSE", "CR_vFOC", "SR_OPEN", "SR_CLOSE", "SR_vFOC"};
+                            uint8_t current_mode_idx = static_cast<uint8_t>(config.mode);
+                            uint8_t desired_mode_idx = static_cast<uint8_t>(desired_mode);
                             ESP_LOGD(TAG_ENGINE, "  Control mode differs: %s → %s",
-                                     mode_names_full[static_cast<uint8_t>(config.mode)],
-                                     mode_names_full[static_cast<uint8_t>(desired_mode)]);
+                                     (current_mode_idx < mode_names_count) ? mode_names[current_mode_idx] : "UNKNOWN",
+                                     (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN");
                             
-                            const char *mode_name;
-                            switch (desired_mode)
-                            {
-                            case ControlMode::SR_OPEN:
-                              mode_name = "SR_OPEN";
-                              break;
-                            case ControlMode::SR_CLOSE:
-                              mode_name = "SR_CLOSE";
-                              break;
-                            case ControlMode::SR_VFOC:
-                              mode_name = "SR_vFOC";
-                              break;
-                            }
+                            const char *mode_name = (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN";
                             
                             queue_->enqueue(CommandFactory::set_control_mode(desired_mode),
                                             [mode_name](bool success, const Command &)
