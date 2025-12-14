@@ -659,9 +659,9 @@ namespace esphome
         config.limit_port_remap = (data[idx++] != 0);
 
         // REG18-19: 0_Mode parameters (4 bytes)
-        config.zero_mode = data[idx++];
-        config.zero_task = data[idx++];
-        config.zero_speed = data[idx++];
+        config.zero_mode = static_cast<ZeroModeMode>(data[idx++]);
+        config.zero_task = static_cast<ZeroModeTask>(data[idx++]);
+        config.zero_speed = static_cast<ZeroingSpeed>(data[idx++]);
         config.zero_direction = static_cast<Direction>(data[idx++]);
 
         return config;

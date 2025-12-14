@@ -531,9 +531,9 @@ namespace esphome
         // Only configure if currently disabled to avoid resetting zero point repeatedly
         ESP_LOGD(TAG_ENGINE, "VIRTUAL homing: Checking motor status");
 
-        CommandFactory::ZeroModeMode mode = homing.direction == HomingDirection::NEAREST
-                                                ? CommandFactory::ZeroModeMode::NEAR_MODE
-                                                : CommandFactory::ZeroModeMode::DIR_MODE;
+        ZeroModeMode mode = homing.direction == HomingDirection::NEAREST
+                                ? ZeroModeMode::NEAR_MODE
+                                : ZeroModeMode::DIR_MODE;
 
         Direction hw_direction = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
 
@@ -553,7 +553,7 @@ namespace esphome
                           {
                             ESP_LOGD(TAG_ENGINE, "Motor not homing, configuring 0_Mode now");
                             queue_->enqueue(CommandFactory::set_zero_mode(mode,
-                                                                          CommandFactory::ZeroModeTask::SET,
+                                                                          ZeroModeTask::SET,
                                                                           homing.level,
                                                                           hw_direction),
                                             [](bool success, const Command &)

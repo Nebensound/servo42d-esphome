@@ -371,22 +371,6 @@ namespace esphome
       }
 
       /**
-       * @brief Zero mode configuration
-       */
-      enum class ZeroModeMode : uint8_t
-      {
-        MODE_DISABLED = 0x00,
-        DIR_MODE = 0x01,
-        NEAR_MODE = 0x02
-      };
-
-      enum class ZeroModeTask : uint8_t
-      {
-        CLEAN = 0x00,
-        SET = 0x01
-      };
-
-      /**
        * @brief Set 0_Mode auto-return parameters
        * @param mode Zero mode operation (DISABLED, DIR_MODE, or NEAR_MODE)
        * @param clean_set Task to perform (CLEAN to clear zero, SET to set zero)

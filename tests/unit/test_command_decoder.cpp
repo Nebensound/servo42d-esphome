@@ -423,8 +423,8 @@ void test_read_all_config()
   ASSERT_TRUE(!config1.nolimit_mode, "Decode nolimit mode (false)");
   ASSERT_EQUAL(config1.nolimit_current_ma, 1000, "Decode nolimit current (1000 mA)");
   ASSERT_TRUE(!config1.limit_port_remap, "Decode limit port remap (false)");
-  ASSERT_EQUAL(config1.zero_mode, 0, "Decode zero mode");
-  ASSERT_EQUAL(config1.zero_speed, 2, "Decode zero speed");
+  ASSERT_EQUAL(static_cast<uint8_t>(config1.zero_mode), 0, "Decode zero mode");
+  ASSERT_EQUAL(static_cast<uint8_t>(config1.zero_speed), 2, "Decode zero speed");
 
   // Test invalid data size
   Command cmd2(Commandtype::READ_ALL_CONFIG);

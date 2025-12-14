@@ -94,6 +94,19 @@ namespace esphome
       VERY_FAST = 4,
     };
 
+    enum class ZeroModeMode : uint8_t
+    {
+      MODE_DISABLED = 0x00,
+      DIR_MODE = 0x01,
+      NEAR_MODE = 0x02
+    };
+
+    enum class ZeroModeTask : uint8_t
+    {
+      CLEAN = 0x00,
+      SET = 0x01
+    };
+
     // Forward declaration for HomingConfig (defined after class for access to Speed)
     class ServoXxd;
 
@@ -132,9 +145,9 @@ namespace esphome
       bool nolimit_mode{false};
       uint16_t nolimit_current_ma{1000};
       bool limit_port_remap{false};
-      uint8_t zero_mode{0};             ///< 0_Mode configuration (default: disabled)
-      uint8_t zero_task{0};             ///< Zero task (default: CLEAN)
-      uint8_t zero_speed{2};            ///< Zero speed (default: MEDIUM)
+      ZeroModeMode zero_mode{ZeroModeMode::MODE_DISABLED};     ///< 0_Mode configuration
+      ZeroModeTask zero_task{ZeroModeTask::CLEAN};            ///< Zero task
+      ZeroingSpeed zero_speed{ZeroingSpeed::MEDIUM};          ///< Zero speed
       Direction zero_direction{Direction::CW};
     };
 
