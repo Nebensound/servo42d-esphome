@@ -1,21 +1,21 @@
-# Basic Servo42D RS485 Stepper Motor Example
+# Basic ServoXXD Stepper Motor Example
 #
 # This example shows the minimal configuration needed to control
-# a MKS Servo42D/57D motor via RS485/MODBUS-RTU
+# a MKS ServoXXD (28D/35D/42D/57D) motor via RS485/MODBUS-RTU
 #
 # Hardware Setup:
 # - ESP32 UART TX (GPIO17) -> RS485 DI (Data Input)
 # - ESP32 UART RX (GPIO16) -> RS485 RO (Receiver Output)
 # - RS485 A/B -> Motor A/B terminals
 # - Motor must be pre-configured via display buttons:
-#   * MODBUS-RTU enabled (register 0x008E = 1)
-#   * Correct baud rate (38400 recommended)
-#   * Motor address (default: 1)
+#   * MODBUS-RTU enabled (Mb_RTU = Enable)
+#   * Correct baud rate (9600 or 38400 recommended)
+#   * Motor address (default: 1, UartAddr)
 #   * Work mode set to SR_VFOC (mode 5)
 
 esphome:
-  name: servo42d-basic
-  friendly_name: "Servo42D Basic Example"
+  name: servoxxd-basic
+  friendly_name: "ServoXXD Basic Example"
 
 esp32:
   board: esp32dev
@@ -24,8 +24,8 @@ esp32:
 
 # Load component from GitHub
 external_components:
-  - source: github://Nebensound/servo42d-esphome
-    components: [servo42d_rs485]
+  - source: github://Nebensound/servoxxd-esphome
+    components: [servoxxd]
 
 # Enable logging
 logger:
@@ -47,19 +47,20 @@ modbus:
   uart_id: uart_bus
   send_wait_time: 50ms
 
-# Servo42D RS485 Stepper Motor
+# ServoXXD Stepper Motor
 stepper:
-  - platform: servo42d_rs485
+  - platform: servoxxd
     id: my_stepper
-    max_speed: 1000 steps/s
+    steps_per_revolution: 3200  # 200 steps × 16 microsteps
+    servo_type: SERVO42D         # SERVO28D | SERVO35D | SERVO42D | SERVO57D
+    control_mode: SR_VFOC        # SR_OPEN | SR_CLOSE | SR_VFOC (recommended)
+    speed: 1000 steps/s
     acceleration: 500 steps/s^2
-    deceleration: 500 steps/s^2
+    mode: POSITION               # POSITION | SPEED
 
     # MODBUS configuration
     modbus_id: modbus_bus
     address: 0x01
-    # Optional: configure update interval for status polling
-    update_interval: 1s
 
 # =============================================================================
 # Example Buttons using Actions

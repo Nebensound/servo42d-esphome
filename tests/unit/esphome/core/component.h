@@ -2,6 +2,7 @@
 
 // Mock ESPHome component header for unit testing
 
+#include <cstdint>
 #include <functional>
 #include <vector>
 #include <cstdint>

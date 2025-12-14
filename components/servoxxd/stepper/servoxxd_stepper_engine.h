@@ -93,7 +93,7 @@ namespace esphome
        * Must be called after construction, before any movement commands.
        * Commands are executed asynchronously through CommandQueue.
        *
-       * TODO: Add initial motor state query
+       * @note Future enhancement: Add initial motor state query
        * - Query encoder position (0x36)
        * - Query motor status (0x3A)
        * - Query protection status (0x3E)

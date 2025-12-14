@@ -57,25 +57,27 @@ namespace esphome
      * - Template setters for unit-based values (position, speed, acceleration)
      * - ESPHome automation system integration
      *
-     * TODO: Implementation required for all 18 actions
-     * - [ ] SetTargetAction with Position support
-     * - [ ] RunContinuousAction with Speed support
-     * - [ ] StopAction
-     * - [ ] EmergencyStopAction
-     * - [ ] HomeAction
-     * - [ ] ReportPositionAction with Position support
-     * - [ ] SetZeroAction
-     * - [ ] EnableAction
-     * - [ ] DisableAction
-     * - [ ] SetSpeedAction with Speed support
-     * - [ ] SetAccelerationAction with Acceleration support
-     * - [ ] SetWorkModeAction
-     * - [ ] SetWorkingCurrentAction
-     * - [ ] SetHoldingCurrentPercentAction
-     * - [ ] SetMicrosteppingAction
-     * - [ ] ReleaseProtectionAction
-     * - [ ] RestartAction
-     * - [ ] CalibrateAction
+     * **Implemented Actions:**
+     * - SetTargetAction with Position support (steps, revolutions, degrees, radians, arcminutes, arcseconds)
+     * - RunContinuousAction with Speed support (steps/s, RPM, rev/s, deg/s, rad/s, deg/min, deg/h)
+     * - StopAction
+     * - EmergencyStopAction
+     * - HomeAction
+     * - ReportPositionAction with Position support
+     * - SetZeroAction
+     * - EnableAction
+     * - DisableAction
+     * - SetSpeedAction with Speed support
+     * - SetAccelerationAction with Acceleration support (steps/s², RPM/s, rev/s²)
+     * - SetWorkModeAction
+     * - SetWorkingCurrentAction
+     * - SetHoldingCurrentPercentAction
+     * - SetMicrosteppingAction
+     * - ReleaseProtectionAction
+     * - RestartAction
+     * - CalibrateAction
+     * - KeyLockAction
+     * - KeyUnlockAction
      *
      * @see ServoXxd for component API
      * @see README.md for user-facing documentation
@@ -91,9 +93,6 @@ namespace esphome
      *
      * YAML: `stepper.set_target`
      *
-     * TODO: Implement play() method
-     * - Call parent_->move_to(position_)
-     * - Handle templatable position values
      */
     template <typename... Ts>
     class SetTargetAction : public Action<Ts...>
@@ -128,7 +127,6 @@ namespace esphome
      *
      * YAML: `stepper.run_continuous`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class RunContinuousAction : public Action<Ts...>
@@ -164,7 +162,6 @@ namespace esphome
      *
      * YAML: `stepper.stop`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class StopAction : public Action<Ts...>
@@ -186,7 +183,6 @@ namespace esphome
      *
      * YAML: `stepper.emergency_stop`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class EmergencyStopAction : public Action<Ts...>
@@ -208,7 +204,6 @@ namespace esphome
      *
      * YAML: `stepper.home`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class HomeAction : public Action<Ts...>
@@ -239,7 +234,6 @@ namespace esphome
      *
      * YAML: `stepper.report_position`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class ReportPositionAction : public Action<Ts...>
@@ -275,7 +269,6 @@ namespace esphome
      *
      * YAML: `stepper.set_zero`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class SetZeroAction : public Action<Ts...>
@@ -306,7 +299,6 @@ namespace esphome
      *
      * YAML: `stepper.enable`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class EnableAction : public Action<Ts...>
@@ -328,7 +320,6 @@ namespace esphome
      *
      * YAML: `stepper.disable`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class DisableAction : public Action<Ts...>
@@ -354,7 +345,6 @@ namespace esphome
      *
      * YAML: `stepper.set_speed`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class SetSpeedAction : public Action<Ts...>
@@ -383,7 +373,6 @@ namespace esphome
      *
      * YAML: `stepper.set_acceleration`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class SetAccelerationAction : public Action<Ts...>
@@ -441,7 +430,6 @@ namespace esphome
      *
      * YAML: `stepper.set_working_current`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class SetWorkingCurrentAction : public Action<Ts...>
@@ -466,7 +454,6 @@ namespace esphome
      *
      * YAML: `stepper.set_holding_current_percent`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class SetHoldingCurrentPercentAction : public Action<Ts...>
@@ -491,7 +478,6 @@ namespace esphome
      *
      * YAML: `stepper.set_microstepping`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class SetMicrosteppingAction : public Action<Ts...>
@@ -519,7 +505,6 @@ namespace esphome
      *
      * YAML: `stepper.release_protection`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class ReleaseProtectionAction : public Action<Ts...>
@@ -541,7 +526,6 @@ namespace esphome
      *
      * YAML: `stepper.restart`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class RestartAction : public Action<Ts...>
@@ -563,7 +547,6 @@ namespace esphome
      *
      * YAML: `stepper.calibrate`
      *
-     * TODO: Implement play() method
      */
     template <typename... Ts>
     class CalibrateAction : public Action<Ts...>

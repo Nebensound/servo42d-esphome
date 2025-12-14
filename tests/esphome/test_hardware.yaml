@@ -3,13 +3,13 @@ substitutions:
   microsteps: 16
 
 esphome:
-  name: servo42d-test
-  friendly_name: Servo42D Setup Test
+  name: servoxxd-test
+  friendly_name: ServoXXD Setup Test
   on_boot:
     priority: -100
     then:
       - lambda: 'ESP_LOGI("test", "==========================================");'
-      - lambda: 'ESP_LOGI("test", "  SERVO42D HARDWARE FUNCTION TEST");'
+      - lambda: 'ESP_LOGI("test", "  SERVOXXD HARDWARE FUNCTION TEST");'
       - lambda: 'ESP_LOGI("test", "==========================================");'
       - delay: 3s
 
