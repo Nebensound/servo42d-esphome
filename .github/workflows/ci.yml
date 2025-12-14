@@ -77,27 +77,34 @@ jobs:
         run: |
           esphome compile ${{ matrix.yaml-file }}
 
-  lint-yaml:
-    name: YAML Lint
+  format-check:
+    name: Format Check (C++, Python, YAML)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: YAML Lint
-        uses: ibiqlik/action-yamllint@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          file_or_dir: tests/esphome/*.yaml examples/*.yaml
-          config_data: |
-            extends: default
-            rules:
-              line-length:
-                max: 120
-              indentation:
-                spaces: 2
-              comments:
-                min-spaces-from-content: 1
-              document-start: disable
-              trailing-spaces: disable
-              comments-indentation: disable
+          python-version: '3.11'
+
+      - name: Install formatters
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+          pip install ruff
+          npm install -g prettier
+
+      - name: Check C++ Format
+        run: |
+          clang-format --dry-run --Werror components/servoxxd/stepper/*.cpp components/servoxxd/stepper/*.h tests/unit/test_*.cpp
+
+      - name: Check Python Format
+        run: |
+          ruff format --check components/servoxxd/
+
+      - name: Check YAML Format
+        run: |
+          prettier --check "**/*.{yaml,yml}"
