@@ -16,6 +16,7 @@
 #include "servoxxd_position.h"
 #include "servoxxd_modbus.h"
 #include <optional>
+#include <string>
 
 namespace esphome
 {

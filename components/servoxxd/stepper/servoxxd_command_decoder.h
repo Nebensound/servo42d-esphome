@@ -550,6 +550,154 @@ namespace esphome
         ps.protected_state = (!data.empty() && data[0] != 0);
         return ps;
       }
+
+      struct AllConfigData
+      {
+        ControlMode mode{ControlMode::SR_OPEN};
+        uint8_t holding_current_percent{50};
+        uint16_t working_current_ma{2000};
+        uint8_t subdivision{16};
+        EnPinActive en_pin_active{EnPinActive::EN_LOW};
+        bool shaft_reversed{false};
+        bool auto_screen_off{true};
+        uint8_t protect_enable{0};
+        uint8_t mplyer{0};
+        uint8_t baud_rate{1};
+        uint8_t slave_address{1};
+        uint8_t group_address{0};
+        bool respond_enable{true};
+        bool active_enable{false};
+        bool modbus_enable{true};
+        bool key_lock{false};
+        EndstopTrigger homing_trigger{EndstopTrigger::TRIGGER_LOW};
+        Direction homing_direction{Direction::CW};
+        uint16_t homing_speed_rpm{0};
+        bool endlimit_enable{false};
+        uint32_t nolimit_reverse_angle_ticks{0};
+        bool nolimit_mode{false};
+        uint16_t nolimit_current_ma{1000};
+        bool limit_port_remap{false};
+        uint8_t zero_mode{0};
+        uint8_t zero_task{0};
+        uint8_t zero_speed{2};
+        Direction zero_direction{Direction::CW};
+      };
+
+      /**
+       * @brief Decode all configuration parameters
+       *
+       * @details Commandtype::READ_ALL_CONFIG (0x1147)
+       * Function: 0x04 (Read Input Registers)
+       * Response: 38 bytes (19 registers) containing all motor configuration
+       * 
+       * Register breakdown (matching write_all_config):
+       * - REG1 (2B): Mode [mode][reserved]
+       * - REG2 (2B): Hold current [hw_hold][reserved]
+       * - REG3 (2B): Work current [hi][lo]
+       * - REG4 (2B): Subdivision [subdivision][reserved]
+       * - REG5 (2B): En + Dir [en_pin_active][shaft_reversed]
+       * - REG6 (2B): AutoSDD + Protect [auto_screen_off][protect_enable]
+       * - REG7 (2B): Mplyer + NULL [mplyer][reserved]
+       * - REG8 (2B): Baud + Slave [baud_rate][slave_address]
+       * - REG9 (2B): Group + Respond [group_address][respond_active]
+       * - REG10 (2B): MODBUS + Key [modbus_enable][key_lock]
+       * - REG11-13 (6B): Homing params [trigger][direction][speed_hi][speed_lo][null][endlimit]
+       * - REG14-16 (8B): No-limit homing [reverse_angle(4)][mode(2)][current_ma(2)]
+       * - REG17 (2B): Remap [null][limit_port_remap]
+       * - REG18-19 (4B): 0_Mode [zero_mode][zero_task][zero_speed][zero_direction]
+       *
+       * @param cmd Command object with command_type=READ_ALL_CONFIG and response data
+       * @return AllConfigData struct with decoded configuration parameters
+       */
+      static AllConfigData read_all_config(const Command &cmd)
+      {
+        AllConfigData config{};
+        if (!validate_command_type(cmd, Commandtype::READ_ALL_CONFIG))
+          return config;
+
+        const auto &data = cmd.response;
+        if (data.size() < 38)
+        {
+          ESP_LOGW(TAG, "Invalid READ_ALL_CONFIG response size: %zu bytes (expected 38)", data.size());
+          return config;
+        }
+
+        size_t idx = 0;
+
+        // REG1: Mode (2 bytes)
+        config.mode = static_cast<ControlMode>(data[idx++]);
+        idx++; // Reserved
+
+        // REG2: Hold current (2 bytes)
+        uint8_t hw_hold = data[idx++];
+        config.holding_current_percent = (hw_hold >= 8) ? 90 : ((hw_hold + 1) * 10);
+        idx++; // Reserved
+
+        // REG3: Work current (2 bytes)
+        config.working_current_ma = (static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1];
+        idx += 2;
+
+        // REG4: Subdivision (2 bytes)
+        config.subdivision = data[idx++];
+        idx++; // Reserved
+
+        // REG5: En + Dir (2 bytes)
+        config.en_pin_active = static_cast<EnPinActive>(data[idx++]);
+        config.shaft_reversed = (data[idx++] != 0);
+
+        // REG6: AutoSDD + Protect (2 bytes)
+        config.auto_screen_off = (data[idx++] != 0);
+        config.protect_enable = data[idx++];
+
+        // REG7: Mplyer + NULL (2 bytes)
+        config.mplyer = data[idx++];
+        idx++; // Reserved
+
+        // REG8: Baud rate + Slave address (2 bytes)
+        config.baud_rate = data[idx++];
+        config.slave_address = data[idx++];
+
+        // REG9: Group address + Respond/Active (2 bytes)
+        config.group_address = data[idx++];
+        uint8_t respond_active = data[idx++];
+        config.respond_enable = (respond_active & 0x01) != 0;
+        config.active_enable = ((respond_active >> 1) & 0x01) != 0;
+
+        // REG10: MODBUS + Key lock (2 bytes)
+        config.modbus_enable = (data[idx++] != 0);
+        config.key_lock = (data[idx++] != 0);
+
+        // REG11-13: Homing parameters (6 bytes)
+        config.homing_trigger = static_cast<EndstopTrigger>(data[idx++]);
+        config.homing_direction = static_cast<Direction>(data[idx++]);
+        config.homing_speed_rpm = (static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1];
+        idx += 2;
+        idx++; // NULL
+        config.endlimit_enable = (data[idx++] != 0);
+
+        // REG14-16: No-limit homing (8 bytes total: 4 for reverse_angle + 2 for mode + 2 for current_ma)
+        config.nolimit_reverse_angle_ticks = (static_cast<uint32_t>(data[idx]) << 24) |
+                                              (static_cast<uint32_t>(data[idx + 1]) << 16) |
+                                              (static_cast<uint32_t>(data[idx + 2]) << 8) |
+                                              static_cast<uint32_t>(data[idx + 3]);
+        idx += 4; // Advance 4 bytes for reverse_angle
+        config.nolimit_mode = ((static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1]) != 0;
+        idx += 2; // Advance 2 bytes for mode
+        config.nolimit_current_ma = (static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1];
+        idx += 2; // Advance 2 bytes for current_ma
+
+        // REG17: Remap + NULL (2 bytes)
+        idx++; // NULL
+        config.limit_port_remap = (data[idx++] != 0);
+
+        // REG18-19: 0_Mode parameters (4 bytes)
+        config.zero_mode = data[idx++];
+        config.zero_task = data[idx++];
+        config.zero_speed = data[idx++];
+        config.zero_direction = static_cast<Direction>(data[idx++]);
+
+        return config;
+      }
     };
 
   } // namespace servoxxd
