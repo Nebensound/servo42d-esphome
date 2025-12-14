@@ -675,16 +675,16 @@ namespace esphome
         idx++; // NULL
         config.endlimit_enable = (data[idx++] != 0);
 
-        // REG14-16: No-limit homing (8 bytes)
+        // REG14-16: No-limit homing (8 bytes total: 4 for reverse_angle + 2 for mode + 2 for current_ma)
         config.nolimit_reverse_angle_ticks = (static_cast<uint32_t>(data[idx]) << 24) |
                                               (static_cast<uint32_t>(data[idx + 1]) << 16) |
                                               (static_cast<uint32_t>(data[idx + 2]) << 8) |
                                               static_cast<uint32_t>(data[idx + 3]);
-        idx += 4;
+        idx += 4; // Advance 4 bytes for reverse_angle
         config.nolimit_mode = ((static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1]) != 0;
-        idx += 2;
+        idx += 2; // Advance 2 bytes for mode
         config.nolimit_current_ma = (static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1];
-        idx += 2;
+        idx += 2; // Advance 2 bytes for current_ma
 
         // REG17: Remap + NULL (2 bytes)
         idx++; // NULL
