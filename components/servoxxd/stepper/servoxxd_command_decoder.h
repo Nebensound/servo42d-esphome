@@ -618,7 +618,7 @@ namespace esphome
         config.protect_enable = data[idx++];
 
         // REG7: Mplyer + NULL (2 bytes)
-        config.mplyer = data[idx++];
+        config.mplyer = (data[idx++] != 0);
         idx++; // Reserved
 
         // REG8: Baud rate + Slave address (2 bytes)

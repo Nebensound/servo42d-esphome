@@ -129,7 +129,7 @@ namespace esphome
       bool shaft_reversed{false};
       bool auto_screen_off{true};
       uint8_t protect_enable{0};        ///< Protection enable flags (default: all disabled)
-      uint8_t mplyer{0};                ///< Multiplier (typically 0)
+      bool mplyer{false};               ///< 256x subdivision interpolation (default: disabled)
       uint8_t baud_rate{1};             ///< Baud rate code (default: 1 = 9600)
       uint8_t slave_address{1};         ///< Modbus slave address (default: 1)
       uint8_t group_address{0};         ///< Group address (default: 0)
