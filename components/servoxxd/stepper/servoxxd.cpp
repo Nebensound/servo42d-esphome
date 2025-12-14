@@ -180,6 +180,9 @@ namespace esphome
 
     ServoXxd::ServoXxd()
     {
+      // Initialize Position object parent pointer in config_
+      config_.nolimit_reverse_angle_ticks.parent_ = this;
+      
       // Note: homing_ union will be initialized by Python setters from YAML configuration
       // Note: transport_ and engine_ are created in setup() after all setters have run
     }

@@ -139,7 +139,7 @@ namespace esphome
       Direction homing_direction{Direction::CW};
       uint16_t homing_speed_rpm{0};
       bool endlimit_enable{false};
-      uint32_t nolimit_reverse_angle_ticks{0};
+      Position nolimit_reverse_angle_ticks{nullptr};  ///< No-limit reverse angle as Position object
       bool nolimit_mode{false};
       uint16_t nolimit_current_ma{1000};
       bool limit_port_remap{false};
