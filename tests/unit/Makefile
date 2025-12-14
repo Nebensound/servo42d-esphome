@@ -13,6 +13,7 @@ SOURCES = \
 	$(COMPONENT_DIR)/servoxxd_modbus.cpp \
 	$(COMPONENT_DIR)/servoxxd_stepper_engine.cpp \
 	$(COMPONENT_DIR)/servoxxd_command_queue.cpp \
+	$(COMPONENT_DIR)/servoxxd_command_decoder.cpp \
 	$(COMPONENT_DIR)/servoxxd_speed.cpp \
 	$(COMPONENT_DIR)/servoxxd_acceleration.cpp \
 	$(COMPONENT_DIR)/servoxxd_position.cpp \
@@ -65,7 +66,7 @@ test_stepper_engine: test_stepper_engine.cpp $(ENGINE_SOURCES)
 	@echo "Building $@..."
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-test_command_decoder: test_command_decoder.cpp $(COMPONENT_DIR)/servoxxd_speed.cpp $(COMPONENT_DIR)/servoxxd_acceleration.cpp $(COMPONENT_DIR)/servoxxd_position.cpp
+test_command_decoder: test_command_decoder.cpp $(COMPONENT_DIR)/servoxxd_command_decoder.cpp $(COMPONENT_DIR)/servoxxd_speed.cpp $(COMPONENT_DIR)/servoxxd_acceleration.cpp $(COMPONENT_DIR)/servoxxd_position.cpp
 	@echo "Building $@..."
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
@@ -110,6 +111,18 @@ clean:
 	@echo "Cleaning..."
 	rm -f $(TESTS)
 	@echo "Done."
+
+# Format C++ code using clang-format
+format:
+	@echo "$(GREEN)Formatting C++ code...$(NC)"
+	@if command -v clang-format >/dev/null 2>&1; then \
+		find $(COMPONENT_DIR) -name "*.cpp" -o -name "*.h" | xargs clang-format -i; \
+		find . -maxdepth 1 -name "test_*.cpp" | xargs clang-format -i; \
+		echo "$(GREEN)✅ Code formatted$(NC)"; \
+	else \
+		echo "$(RED)❌ clang-format not found. Please install clang-format$(NC)"; \
+		exit 1; \
+	fi
 
 # Help
 help:

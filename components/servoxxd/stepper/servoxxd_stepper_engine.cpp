@@ -117,11 +117,282 @@ namespace esphome
 
       ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor initialization sequence...");
 
-      // 0. OPTIONAL: Clear any error/protection states first
+      // 0. Restart motor to ensure clean state (Commandtype 0x41 RESTART)
+      // Motor needs ~3-4s to reboot before accepting configuration commands
+      queue_->enqueue(CommandFactory::restart(), 
+                      [](bool success, const Command &)
+                      {
+                        if (success)
+                        {
+                          ESP_LOGD(TAG_ENGINE, "✓ Motor restart initiated, waiting 4000ms...");
+                        }
+                        else
+                        {
+                          ESP_LOGW(TAG_ENGINE, "✗ Failed to restart motor");
+                        }
+                      }, 
+                      Priority::NORMAL, 
+                      4000); // Wait 4 seconds after restart
+
+      // 1. Read all current configuration from motor (after restart)
+      // This allows us to verify the motor's current state before applying new settings
+      queue_->enqueue(CommandFactory::read_all_config(),
+                      [this](bool success, const Command &cmd)
+                      {
+                        if (success)
+                        {
+                          ESP_LOGD(TAG_ENGINE, "✓ Current motor configuration read (%zu bytes)", cmd.response.size());
+                          
+                          // Decode and log individual configuration values
+                          auto config = CommandDecoder::read_all_config(cmd);
+                          
+                          // Define common string arrays for configuration value names
+                          static const char *mode_names[] = {"CR_OPEN", "CR_CLOSE", "CR_vFOC", "SR_OPEN", "SR_CLOSE", "SR_vFOC"};
+                          static constexpr size_t mode_names_count = sizeof(mode_names) / sizeof(mode_names[0]);
+                          static const char *en_pin_names[] = {"LOW", "HIGH", "ALWAYS"};
+                          static constexpr size_t en_pin_names_count = sizeof(en_pin_names) / sizeof(en_pin_names[0]);
+                          
+                          // Log control settings
+                          uint8_t mode_idx = static_cast<uint8_t>(config.mode);
+                          ESP_LOGD(TAG_ENGINE, "  Control mode: %s", (mode_idx < mode_names_count) ? mode_names[mode_idx] : "UNKNOWN");
+                          ESP_LOGD(TAG_ENGINE, "  Working current: %u mA", config.working_current_ma);
+                          ESP_LOGD(TAG_ENGINE, "  Holding current: %u%%", config.holding_current_percent);
+                          ESP_LOGD(TAG_ENGINE, "  Microstepping: 1/%u", config.subdivision);
+                          
+                          // Log pin settings
+                          uint8_t en_pin_idx = static_cast<uint8_t>(config.en_pin_active);
+                          ESP_LOGD(TAG_ENGINE, "  EN pin active: %s", (en_pin_idx < en_pin_names_count) ? en_pin_names[en_pin_idx] : "UNKNOWN");
+                          ESP_LOGD(TAG_ENGINE, "  Shaft reversed: %s", config.shaft_reversed ? "yes" : "no");
+                          
+                          // Log display and protection
+                          ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s", config.auto_screen_off ? "enabled" : "disabled");
+                          ESP_LOGD(TAG_ENGINE, "  Protection: 0x%02X", config.protect_enable);
+                          ESP_LOGD(TAG_ENGINE, "  Keys: %s", config.key_lock ? "locked" : "unlocked");
+                          
+                          // Log communication settings
+                          ESP_LOGD(TAG_ENGINE, "  MODBUS: %s", config.modbus_enable ? "enabled" : "disabled");
+                          
+                          // Log homing settings
+                          ESP_LOGD(TAG_ENGINE, "  Homing trigger: %s", 
+                                   (config.homing_trigger == EndstopTrigger::TRIGGER_LOW) ? "LOW" : "HIGH");
+                          ESP_LOGD(TAG_ENGINE, "  Homing direction: %s", 
+                                   (config.homing_direction == Direction::CW) ? "CW" : "CCW");
+                          ESP_LOGD(TAG_ENGINE, "  Homing speed: %u RPM", config.homing_speed_rpm);
+                          ESP_LOGD(TAG_ENGINE, "  Endlimit: %s", config.endlimit_enable ? "enabled" : "disabled");
+                          ESP_LOGD(TAG_ENGINE, "  Sensorless mode: %s", config.nolimit_mode ? "enabled" : "disabled");
+                          ESP_LOGD(TAG_ENGINE, "  Sensorless current: %u mA", config.nolimit_current_ma);
+                          
+                          // Log zero mode settings
+                          ESP_LOGD(TAG_ENGINE, "  0_Mode: %u, Task: %u, Speed: %u, Direction: %s",
+                                   config.zero_mode, config.zero_task, config.zero_speed,
+                                   (config.zero_direction == Direction::CW) ? "CW" : "CCW");
+                          
+                          // Generate list of command types needed to update configuration
+                          ESP_LOGCONFIG(TAG_ENGINE, "Checking which configuration values need updates...");
+                          
+                          // Get desired config from parent
+                          ConfigData desired_config = parent_->config_;
+                          
+                          // Get list of commands that need to be executed
+                          std::vector<Commandtype> update_commands = config.get_update_command_types(desired_config);
+                          
+                          if (update_commands.empty())
+                          {
+                            ESP_LOGD(TAG_ENGINE, "  No configuration updates needed - all values match");
+                          }
+                          else
+                          {
+                            ESP_LOGD(TAG_ENGINE, "  %zu configuration value(s) need updating", update_commands.size());
+                            
+                            // Process each command type in the optimal order (already sorted by get_update_command_types)
+                            for (const auto& cmd_type : update_commands)
+                            {
+                              switch (cmd_type)
+                              {
+                                case Commandtype::SET_SUBDIVISION:
+                                {
+                                  uint8_t desired_microstepping = desired_config.subdivision;
+                                  ESP_LOGD(TAG_ENGINE, "  Microstepping: %u → %u", config.subdivision, desired_microstepping);
+                                  queue_->enqueue(CommandFactory::set_subdivision(desired_microstepping),
+                                                  [desired_microstepping](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Microstepping updated to %u", desired_microstepping);
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update microstepping");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_EN_PIN_ACTIVE:
+                                {
+                                  EnPinActive desired_en_pin = desired_config.en_pin_active;
+                                  uint8_t current_en_idx = static_cast<uint8_t>(config.en_pin_active);
+                                  uint8_t desired_en_idx = static_cast<uint8_t>(desired_en_pin);
+                                  ESP_LOGD(TAG_ENGINE, "  EN pin active: %s → %s", 
+                                           (current_en_idx < en_pin_names_count) ? en_pin_names[current_en_idx] : "UNKNOWN",
+                                           (desired_en_idx < en_pin_names_count) ? en_pin_names[desired_en_idx] : "UNKNOWN");
+                                  queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin),
+                                                  [desired_en_pin, en_pin_names, en_pin_names_count](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      uint8_t idx = static_cast<uint8_t>(desired_en_pin);
+                                                      ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", 
+                                                               (idx < en_pin_names_count) ? en_pin_names[idx] : "UNKNOWN");
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update EN pin active level");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_AUTO_SCREEN_OFF:
+                                {
+                                  bool desired_auto_screen_off = desired_config.auto_screen_off;
+                                  ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s → %s",
+                                           config.auto_screen_off ? "enabled" : "disabled",
+                                           desired_auto_screen_off ? "enabled" : "disabled");
+                                  queue_->enqueue(CommandFactory::set_auto_screen_off(desired_auto_screen_off),
+                                                  [desired_auto_screen_off](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Auto screen off updated to %s", 
+                                                               desired_auto_screen_off ? "enabled" : "disabled");
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update auto screen off");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_LOCK_KEYS:
+                                {
+                                  bool desired_lock_keys = desired_config.key_lock;
+                                  ESP_LOGD(TAG_ENGINE, "  Key lock: %s → %s",
+                                           config.key_lock ? "locked" : "unlocked",
+                                           desired_lock_keys ? "locked" : "unlocked");
+                                  queue_->enqueue(CommandFactory::set_lock_keys(desired_lock_keys),
+                                                  [desired_lock_keys](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Keys updated to %s", 
+                                                               desired_lock_keys ? "locked" : "unlocked");
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update key lock");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_EN_TRIGGER_CONFIG:
+                                {
+                                  ESP_LOGD(TAG_ENGINE, "  Setting EN trigger config to safe defaults (always set)");
+                                  queue_->enqueue(CommandFactory::set_en_trigger_config(),
+                                                  [](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ EN trigger config set to safe defaults");
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_WORK_MODE:
+                                {
+                                  ControlMode desired_mode = desired_config.mode;
+                                  uint8_t current_mode_idx = static_cast<uint8_t>(config.mode);
+                                  uint8_t desired_mode_idx = static_cast<uint8_t>(desired_mode);
+                                  ESP_LOGD(TAG_ENGINE, "  Control mode: %s → %s",
+                                           (current_mode_idx < mode_names_count) ? mode_names[current_mode_idx] : "UNKNOWN",
+                                           (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN");
+                                  
+                                  const char *mode_name = (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN";
+                                  
+                                  queue_->enqueue(CommandFactory::set_control_mode(desired_mode),
+                                                  [mode_name](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Control mode updated to %s", mode_name);
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update control mode");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_HOLDING_CURRENT_PERCENT:
+                                {
+                                  uint8_t desired_holding_percent = desired_config.holding_current_percent;
+                                  ESP_LOGD(TAG_ENGINE, "  Holding current: %u%% → %u%%",
+                                           config.holding_current_percent, desired_holding_percent);
+                                  queue_->enqueue(CommandFactory::set_holding_current_percent(desired_holding_percent),
+                                                  [desired_holding_percent](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Holding current updated to %u%%", desired_holding_percent);
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update holding current");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_HOMING_PARAMETERS:
+                                case Commandtype::SET_NOLIMIT_HOMING_PARAMS:
+                                case Commandtype::SET_ZERO_MODE:
+                                case Commandtype::SET_LIMIT_PORT_REMAP:
+                                {
+                                  // TODO: Implement handlers for these command types
+                                  ESP_LOGW(TAG_ENGINE, "  Command type 0x%04X not yet implemented in switch", 
+                                           static_cast<uint16_t>(cmd_type));
+                                  break;
+                                }
+                                
+                                default:
+                                {
+                                  ESP_LOGW(TAG_ENGINE, "  Unknown command type: 0x%04X", static_cast<uint16_t>(cmd_type));
+                                  break;
+                                }
+                              }
+                            }
+                          }
+                        }
+                        else
+                        {
+                          ESP_LOGW(TAG_ENGINE, "✗ Failed to read motor configuration");
+                          ESP_LOGW(TAG_ENGINE, "   Will apply all configuration settings as fallback");
+                        }
+                      });
+
+      // 2. OPTIONAL: Clear any error/protection states first
       // Only send if motor is actually in error state (motor will reject with 0xFFFF otherwise)
       // Note: This is non-critical and failure is expected if motor is healthy
       queue_->enqueue(CommandFactory::release_protection(),
-                      [this](bool success, const Command &)
+                      [](bool success, const Command &)
                       {
                         if (success)
                         {
@@ -133,117 +404,15 @@ namespace esphome
                         }
                       });
 
-      // 1. OPTIONAL: Restart motor to ensure clean state (Commandtype 0x41 RESTART)
-      // Motor needs ~3-4s to reboot before accepting configuration commands
-      // NOTE: This clears the command queue, so it must be done carefully
-      // For now, we skip restart during normal setup to avoid queue clearing issues
-      // restart();
-
-      ESP_LOGCONFIG(TAG_ENGINE, "  Configuration commands enqueued...");
-
-      // 1. Set microstepping (Commandtype 0x84 SET_SUBDIVISION)
-      {
-        queue_->enqueue(CommandFactory::set_subdivision(parent_->get_microstepping()),
-                        [this](bool success, const Command &)
-                        {
-                          if (success)
-                          {
-                            ESP_LOGD(TAG_ENGINE, "✓ Microstepping set to %u", parent_->get_microstepping());
-                          }
-                          else
-                          {
-                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set microstepping");
-                          }
-                        });
-      }
-
-      // 2. Set EN pin active level (Commandtype 0x85 SET_EN_PIN_ACTIVE)
-      {
-        queue_->enqueue(CommandFactory::set_en_pin_active(parent_->get_en_pin_active()),
-                        [this](bool success, const Command &)
-                        {
-                          if (success)
-                          {
-                            const char *mode_names[] = {"LOW", "HIGH", "ALWAYS"};
-                            ESP_LOGD(TAG_ENGINE, "✓ EN pin active: %s", mode_names[static_cast<uint8_t>(parent_->get_en_pin_active())]);
-                          }
-                          else
-                          {
-                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN pin active level");
-                          }
-                        });
-      }
-
-      // 3. Set auto screen off (Commandtype 0x87 SET_AUTO_SCREEN_OFF)
-      {
-        queue_->enqueue(CommandFactory::set_auto_screen_off(parent_->get_auto_screen_off()),
-                        [this](bool success, const Command &)
-                        {
-                          if (success)
-                          {
-                            ESP_LOGD(TAG_ENGINE, "✓ Auto screen off: %s", parent_->get_auto_screen_off() ? "enabled" : "disabled");
-                          }
-                          else
-                          {
-                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set auto screen off");
-                          }
-                        });
-      }
-
-      // 4. Set key lock (Commandtype 0x8F SET_LOCK_KEYS)
-      {
-        queue_->enqueue(CommandFactory::set_lock_keys(parent_->get_lock_keys_at_startup()),
-                        [this](bool success, const Command &)
-                        {
-                          if (success)
-                          {
-                            ESP_LOGD(TAG_ENGINE, "✓ Keys: %s", parent_->get_lock_keys_at_startup() ? "locked" : "unlocked");
-                          }
-                          else
-                          {
-                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set key lock");
-                          }
-                        });
-      }
-
-      // 5. Set control mode (Commandtype 0x82 SET_WORK_MODE)
-      {
-        ControlMode control_mode = parent_->get_control_mode();
-
-        // Compute mode name for logging
-        const char *mode_name;
-        switch (control_mode)
-        {
-        case ControlMode::SR_OPEN:
-          mode_name = "SR_OPEN";
-          break;
-        case ControlMode::SR_CLOSE:
-          mode_name = "SR_CLOSE";
-          break;
-        case ControlMode::SR_VFOC:
-          mode_name = "SR_vFOC";
-          break;
-        }
-
-        queue_->enqueue(CommandFactory::set_control_mode(control_mode),
-                        [this, mode_name](bool success, const Command &)
-                        {
-                          if (success)
-                          {
-                            ESP_LOGD(TAG_ENGINE, "✓ Control mode set to %s", mode_name);
-                          }
-                          else
-                          {
-                            ESP_LOGW(TAG_ENGINE, "✗ Failed to set control mode");
-                          }
-                        });
-      }
+      // Note: Configuration update commands are now enqueued conditionally
+      // in the read_all_config() callback above (lines 137-342)
+      // Only values that differ from desired configuration are updated
 
       // Note: SET_ZERO command is NOT called here during setup.
       // Position zeroing should be done explicitly via set_zero() or during homing.
       // Automatically resetting position during motor initialization could cause unexpected behavior.
 
-      // 6. Configure homing parameters (if homing is enabled)
+      // 10. Configure homing parameters (if homing is enabled)
       // Homing parameters are static (set once at startup, not changed at runtime)
       // Note: Actual homing execution happens via home() method
       auto &homing = parent_->homing_;
@@ -256,7 +425,7 @@ namespace esphome
         ESP_LOGD(TAG_ENGINE, "No homing configured - disabling 0_Mode");
 
         queue_->enqueue(CommandFactory::set_zero_mode(),
-                        [this](bool success, const Command &)
+                        [](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -285,7 +454,7 @@ namespace esphome
 
         // Disable no-limit homing (SENSORLESS) for ENDSTOP mode
         queue_->enqueue(CommandFactory::set_nolimit_homing_params(),
-                        [this](bool success, const Command &)
+                        [](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -299,7 +468,7 @@ namespace esphome
 
         queue_->enqueue(CommandFactory::set_homing_parameters(
                             homing.endstop_trigger, hw_direction, homing.speed, endlimit_enable),
-                        [this](bool success, const Command &)
+                        [](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -313,7 +482,7 @@ namespace esphome
 
         // Disable 0_Mode for ENDSTOP (spec: 0x9A disable)
         queue_->enqueue(CommandFactory::set_zero_mode(),
-                        [this](bool success, const Command &)
+                        [](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -332,12 +501,14 @@ namespace esphome
         // SENSORLESS mode: Set no-limit home parameters once
         Position reverse_angle = Position::from_steps(0, parent_);
 
-        queue_->enqueue(CommandFactory::set_nolimit_homing_params(reverse_angle, true, homing.current_ma),
-                        [this](bool success, const Command &)
+        uint16_t homing_current = homing.current_ma;
+        queue_->enqueue(CommandFactory::set_nolimit_homing_params(reverse_angle, true, homing_current),
+                        [homing_current](bool success, const Command &)
                         {
+                          (void)homing_current; // Used in logging
                           if (success)
                           {
-                            ESP_LOGD(TAG_ENGINE, "✓ SENSORLESS homing parameters configured (current=%umA)", parent_->homing_.current_ma);
+                            ESP_LOGD(TAG_ENGINE, "✓ SENSORLESS homing parameters configured (current=%umA)", homing_current);
                           }
                           else
                           {
@@ -347,7 +518,7 @@ namespace esphome
 
         // Disable 0_Mode for SENSORLESS (spec: 0x9A disable)
         queue_->enqueue(CommandFactory::set_zero_mode(),
-                        [this](bool success, const Command &)
+                        [](bool success, const Command &)
                         {
                           if (success)
                           {
@@ -367,9 +538,9 @@ namespace esphome
         // Only configure if currently disabled to avoid resetting zero point repeatedly
         ESP_LOGD(TAG_ENGINE, "VIRTUAL homing: Checking motor status");
 
-        CommandFactory::ZeroModeMode mode = homing.direction == HomingDirection::NEAREST
-                                                ? CommandFactory::ZeroModeMode::NEAR_MODE
-                                                : CommandFactory::ZeroModeMode::DIR_MODE;
+        ZeroModeMode mode = homing.direction == HomingDirection::NEAREST
+                                ? ZeroModeMode::NEAR_MODE
+                                : ZeroModeMode::DIR_MODE;
 
         Direction hw_direction = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
 
@@ -389,10 +560,10 @@ namespace esphome
                           {
                             ESP_LOGD(TAG_ENGINE, "Motor not homing, configuring 0_Mode now");
                             queue_->enqueue(CommandFactory::set_zero_mode(mode,
-                                                                          CommandFactory::ZeroModeTask::SET,
+                                                                          ZeroModeTask::SET,
                                                                           homing.level,
                                                                           hw_direction),
-                                            [this](bool success, const Command &)
+                                            [](bool success, const Command &)
                                             {
                                               if (success)
                                               {
@@ -414,7 +585,7 @@ namespace esphome
       }
       }
 
-      // 7. Trigger homing if at_startup is enabled
+      // 11. Trigger homing if at_startup is enabled
       // Queue will automatically execute this after RESTART delay (4000ms)
       if (homing.at_startup && homing.mode != HomingMode::NO_HOMING)
       {
@@ -424,7 +595,7 @@ namespace esphome
         home();
       }
 
-      // 8. Final setup completion marker
+      // 12. Final setup completion marker
       // Enqueue a final "dummy" command to mark setup completion
       // When this callback executes, we know all setup commands completed successfully
       queue_->enqueue(CommandFactory::read_motor_status(), [this](bool success, const Command &)
@@ -445,7 +616,7 @@ namespace esphome
                           transition_to(State::Error);
                         } }, Priority::NORMAL);
 
-      ESP_LOGCONFIG(TAG_ENGINE, "Setup: %d commands enqueued (will execute via CommandQueue)", 8);
+      ESP_LOGCONFIG(TAG_ENGINE, "Setup: %d commands enqueued (will execute via CommandQueue)", 13);
     }
 
     // ============================================================================
@@ -830,7 +1001,7 @@ namespace esphome
       emergency_flag_ = false;
 
       // Send release protection command via queue (Commandtype 0x3D RELEASE_PROTECTION)
-      queue_->enqueue(CommandFactory::release_protection(), [this](bool success, const Command &)
+      queue_->enqueue(CommandFactory::release_protection(), [](bool success, const Command &)
                       {
                         if (success)
                         {
@@ -1019,7 +1190,7 @@ namespace esphome
         return; // No change
       }
 
-      State old_state = state_;
+      [[maybe_unused]] State old_state = state_;
       state_ = new_state;
       state_enter_time_ = millis(); // Track state entry time for timeout monitoring
 

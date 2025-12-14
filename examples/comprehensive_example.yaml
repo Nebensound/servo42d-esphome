@@ -181,7 +181,7 @@ button:
       - stepper.set_control_mode:
           id: my_stepper
           control_mode: SR_CLOSE
-  
+
   - platform: template
     name: "Set Working Current: 2000mA"
     on_press:

@@ -97,6 +97,20 @@ namespace esphome
                revs_, angle_ticks_, static_cast<const void *>(parent_), static_cast<const void *>(other.parent_));
     }
 
+    // Copy assignment operator
+    Position &Position::operator=(const Position &other)
+    {
+      if (this != &other)
+      {
+        revs_ = other.revs_;
+        angle_ticks_ = other.angle_ticks_;
+        parent_ = other.parent_;
+        ESP_LOGV(TAG, "Copy assignment: revs=%d, angle_ticks=%u, parent=%p (from %p)",
+                 revs_, angle_ticks_, static_cast<const void *>(parent_), static_cast<const void *>(other.parent_));
+      }
+      return *this;
+    }
+
     Position::Position(int64_t value, PositionUnit unit, const ServoXxd *parent)
         : Position(static_cast<double>(value), unit, parent) {}
 

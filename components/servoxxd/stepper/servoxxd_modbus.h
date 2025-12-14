@@ -85,7 +85,6 @@ namespace esphome
       };
 
       modbus::ModbusDevice *device_;
-      uint8_t slave_address_;
       State state_{State::IDLE};
       std::optional<Command> pending_command_;
       uint32_t timeout_ms_{1000};

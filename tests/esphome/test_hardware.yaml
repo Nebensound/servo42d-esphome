@@ -43,7 +43,7 @@ script:
       - stepper.disable: test_motor
       - wait_until:
           condition:
-            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Disabled;'
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Disabled;"
           timeout: 5s
       - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
       - lambda: 'ESP_LOGI("test", "  -> Motor disabled (shaft should move freely)");'
@@ -54,7 +54,7 @@ script:
       - stepper.enable: test_motor
       - wait_until:
           condition:
-            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;'
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;"
           timeout: 5s
       - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
       - lambda: 'ESP_LOGI("test", "  -> Motor enabled (you should feel holding torque)");'
@@ -89,12 +89,12 @@ script:
 
       - wait_until:
           condition:
-            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Moving;'
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Moving;"
           timeout: 2s
       - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
       - wait_until:
           condition:
-            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;'
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;"
           timeout: 10s
 
       - lambda: |-
@@ -123,12 +123,12 @@ script:
 
       - wait_until:
           condition:
-            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Moving;'
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Moving;"
           timeout: 2s
       - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
       - wait_until:
           condition:
-            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;'
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;"
           timeout: 15s
 
       - lambda: |-
@@ -142,12 +142,12 @@ script:
 
       - wait_until:
           condition:
-            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Homing;'
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Homing;"
           timeout: 5s
       - lambda: 'ESP_LOGI("test", "  -> Motor state: %s", id(test_motor)->get_state_string().c_str());'
       - wait_until:
           condition:
-            lambda: 'return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;'
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;"
           timeout: 60s
 
       - lambda: |-

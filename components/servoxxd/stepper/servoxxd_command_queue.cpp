@@ -67,8 +67,8 @@ namespace esphome
 
       QueuedCommand queued_cmd(cmd, callback, priority, delay_before_next_ms, millis());
 
-      ESP_LOGD(TAG, "Enqueuing command 0x%02X (prio=%d, queue size: %zu)",
-               static_cast<uint8_t>(cmd.command_type), static_cast<uint8_t>(priority), queue_.size());
+      ESP_LOGD(TAG, "Enqueuing command 0x%04X (prio=%d, queue size: %zu)",
+               cmd.register_address(), static_cast<uint8_t>(priority), queue_.size());
       queue_.push_back(queued_cmd);
 
       // Try to execute immediately if idle
@@ -79,21 +79,21 @@ namespace esphome
     {
       if (queue_.empty() || queue_.front().state != CommandState::EXECUTING)
       {
-        ESP_LOGW(TAG, "Unexpected response for command 0x%02X (no executing command)",
-                 static_cast<uint8_t>(response_cmd.command_type));
+        ESP_LOGW(TAG, "Unexpected response for command 0x%04X (no executing command)",
+                 response_cmd.register_address());
         return;
       }
 
       auto &current_cmd = queue_.front();
       if (current_cmd.command.command_type != response_cmd.command_type)
       {
-        ESP_LOGW(TAG, "Response mismatch: expected 0x%02X, got 0x%02X",
-                 static_cast<uint8_t>(current_cmd.command.command_type), static_cast<uint8_t>(response_cmd.command_type));
+        ESP_LOGW(TAG, "Response mismatch: expected 0x%04X, got 0x%04X",
+                 current_cmd.command.register_address(), response_cmd.register_address());
         return;
       }
 
-      ESP_LOGD(TAG, "Command 0x%02X completed (%zu bytes)",
-               static_cast<uint8_t>(response_cmd.command_type), response_cmd.response.size());
+      ESP_LOGD(TAG, "Command 0x%04X completed (%zu bytes)",
+               response_cmd.register_address(), response_cmd.response.size());
 
       // Set delay for next command if specified
       if (current_cmd.delay_before_next_ms > 0)
@@ -130,21 +130,21 @@ namespace esphome
     {
       if (queue_.empty() || queue_.front().state != CommandState::EXECUTING)
       {
-        ESP_LOGW(TAG, "Unexpected error for command 0x%02X (no executing command)",
-                 static_cast<uint8_t>(error_cmd.command_type));
+        ESP_LOGW(TAG, "Unexpected error for command 0x%04X (no executing command)",
+                 error_cmd.register_address());
         return;
       }
 
       auto &current_cmd = queue_.front();
       if (current_cmd.command.command_type != error_cmd.command_type)
       {
-        ESP_LOGW(TAG, "Error mismatch: expected 0x%02X, got 0x%02X",
-                 static_cast<uint8_t>(current_cmd.command.command_type), static_cast<uint8_t>(error_cmd.command_type));
+        ESP_LOGW(TAG, "Error mismatch: expected 0x%04X, got 0x%04X",
+                 current_cmd.command.register_address(), error_cmd.register_address());
         return;
       }
 
-      ESP_LOGE(TAG, "Command 0x%02X failed: error %d",
-               static_cast<uint8_t>(error_cmd.command_type), static_cast<int>(error));
+      ESP_LOGE(TAG, "Command 0x%04X failed: error %d",
+               error_cmd.register_address(), static_cast<int>(error));
 
       // Check if command has a delay_before_next_ms - respect it even on failure
       // This is critical for commands like RESTART that need time to complete
@@ -253,8 +253,8 @@ namespace esphome
       // Send via transport - execute_command handles both read (0x04) and write (0x06/0x10)
       transport_->execute_command(cmd.command);
 
-      ESP_LOGD(TAG, "Executing command 0x%02X (prio=%d, age=%ums, queue depth: %zu)",
-               static_cast<uint8_t>(cmd.command.command_type), static_cast<uint8_t>(cmd.priority),
+      ESP_LOGD(TAG, "Executing command 0x%04X (prio=%d, age=%ums, queue depth: %zu)",
+               cmd.command.register_address(), static_cast<uint8_t>(cmd.priority),
                millis() - cmd.enqueued_time, queue_.size());
     }
 
@@ -299,20 +299,20 @@ namespace esphome
         // Log if non-FIFO reordering happened
         if (queue_[0].priority == Priority::CRITICAL)
         {
-          ESP_LOGW(TAG, "Moving CRITICAL command 0x%02X to front (unexpected position)",
-                   static_cast<uint8_t>(queue_[0].command.command_type));
+          ESP_LOGW(TAG, "Moving CRITICAL command 0x%04X to front (unexpected position)",
+                   queue_[0].command.register_address());
         }
         else if (queue_[0].priority == Priority::BACKGROUND)
         {
-          ESP_LOGD(TAG, "Prioritizing BACKGROUND command 0x%02X (age=%ums, effective=%u)",
-                   static_cast<uint8_t>(queue_[0].command.command_type),
+          ESP_LOGD(TAG, "Prioritizing BACKGROUND command 0x%04X (age=%ums, effective=%u)",
+                   queue_[0].command.register_address(),
                    now - queue_[0].enqueued_time,
                    best_effective_time);
         }
       }
     }
 
-    uint32_t CommandQueue::calculate_effective_time(const QueuedCommand &cmd, uint32_t now)
+    uint32_t CommandQueue::calculate_effective_time(const QueuedCommand &cmd, [[maybe_unused]] uint32_t now)
     {
       switch (cmd.priority)
       {
@@ -343,8 +343,8 @@ namespace esphome
 
       if (elapsed > timeout_ms_)
       {
-        ESP_LOGW(TAG, "Command 0x%02X timed out after %ums (timeout=%ums)",
-                 static_cast<uint8_t>(current_cmd.command.command_type), elapsed, timeout_ms_);
+        ESP_LOGW(TAG, "Command 0x%04X timed out after %ums (timeout=%ums)",
+                 current_cmd.command.register_address(), elapsed, timeout_ms_);
 
         // Invoke callback with failure
         if (current_cmd.callback)
