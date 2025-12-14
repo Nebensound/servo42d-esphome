@@ -1,4 +1,5 @@
 #include "servoxxd.h"
+#include "servoxxd_command_factory.h"
 #include "servoxxd_stepper_engine.h"
 #include "servoxxd_command_decoder.h"
 #include "servoxxd_commands.h"
@@ -548,6 +549,111 @@ namespace esphome
       Acceleration actual_accel = accel.has_value() ? accel.value() : this->default_acceleration_;
 
       this->engine_->move_to(position, actual_speed, actual_accel);
+    }
+
+    // ============================================================================
+    // Config Update Command Generator
+    // ============================================================================
+
+    std::vector<Command> generate_config_update_commands(const ServoXxd::ConfigData& current, 
+                                                          const ServoXxd::ConfigData& desired, 
+                                                          const ServoXxd* parent)
+    {
+      std::vector<Command> commands;
+      commands.reserve(20); // Pre-allocate for typical number of config parameters
+
+      // Order commands logically for optimal motor configuration:
+      // 1. Basic motor settings (mode, currents, microstepping)
+      // 2. Pin and display settings
+      // 3. Homing configuration
+      // 4. Special features (zero mode, port remap, etc.)
+
+      // ========== Basic Motor Settings ==========
+      
+      if (current.mode != desired.mode) {
+        commands.push_back(CommandFactory::set_control_mode(desired.mode));
+      }
+      
+      if (current.working_current_ma != desired.working_current_ma) {
+        commands.push_back(CommandFactory::set_working_current(desired.working_current_ma));
+      }
+      
+      if (current.holding_current_percent != desired.holding_current_percent) {
+        commands.push_back(CommandFactory::set_holding_current_percent(desired.holding_current_percent));
+      }
+      
+      if (current.subdivision != desired.subdivision) {
+        commands.push_back(CommandFactory::set_subdivision(desired.subdivision));
+      }
+
+      // ========== Pin and Display Settings ==========
+      
+      if (current.en_pin_active != desired.en_pin_active) {
+        commands.push_back(CommandFactory::set_en_pin_active(desired.en_pin_active));
+      }
+      
+      if (current.auto_screen_off != desired.auto_screen_off) {
+        commands.push_back(CommandFactory::set_auto_screen_off(desired.auto_screen_off));
+      }
+      
+      if (current.key_lock != desired.key_lock) {
+        commands.push_back(CommandFactory::set_lock_keys(desired.key_lock));
+      }
+
+      // ========== Homing Configuration ==========
+      
+      // Check if any homing parameters changed
+      bool homing_params_changed = (current.homing_trigger != desired.homing_trigger ||
+                                     current.homing_direction != desired.homing_direction ||
+                                     current.homing_speed_rpm != desired.homing_speed_rpm ||
+                                     current.endlimit_enable != desired.endlimit_enable);
+      
+      if (homing_params_changed) {
+        // Create Speed object for homing speed
+        Speed homing_speed = Speed::from_rpm(desired.homing_speed_rpm, parent);
+        commands.push_back(CommandFactory::set_homing_parameters(
+          desired.homing_trigger,
+          desired.homing_direction,
+          homing_speed,
+          desired.endlimit_enable
+        ));
+      }
+      
+      // Check if sensorless homing parameters changed
+      bool nolimit_params_changed = (current.nolimit_reverse_angle_ticks.get_ticks() != desired.nolimit_reverse_angle_ticks.get_ticks() ||
+                                      current.nolimit_mode != desired.nolimit_mode ||
+                                      current.nolimit_current_ma != desired.nolimit_current_ma);
+      
+      if (nolimit_params_changed) {
+        commands.push_back(CommandFactory::set_nolimit_homing_params(
+          desired.nolimit_reverse_angle_ticks,
+          desired.nolimit_mode,
+          desired.nolimit_current_ma
+        ));
+      }
+
+      // ========== Special Features ==========
+      
+      // Check if zero mode parameters changed
+      bool zero_mode_changed = (current.zero_mode != desired.zero_mode ||
+                                current.zero_task != desired.zero_task ||
+                                current.zero_speed != desired.zero_speed ||
+                                current.zero_direction != desired.zero_direction);
+      
+      if (zero_mode_changed) {
+        commands.push_back(CommandFactory::set_zero_mode(
+          desired.zero_mode,
+          desired.zero_task,
+          desired.zero_speed,
+          desired.zero_direction
+        ));
+      }
+      
+      if (current.limit_port_remap != desired.limit_port_remap) {
+        commands.push_back(CommandFactory::set_limit_port_remap(desired.limit_port_remap));
+      }
+
+      return commands;
     }
 
   } // namespace servoxxd

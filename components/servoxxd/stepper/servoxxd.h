@@ -147,7 +147,23 @@ namespace esphome
       ZeroModeTask zero_task{ZeroModeTask::CLEAN};            ///< Zero task
       ZeroingSpeed zero_speed{ZeroingSpeed::MEDIUM};          ///< Zero speed
       Direction zero_direction{Direction::CW};
+
     };
+
+    /**
+     * @brief Generate commands to update motor configuration
+     * @param current The current configuration
+     * @param desired The desired configuration to achieve
+     * @param parent Pointer to parent ServoXxd for accessing Speed/Position factories
+     * @return Vector of commands to execute, in optimal order
+     * 
+     * Compares current configuration with desired configuration
+     * and generates only the commands needed to update differing values.
+     * Commands are ordered logically: basic settings first, then homing, then special features.
+     */
+    std::vector<Command> generate_config_update_commands(const ServoXxd::ConfigData& current, 
+                                                          const ServoXxd::ConfigData& desired, 
+                                                          const ServoXxd* parent);
 
     /**
      * @brief Homing configuration structure
