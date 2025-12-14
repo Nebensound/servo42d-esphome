@@ -551,38 +551,6 @@ namespace esphome
         return ps;
       }
 
-      struct AllConfigData
-      {
-        ControlMode mode{ControlMode::SR_OPEN};
-        uint8_t holding_current_percent{50};
-        uint16_t working_current_ma{2000};
-        uint8_t subdivision{16};
-        EnPinActive en_pin_active{EnPinActive::EN_LOW};
-        bool shaft_reversed{false};
-        bool auto_screen_off{true};
-        uint8_t protect_enable{0};
-        uint8_t mplyer{0};
-        uint8_t baud_rate{1};
-        uint8_t slave_address{1};
-        uint8_t group_address{0};
-        bool respond_enable{true};
-        bool active_enable{false};
-        bool modbus_enable{true};
-        bool key_lock{false};
-        EndstopTrigger homing_trigger{EndstopTrigger::TRIGGER_LOW};
-        Direction homing_direction{Direction::CW};
-        uint16_t homing_speed_rpm{0};
-        bool endlimit_enable{false};
-        uint32_t nolimit_reverse_angle_ticks{0};
-        bool nolimit_mode{false};
-        uint16_t nolimit_current_ma{1000};
-        bool limit_port_remap{false};
-        uint8_t zero_mode{0};
-        uint8_t zero_task{0};
-        uint8_t zero_speed{2};
-        Direction zero_direction{Direction::CW};
-      };
-
       /**
        * @brief Decode all configuration parameters
        *
@@ -607,11 +575,11 @@ namespace esphome
        * - REG18-19 (4B): 0_Mode [zero_mode][zero_task][zero_speed][zero_direction]
        *
        * @param cmd Command object with command_type=READ_ALL_CONFIG and response data
-       * @return AllConfigData struct with decoded configuration parameters
+       * @return ConfigData struct with decoded configuration parameters
        */
-      static AllConfigData read_all_config(const Command &cmd)
+      static ConfigData read_all_config(const Command &cmd)
       {
-        AllConfigData config{};
+        ConfigData config{};
         if (!validate_command_type(cmd, Commandtype::READ_ALL_CONFIG))
           return config;
 

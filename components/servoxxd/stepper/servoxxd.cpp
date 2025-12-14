@@ -38,14 +38,14 @@ namespace esphome
 
     void ServoXxd::set_control_mode(ControlMode mode)
     {
-      this->control_mode_ = mode;
+      this->config_.mode = mode;
 
       // Only send to hardware if setup is complete
       if (!this->is_setup_ || this->engine_ == nullptr)
         return;
 
       // Critical setting - requires motor restart and full reconfiguration
-      // setup_motor() will read control_mode_ and send it to hardware
+      // setup_motor() will read config_.mode and send it to hardware
       ESP_LOGW(TAG, "Control mode changed - restarting motor...");
       this->engine_->setup_motor();
     }
@@ -110,7 +110,7 @@ namespace esphome
       }
 
       // Always update member variable
-      this->microstepping_ = microsteps;
+      this->config_.subdivision = microsteps;
 
       // Only send to hardware if setup is complete
       if (!this->is_setup_ || this->engine_ == nullptr)
@@ -335,13 +335,13 @@ namespace esphome
       this->engine_->setup_motor();
 
       ESP_LOGCONFIG(TAG, "  Steps per Revolution: %.1f", this->steps_per_revolution_);
-      ESP_LOGCONFIG(TAG, "  Microstepping: %u", this->microstepping_);
+      ESP_LOGCONFIG(TAG, "  Microstepping: %u", this->config_.subdivision);
 
       // Current settings (only in SR_OPEN and SR_CLOSE modes, ignored in SR_VFOC)
-      if (this->control_mode_ != ControlMode::SR_VFOC)
+      if (this->config_.mode != ControlMode::SR_VFOC)
       {
-        ESP_LOGCONFIG(TAG, "  Working Current: %u mA", this->working_current_);
-        ESP_LOGCONFIG(TAG, "  Holding Current: %u%% of working", this->holding_current_percent_);
+        ESP_LOGCONFIG(TAG, "  Working Current: %u mA", this->config_.working_current_ma);
+        ESP_LOGCONFIG(TAG, "  Holding Current: %u%% of working", this->config_.holding_current_percent);
       }
 
       // Mark setup as complete - setters can now update hardware
@@ -395,25 +395,25 @@ namespace esphome
 
       // Control mode (hardware loop type)
       [[maybe_unused]] const char *ctrl_modes[] = {"", "", "", "SR_OPEN", "SR_CLOSE", "SR_VFOC"};
-      ESP_LOGCONFIG(TAG, "  Control Mode: %s", ctrl_modes[static_cast<uint8_t>(this->control_mode_)]);
+      ESP_LOGCONFIG(TAG, "  Control Mode: %s", ctrl_modes[static_cast<uint8_t>(this->config_.mode)]);
 
       // Motor configuration
       ESP_LOGCONFIG(TAG, "  Steps per Revolution: %.1f", this->steps_per_revolution_);
-      ESP_LOGCONFIG(TAG, "  Microstepping: %u", this->microstepping_);
+      ESP_LOGCONFIG(TAG, "  Microstepping: %u", this->config_.subdivision);
 
       // Current settings (only effective in SR_OPEN and SR_CLOSE modes)
-      if (this->control_mode_ != ControlMode::SR_VFOC)
+      if (this->config_.mode != ControlMode::SR_VFOC)
       {
-        ESP_LOGCONFIG(TAG, "  Working Current: %u mA", this->working_current_);
-        ESP_LOGCONFIG(TAG, "  Holding Current: %u%% of working", this->holding_current_percent_);
+        ESP_LOGCONFIG(TAG, "  Working Current: %u mA", this->config_.working_current_ma);
+        ESP_LOGCONFIG(TAG, "  Holding Current: %u%% of working", this->config_.holding_current_percent);
       }
 
       // Motor behavior
       ESP_LOGCONFIG(TAG, "  Shaft Direction: %s", this->shaft_reversed_ ? "Reversed" : "Normal");
       [[maybe_unused]] const char *en_modes[] = {"LOW", "HIGH", "ALWAYS"};
-      ESP_LOGCONFIG(TAG, "  EN Pin Active: %s", en_modes[static_cast<uint8_t>(this->en_pin_active_)]);
-      ESP_LOGCONFIG(TAG, "  Auto Screen Off: %s", this->auto_screen_off_ ? "enabled" : "disabled");
-      ESP_LOGCONFIG(TAG, "  Lock Keys at Startup: %s", this->lock_keys_at_startup_ ? "yes" : "no");
+      ESP_LOGCONFIG(TAG, "  EN Pin Active: %s", en_modes[static_cast<uint8_t>(this->config_.en_pin_active)]);
+      ESP_LOGCONFIG(TAG, "  Auto Screen Off: %s", this->config_.auto_screen_off ? "enabled" : "disabled");
+      ESP_LOGCONFIG(TAG, "  Lock Keys at Startup: %s", this->config_.key_lock ? "yes" : "no");
 
       // Homing configuration (only in POSITION mode)
       if (this->operating_mode_ == OperatingMode::POSITION)

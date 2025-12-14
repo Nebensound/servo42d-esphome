@@ -98,6 +98,47 @@ namespace esphome
     class ServoXxd;
 
     /**
+     * @brief Motor configuration data structure
+     *
+     * Stores all motor configuration parameters in a single structure.
+     * This serves as the single source of truth for motor settings and
+     * matches the hardware READ_ALL_CONFIG response format.
+     * 
+     * Default values ensure consistent motor behavior after setup.
+     */
+    struct ConfigData
+    {
+      ControlMode mode{ControlMode::SR_OPEN};
+      uint8_t holding_current_percent{50};
+      uint16_t working_current_ma{2000};
+      uint8_t subdivision{16};
+      EnPinActive en_pin_active{EnPinActive::EN_LOW};
+      bool shaft_reversed{false};
+      bool auto_screen_off{true};
+      uint8_t protect_enable{0};        ///< Protection enable flags (default: all disabled)
+      uint8_t mplyer{0};                ///< Multiplier (typically 0)
+      uint8_t baud_rate{1};             ///< Baud rate code (default: 1 = 9600)
+      uint8_t slave_address{1};         ///< Modbus slave address (default: 1)
+      uint8_t group_address{0};         ///< Group address (default: 0)
+      bool respond_enable{true};        ///< Response enable (default: true)
+      bool active_enable{false};        ///< Active reporting (default: false)
+      bool modbus_enable{true};         ///< MODBUS protocol enable (default: true)
+      bool key_lock{false};             ///< Physical key lock (default: unlocked)
+      EndstopTrigger homing_trigger{EndstopTrigger::TRIGGER_LOW};
+      Direction homing_direction{Direction::CW};
+      uint16_t homing_speed_rpm{0};
+      bool endlimit_enable{false};
+      uint32_t nolimit_reverse_angle_ticks{0};
+      bool nolimit_mode{false};
+      uint16_t nolimit_current_ma{1000};
+      bool limit_port_remap{false};
+      uint8_t zero_mode{0};             ///< 0_Mode configuration (default: disabled)
+      uint8_t zero_task{0};             ///< Zero task (default: CLEAN)
+      uint8_t zero_speed{2};            ///< Zero speed (default: MEDIUM)
+      Direction zero_direction{Direction::CW};
+    };
+
+    /**
      * @brief Homing configuration structure
      *
      * Stores all homing-related parameters.
@@ -311,7 +352,7 @@ namespace esphome
        *
        * Used by Speed class for hardware compensation.
        */
-      virtual uint16_t get_microstepping() const { return microstepping_; }
+      virtual uint16_t get_microstepping() const { return config_.subdivision; }
 
       /**
        * @brief Get current operating mode
@@ -325,42 +366,42 @@ namespace esphome
        *
        * Used by StepperEngine for setup commands.
        */
-      ControlMode get_control_mode() const { return control_mode_; }
+      ControlMode get_control_mode() const { return config_.mode; }
 
       /**
        * @brief Get working current in mA
        *
        * Used by StepperEngine for motor setup.
        */
-      uint16_t get_working_current() const { return working_current_; }
+      uint16_t get_working_current() const { return config_.working_current_ma; }
 
       /**
        * @brief Get holding current percentage
        *
        * Used by StepperEngine for motor setup.
        */
-      uint8_t get_holding_current_percent() const { return holding_current_percent_; }
+      uint8_t get_holding_current_percent() const { return config_.holding_current_percent; }
 
       /**
        * @brief Get EN pin active mode
        *
        * Used by StepperEngine for motor setup.
        */
-      EnPinActive get_en_pin_active() const { return en_pin_active_; }
+      EnPinActive get_en_pin_active() const { return config_.en_pin_active; }
 
       /**
        * @brief Get auto screen off setting
        *
        * Used by StepperEngine for motor setup.
        */
-      bool get_auto_screen_off() const { return auto_screen_off_; }
+      bool get_auto_screen_off() const { return config_.auto_screen_off; }
 
       /**
        * @brief Get lock keys at startup setting
        *
        * Used by StepperEngine for motor setup.
        */
-      bool get_lock_keys_at_startup() const { return lock_keys_at_startup_; }
+      bool get_lock_keys_at_startup() const { return config_.key_lock; }
 
       /**
        * @brief Get homing configuration
@@ -494,7 +535,7 @@ namespace esphome
       // Configuration setters for motor parameters
       void set_address(uint8_t addr) { this->address_ = addr; }
       void set_servo_type(ServoType type [[maybe_unused]]) { /* Store servo type */ }
-      void set_working_current(uint16_t ma) { working_current_ = ma; }
+      void set_working_current(uint16_t ma) { config_.working_current_ma = ma; }
       void set_holding_current_percent(uint8_t percent)
       {
         if (percent > 100)
@@ -502,11 +543,11 @@ namespace esphome
           ESP_LOGE("servoxxd_modbus", "Invalid holding current percent: %u (must be 0-100)", percent);
           return;
         }
-        holding_current_percent_ = percent;
+        config_.holding_current_percent = percent;
       }
-      void set_en_pin_active(EnPinActive value) { en_pin_active_ = value; }
-      void set_auto_screen_off(bool enable) { auto_screen_off_ = enable; }
-      void set_lock_keys_at_startup(bool lock) { lock_keys_at_startup_ = lock; }
+      void set_en_pin_active(EnPinActive value) { config_.en_pin_active = value; }
+      void set_auto_screen_off(bool enable) { config_.auto_screen_off = enable; }
+      void set_lock_keys_at_startup(bool lock) { config_.key_lock = lock; }
       void set_mode(OperatingMode mode) { operating_mode_ = mode; }
       void set_sleep_when_done(uint32_t ms [[maybe_unused]]) { /* Store sleep delay */ }
 
@@ -620,19 +661,9 @@ namespace esphome
       ModbusTransport *transport_{nullptr}; // Layer 4: Transport abstraction
       StepperEngine *engine_{nullptr};      // Layer 2: State machine & movement logic
 
-      // Motor configuration
+      // Motor configuration (single source of truth)
+      ConfigData config_;                  ///< All motor configuration parameters
       float steps_per_revolution_{200.0f}; ///< Steps per revolution (typically 200 for 1.8° motors)
-      uint16_t microstepping_{16};         ///< Microstepping divisor (8, 16, 32, 64, 128, 256)
-
-      // Current settings
-      uint16_t working_current_{500};       ///< Working current in mA (0-2000mA typical)
-      uint8_t holding_current_percent_{50}; ///< Holding current as % of working current (0-100)
-
-      // Motor behavior
-      bool shaft_reversed_{false};                     ///< Reverse shaft direction
-      EnPinActive en_pin_active_{EnPinActive::EN_LOW}; ///< EN pin active level (default: LOW)
-      bool auto_screen_off_{true};                     ///< Auto screen off after 15s (default: true)
-      bool lock_keys_at_startup_{false};               ///< Lock physical keys at startup (default: false)
 
       // Homing configuration
       HomingConfig homing_;
@@ -648,9 +679,6 @@ namespace esphome
 
       // Operating mode
       OperatingMode operating_mode_{OperatingMode::POSITION}; ///< Current operating mode (POSITION or SPEED)
-
-      // Control mode (hardware loop type)
-      ControlMode control_mode_{ControlMode::SR_OPEN}; ///< Control mode: SR_OPEN, SR_CLOSE, or SR_VFOC
 
       // Setup state
       bool is_setup_{false}; ///< True after setup() completes, enables runtime hardware updates
