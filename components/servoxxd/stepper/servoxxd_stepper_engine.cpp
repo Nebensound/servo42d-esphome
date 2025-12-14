@@ -187,189 +187,198 @@ namespace esphome
                                    config.zero_mode, config.zero_task, config.zero_speed,
                                    (config.zero_direction == Direction::CW) ? "CW" : "CCW");
                           
-                          // Now enqueue configuration updates only for values that differ
+                          // Generate list of command types needed to update configuration
                           ESP_LOGCONFIG(TAG_ENGINE, "Checking which configuration values need updates...");
                           
-                          // Check and update microstepping
-                          uint8_t desired_microstepping = parent_->get_microstepping();
-                          if (config.subdivision != desired_microstepping)
+                          // Get desired config from parent
+                          ConfigData desired_config = parent_->config_;
+                          
+                          // Get list of commands that need to be executed
+                          std::vector<Commandtype> update_commands = config.get_update_command_types(desired_config);
+                          
+                          if (update_commands.empty())
                           {
-                            ESP_LOGD(TAG_ENGINE, "  Microstepping differs: %u → %u", config.subdivision, desired_microstepping);
-                            queue_->enqueue(CommandFactory::set_subdivision(desired_microstepping),
-                                            [desired_microstepping](bool success, const Command &)
-                                            {
-                                              if (success)
-                                              {
-                                                ESP_LOGD(TAG_ENGINE, "✓ Microstepping updated to %u", desired_microstepping);
-                                              }
-                                              else
-                                              {
-                                                ESP_LOGW(TAG_ENGINE, "✗ Failed to update microstepping");
-                                              }
-                                            });
+                            ESP_LOGD(TAG_ENGINE, "  No configuration updates needed - all values match");
                           }
                           else
                           {
-                            ESP_LOGD(TAG_ENGINE, "  Microstepping unchanged: %u", config.subdivision);
-                          }
-                          
-                          // Check and update EN pin active level
-                          EnPinActive desired_en_pin = parent_->get_en_pin_active();
-                          if (config.en_pin_active != desired_en_pin)
-                          {
-                            uint8_t current_en_idx = static_cast<uint8_t>(config.en_pin_active);
-                            uint8_t desired_en_idx = static_cast<uint8_t>(desired_en_pin);
-                            ESP_LOGD(TAG_ENGINE, "  EN pin active differs: %s → %s", 
-                                     (current_en_idx < en_pin_names_count) ? en_pin_names[current_en_idx] : "UNKNOWN",
-                                     (desired_en_idx < en_pin_names_count) ? en_pin_names[desired_en_idx] : "UNKNOWN");
-                            queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin),
-                                            [desired_en_pin, en_pin_names, en_pin_names_count](bool success, const Command &)
-                                            {
-                                              if (success)
-                                              {
-                                                uint8_t idx = static_cast<uint8_t>(desired_en_pin);
-                                                ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", 
-                                                         (idx < en_pin_names_count) ? en_pin_names[idx] : "UNKNOWN");
-                                              }
-                                              else
-                                              {
-                                                ESP_LOGW(TAG_ENGINE, "✗ Failed to update EN pin active level");
-                                              }
-                                            });
-                          }
-                          else
-                          {
-                            ESP_LOGD(TAG_ENGINE, "  EN pin active unchanged");
-                          }
-                          
-                          // Check and update auto screen off
-                          bool desired_auto_screen_off = parent_->get_auto_screen_off();
-                          if (config.auto_screen_off != desired_auto_screen_off)
-                          {
-                            ESP_LOGD(TAG_ENGINE, "  Auto screen off differs: %s → %s",
-                                     config.auto_screen_off ? "enabled" : "disabled",
-                                     desired_auto_screen_off ? "enabled" : "disabled");
-                            queue_->enqueue(CommandFactory::set_auto_screen_off(desired_auto_screen_off),
-                                            [desired_auto_screen_off](bool success, const Command &)
-                                            {
-                                              if (success)
-                                              {
-                                                ESP_LOGD(TAG_ENGINE, "✓ Auto screen off updated to %s", 
-                                                         desired_auto_screen_off ? "enabled" : "disabled");
-                                              }
-                                              else
-                                              {
-                                                ESP_LOGW(TAG_ENGINE, "✗ Failed to update auto screen off");
-                                              }
-                                            });
-                          }
-                          else
-                          {
-                            ESP_LOGD(TAG_ENGINE, "  Auto screen off unchanged");
-                          }
-                          
-                          // Check and update key lock
-                          bool desired_lock_keys = parent_->get_lock_keys_at_startup();
-                          if (config.key_lock != desired_lock_keys)
-                          {
-                            ESP_LOGD(TAG_ENGINE, "  Key lock differs: %s → %s",
-                                     config.key_lock ? "locked" : "unlocked",
-                                     desired_lock_keys ? "locked" : "unlocked");
-                            queue_->enqueue(CommandFactory::set_lock_keys(desired_lock_keys),
-                                            [desired_lock_keys](bool success, const Command &)
-                                            {
-                                              if (success)
-                                              {
-                                                ESP_LOGD(TAG_ENGINE, "✓ Keys updated to %s", 
-                                                         desired_lock_keys ? "locked" : "unlocked");
-                                              }
-                                              else
-                                              {
-                                                ESP_LOGW(TAG_ENGINE, "✗ Failed to update key lock");
-                                              }
-                                            });
-                          }
-                          else
-                          {
-                            ESP_LOGD(TAG_ENGINE, "  Key lock unchanged");
-                          }
-                          
-                          // Always set EN trigger config to safe defaults (both disabled)
-                          // This is a safety feature that should always be configured
-                          ESP_LOGD(TAG_ENGINE, "  Setting EN trigger config to safe defaults (always set)");
-                          queue_->enqueue(CommandFactory::set_en_trigger_config(),
-                                          [](bool success, const Command &)
-                                          {
-                                            if (success)
-                                            {
-                                              ESP_LOGD(TAG_ENGINE, "✓ EN trigger config set to safe defaults");
-                                            }
-                                            else
-                                            {
-                                              ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
-                                            }
-                                          });
-                          
-                          // Check and update control mode
-                          ControlMode desired_mode = parent_->get_control_mode();
-                          if (config.mode != desired_mode)
-                          {
-                            uint8_t current_mode_idx = static_cast<uint8_t>(config.mode);
-                            uint8_t desired_mode_idx = static_cast<uint8_t>(desired_mode);
-                            ESP_LOGD(TAG_ENGINE, "  Control mode differs: %s → %s",
-                                     (current_mode_idx < mode_names_count) ? mode_names[current_mode_idx] : "UNKNOWN",
-                                     (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN");
+                            ESP_LOGD(TAG_ENGINE, "  %zu configuration value(s) need updating", update_commands.size());
                             
-                            const char *mode_name = (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN";
-                            
-                            queue_->enqueue(CommandFactory::set_control_mode(desired_mode),
-                                            [mode_name](bool success, const Command &)
-                                            {
-                                              if (success)
-                                              {
-                                                ESP_LOGD(TAG_ENGINE, "✓ Control mode updated to %s", mode_name);
-                                              }
-                                              else
-                                              {
-                                                ESP_LOGW(TAG_ENGINE, "✗ Failed to update control mode");
-                                              }
-                                            });
-                          }
-                          else
-                          {
-                            ESP_LOGD(TAG_ENGINE, "  Control mode unchanged");
-                          }
-                          
-                          // Check and update holding current (only for SR_OPEN and SR_CLOSE modes)
-                          ControlMode control_mode = parent_->get_control_mode();
-                          if (control_mode == ControlMode::SR_OPEN || control_mode == ControlMode::SR_CLOSE)
-                          {
-                            uint8_t desired_holding_percent = parent_->get_holding_current_percent();
-                            if (config.holding_current_percent != desired_holding_percent)
+                            // Process each command type in the optimal order (already sorted by get_update_command_types)
+                            for (const auto& cmd_type : update_commands)
                             {
-                              ESP_LOGD(TAG_ENGINE, "  Holding current differs: %u%% → %u%%",
-                                       config.holding_current_percent, desired_holding_percent);
-                              queue_->enqueue(CommandFactory::set_holding_current_percent(desired_holding_percent),
-                                              [desired_holding_percent](bool success, const Command &)
-                                              {
-                                                if (success)
-                                                {
-                                                  ESP_LOGD(TAG_ENGINE, "✓ Holding current updated to %u%%", desired_holding_percent);
-                                                }
-                                                else
-                                                {
-                                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update holding current");
-                                                }
-                                              });
+                              switch (cmd_type)
+                              {
+                                case Commandtype::SET_SUBDIVISION:
+                                {
+                                  uint8_t desired_microstepping = desired_config.subdivision;
+                                  ESP_LOGD(TAG_ENGINE, "  Microstepping: %u → %u", config.subdivision, desired_microstepping);
+                                  queue_->enqueue(CommandFactory::set_subdivision(desired_microstepping),
+                                                  [desired_microstepping](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Microstepping updated to %u", desired_microstepping);
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update microstepping");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_EN_PIN_ACTIVE:
+                                {
+                                  EnPinActive desired_en_pin = desired_config.en_pin_active;
+                                  uint8_t current_en_idx = static_cast<uint8_t>(config.en_pin_active);
+                                  uint8_t desired_en_idx = static_cast<uint8_t>(desired_en_pin);
+                                  ESP_LOGD(TAG_ENGINE, "  EN pin active: %s → %s", 
+                                           (current_en_idx < en_pin_names_count) ? en_pin_names[current_en_idx] : "UNKNOWN",
+                                           (desired_en_idx < en_pin_names_count) ? en_pin_names[desired_en_idx] : "UNKNOWN");
+                                  queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin),
+                                                  [desired_en_pin, en_pin_names, en_pin_names_count](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      uint8_t idx = static_cast<uint8_t>(desired_en_pin);
+                                                      ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", 
+                                                               (idx < en_pin_names_count) ? en_pin_names[idx] : "UNKNOWN");
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update EN pin active level");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_AUTO_SCREEN_OFF:
+                                {
+                                  bool desired_auto_screen_off = desired_config.auto_screen_off;
+                                  ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s → %s",
+                                           config.auto_screen_off ? "enabled" : "disabled",
+                                           desired_auto_screen_off ? "enabled" : "disabled");
+                                  queue_->enqueue(CommandFactory::set_auto_screen_off(desired_auto_screen_off),
+                                                  [desired_auto_screen_off](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Auto screen off updated to %s", 
+                                                               desired_auto_screen_off ? "enabled" : "disabled");
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update auto screen off");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_LOCK_KEYS:
+                                {
+                                  bool desired_lock_keys = desired_config.key_lock;
+                                  ESP_LOGD(TAG_ENGINE, "  Key lock: %s → %s",
+                                           config.key_lock ? "locked" : "unlocked",
+                                           desired_lock_keys ? "locked" : "unlocked");
+                                  queue_->enqueue(CommandFactory::set_lock_keys(desired_lock_keys),
+                                                  [desired_lock_keys](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Keys updated to %s", 
+                                                               desired_lock_keys ? "locked" : "unlocked");
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update key lock");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_EN_TRIGGER_CONFIG:
+                                {
+                                  ESP_LOGD(TAG_ENGINE, "  Setting EN trigger config to safe defaults (always set)");
+                                  queue_->enqueue(CommandFactory::set_en_trigger_config(),
+                                                  [](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ EN trigger config set to safe defaults");
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_WORK_MODE:
+                                {
+                                  ControlMode desired_mode = desired_config.mode;
+                                  uint8_t current_mode_idx = static_cast<uint8_t>(config.mode);
+                                  uint8_t desired_mode_idx = static_cast<uint8_t>(desired_mode);
+                                  ESP_LOGD(TAG_ENGINE, "  Control mode: %s → %s",
+                                           (current_mode_idx < mode_names_count) ? mode_names[current_mode_idx] : "UNKNOWN",
+                                           (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN");
+                                  
+                                  const char *mode_name = (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN";
+                                  
+                                  queue_->enqueue(CommandFactory::set_control_mode(desired_mode),
+                                                  [mode_name](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Control mode updated to %s", mode_name);
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update control mode");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_HOLDING_CURRENT_PERCENT:
+                                {
+                                  uint8_t desired_holding_percent = desired_config.holding_current_percent;
+                                  ESP_LOGD(TAG_ENGINE, "  Holding current: %u%% → %u%%",
+                                           config.holding_current_percent, desired_holding_percent);
+                                  queue_->enqueue(CommandFactory::set_holding_current_percent(desired_holding_percent),
+                                                  [desired_holding_percent](bool success, const Command &)
+                                                  {
+                                                    if (success)
+                                                    {
+                                                      ESP_LOGD(TAG_ENGINE, "✓ Holding current updated to %u%%", desired_holding_percent);
+                                                    }
+                                                    else
+                                                    {
+                                                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update holding current");
+                                                    }
+                                                  });
+                                  break;
+                                }
+                                
+                                case Commandtype::SET_HOMING_PARAMETERS:
+                                case Commandtype::SET_NOLIMIT_HOMING_PARAMS:
+                                case Commandtype::SET_ZERO_MODE:
+                                case Commandtype::SET_LIMIT_PORT_REMAP:
+                                {
+                                  // TODO: Implement handlers for these command types
+                                  ESP_LOGW(TAG_ENGINE, "  Command type 0x%04X not yet implemented in switch", 
+                                           static_cast<uint16_t>(cmd_type));
+                                  break;
+                                }
+                                
+                                default:
+                                {
+                                  ESP_LOGW(TAG_ENGINE, "  Unknown command type: 0x%04X", static_cast<uint16_t>(cmd_type));
+                                  break;
+                                }
+                              }
                             }
-                            else
-                            {
-                              ESP_LOGD(TAG_ENGINE, "  Holding current unchanged: %u%%", config.holding_current_percent);
-                            }
-                          }
-                          else
-                          {
-                            ESP_LOGD(TAG_ENGINE, "  Holding current: skipped (not applicable in vFOC mode)");
                           }
                         }
                         else

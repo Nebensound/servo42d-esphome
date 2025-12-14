@@ -555,8 +555,8 @@ namespace esphome
     // Config Update Command Generator
     // ============================================================================
 
-    std::vector<Command> generate_config_update_commands(const ServoXxd::ConfigData& current, 
-                                                          const ServoXxd::ConfigData& desired, 
+    std::vector<Command> generate_config_update_commands(const ConfigData& current, 
+                                                          const ConfigData& desired, 
                                                           const ServoXxd* parent)
     {
       std::vector<Command> commands;
@@ -654,6 +654,89 @@ namespace esphome
       }
 
       return commands;
+    }
+
+    // ============================================================================
+    // ConfigData::get_update_command_types - Generate list of command types to update config
+    // ============================================================================
+    std::vector<Commandtype> ConfigData::get_update_command_types(const ConfigData& desired) const
+    {
+      std::vector<Commandtype> command_types;
+      
+      // Order of commands (optimized for dependency chain):
+      // 1. Basic settings (subdivision, en_pin, screen, keys)
+      // 2. Protection and trigger config (safety features)
+      // 3. Control mode (requires other settings to be stable first)
+      // 4. Current settings (holding current depends on control mode)
+      // 5. Homing configuration
+      // 6. Special features (zero mode, limit remap)
+      
+      // === Basic Settings ===
+      if (this->subdivision != desired.subdivision) {
+        command_types.push_back(Commandtype::SET_SUBDIVISION);
+      }
+      
+      if (this->en_pin_active != desired.en_pin_active) {
+        command_types.push_back(Commandtype::SET_EN_PIN_ACTIVE);
+      }
+      
+      if (this->auto_screen_off != desired.auto_screen_off) {
+        command_types.push_back(Commandtype::SET_AUTO_SCREEN_OFF);
+      }
+      
+      if (this->key_lock != desired.key_lock) {
+        command_types.push_back(Commandtype::SET_LOCK_KEYS);
+      }
+      
+      // === Safety Features ===
+      // Always set EN trigger config (safety feature, always configured)
+      command_types.push_back(Commandtype::SET_EN_TRIGGER_CONFIG);
+      
+      // === Control Mode ===
+      if (this->mode != desired.mode) {
+        command_types.push_back(Commandtype::SET_WORK_MODE);
+      }
+      
+      // === Current Settings ===
+      // Holding current only applicable for SR_OPEN and SR_CLOSE modes
+      if ((desired.mode == ControlMode::SR_OPEN || desired.mode == ControlMode::SR_CLOSE) &&
+          this->holding_current_percent != desired.holding_current_percent) {
+        command_types.push_back(Commandtype::SET_HOLDING_CURRENT_PERCENT);
+      }
+      
+      // === Homing Configuration ===
+      bool homing_changed = (this->homing_trigger != desired.homing_trigger ||
+                             this->homing_direction != desired.homing_direction ||
+                             this->homing_speed_rpm != desired.homing_speed_rpm ||
+                             this->endlimit_enable != desired.endlimit_enable);
+      
+      if (homing_changed) {
+        command_types.push_back(Commandtype::SET_HOMING_PARAMETERS);
+      }
+      
+      bool nolimit_homing_changed = (this->nolimit_mode != desired.nolimit_mode ||
+                                      this->nolimit_current_ma != desired.nolimit_current_ma ||
+                                      this->nolimit_reverse_angle_ticks.get_ticks() != desired.nolimit_reverse_angle_ticks.get_ticks());
+      
+      if (nolimit_homing_changed) {
+        command_types.push_back(Commandtype::SET_NOLIMIT_HOMING_PARAMS);
+      }
+      
+      // === Special Features ===
+      bool zero_mode_changed = (this->zero_mode != desired.zero_mode ||
+                                this->zero_task != desired.zero_task ||
+                                this->zero_speed != desired.zero_speed ||
+                                this->zero_direction != desired.zero_direction);
+      
+      if (zero_mode_changed) {
+        command_types.push_back(Commandtype::SET_ZERO_MODE);
+      }
+      
+      if (this->limit_port_remap != desired.limit_port_remap) {
+        command_types.push_back(Commandtype::SET_LIMIT_PORT_REMAP);
+      }
+      
+      return command_types;
     }
 
   } // namespace servoxxd
