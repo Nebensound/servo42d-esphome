@@ -146,14 +146,6 @@ namespace esphome
                           // Decode and log individual configuration values
                           auto config = CommandDecoder::read_all_config(cmd);
                           
-                          // Extract transport layer parameters (baud_rate, slave_address)
-                          uint8_t hw_baud_rate, hw_slave_address;
-                          if (CommandDecoder::read_transport_params(cmd, hw_baud_rate, hw_slave_address))
-                          {
-                            parent_->transport_baud_rate_ = hw_baud_rate;
-                            parent_->transport_slave_address_ = hw_slave_address;
-                          }
-                          
                           // Define common string arrays for configuration value names
                           static const char *mode_names[] = {"CR_OPEN", "CR_CLOSE", "CR_vFOC", "SR_OPEN", "SR_CLOSE", "SR_vFOC"};
                           static constexpr size_t mode_names_count = sizeof(mode_names) / sizeof(mode_names[0]);
@@ -177,9 +169,7 @@ namespace esphome
                           ESP_LOGD(TAG_ENGINE, "  Protection: 0x%02X", config.protect_enable);
                           ESP_LOGD(TAG_ENGINE, "  Keys: %s", config.key_lock ? "locked" : "unlocked");
                           
-                          // Log communication settings (transport layer)
-                          ESP_LOGD(TAG_ENGINE, "  Baud rate code: %u", parent_->transport_baud_rate_);
-                          ESP_LOGD(TAG_ENGINE, "  Slave address: %u", parent_->transport_slave_address_);
+                          // Log communication settings
                           ESP_LOGD(TAG_ENGINE, "  MODBUS: %s", config.modbus_enable ? "enabled" : "disabled");
                           
                           // Log homing settings

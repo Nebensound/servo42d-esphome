@@ -668,29 +668,6 @@ namespace esphome
 
         return config;
       }
-
-      /**
-       * @brief Extract transport layer parameters from READ_ALL_CONFIG response
-       * 
-       * @param cmd Command with response data (must be READ_ALL_CONFIG)
-       * @param[out] baud_rate Baud rate code from hardware
-       * @param[out] slave_address Slave address from hardware
-       * @return true if successfully extracted, false otherwise
-       */
-      static bool read_transport_params(const Command &cmd, uint8_t &baud_rate, uint8_t &slave_address)
-      {
-        if (cmd.command_type != Commandtype::READ_ALL_CONFIG || cmd.response.size() < 38)
-        {
-          return false;
-        }
-
-        const auto &data = cmd.response;
-        // REG8 is at offset 14-15 (baud_rate at byte 14, slave_address at byte 15)
-        // Offset calculation: 7 registers * 2 bytes/register = 14 bytes
-        baud_rate = data[14];
-        slave_address = data[15];
-        return true;
-      }
     };
 
   } // namespace servoxxd

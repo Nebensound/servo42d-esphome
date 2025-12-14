@@ -676,10 +676,6 @@ namespace esphome
       ConfigData config_;                  ///< All motor configuration parameters
       float steps_per_revolution_{200.0f}; ///< Steps per revolution (typically 200 for 1.8° motors)
       
-      // Transport layer communication parameters (not part of motor config)
-      uint8_t transport_baud_rate_{1};     ///< Baud rate from hardware (maintained for write_all_config)
-      uint8_t transport_slave_address_{1}; ///< Slave address from hardware (maintained for write_all_config)
-
       // Homing configuration
       HomingConfig homing_;
 
