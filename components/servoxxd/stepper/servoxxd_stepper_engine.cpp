@@ -136,12 +136,53 @@ namespace esphome
       // 1. Read all current configuration from motor (after restart)
       // This allows us to verify the motor's current state before applying new settings
       queue_->enqueue(CommandFactory::read_all_config(),
-                      [](bool success, [[maybe_unused]] const Command &cmd)
+                      [](bool success, const Command &cmd)
                       {
                         if (success)
                         {
                           ESP_LOGD(TAG_ENGINE, "✓ Current motor configuration read (%zu bytes)", cmd.response.size());
-                          // TODO: Decode and log individual configuration values if needed
+                          
+                          // Decode and log individual configuration values
+                          auto config = CommandDecoder::read_all_config(cmd);
+                          
+                          // Log control settings
+                          const char *mode_names[] = {"CR_OPEN", "CR_CLOSE", "CR_vFOC", "SR_OPEN", "SR_CLOSE", "SR_vFOC"};
+                          uint8_t mode_idx = static_cast<uint8_t>(config.mode);
+                          ESP_LOGD(TAG_ENGINE, "  Control mode: %s", (mode_idx < 6) ? mode_names[mode_idx] : "UNKNOWN");
+                          ESP_LOGD(TAG_ENGINE, "  Working current: %u mA", config.working_current_ma);
+                          ESP_LOGD(TAG_ENGINE, "  Holding current: %u%%", config.holding_current_percent);
+                          ESP_LOGD(TAG_ENGINE, "  Microstepping: 1/%u", config.subdivision);
+                          
+                          // Log pin settings
+                          const char *en_pin_names[] = {"LOW", "HIGH", "ALWAYS"};
+                          uint8_t en_pin_idx = static_cast<uint8_t>(config.en_pin_active);
+                          ESP_LOGD(TAG_ENGINE, "  EN pin active: %s", (en_pin_idx < 3) ? en_pin_names[en_pin_idx] : "UNKNOWN");
+                          ESP_LOGD(TAG_ENGINE, "  Shaft reversed: %s", config.shaft_reversed ? "yes" : "no");
+                          
+                          // Log display and protection
+                          ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s", config.auto_screen_off ? "enabled" : "disabled");
+                          ESP_LOGD(TAG_ENGINE, "  Protection: 0x%02X", config.protect_enable);
+                          ESP_LOGD(TAG_ENGINE, "  Keys: %s", config.key_lock ? "locked" : "unlocked");
+                          
+                          // Log communication settings
+                          ESP_LOGD(TAG_ENGINE, "  Baud rate code: %u", config.baud_rate);
+                          ESP_LOGD(TAG_ENGINE, "  Slave address: %u", config.slave_address);
+                          ESP_LOGD(TAG_ENGINE, "  MODBUS: %s", config.modbus_enable ? "enabled" : "disabled");
+                          
+                          // Log homing settings
+                          ESP_LOGD(TAG_ENGINE, "  Homing trigger: %s", 
+                                   (config.homing_trigger == EndstopTrigger::TRIGGER_LOW) ? "LOW" : "HIGH");
+                          ESP_LOGD(TAG_ENGINE, "  Homing direction: %s", 
+                                   (config.homing_direction == Direction::CW) ? "CW" : "CCW");
+                          ESP_LOGD(TAG_ENGINE, "  Homing speed: %u RPM", config.homing_speed_rpm);
+                          ESP_LOGD(TAG_ENGINE, "  Endlimit: %s", config.endlimit_enable ? "enabled" : "disabled");
+                          ESP_LOGD(TAG_ENGINE, "  Sensorless mode: %s", config.nolimit_mode ? "enabled" : "disabled");
+                          ESP_LOGD(TAG_ENGINE, "  Sensorless current: %u mA", config.nolimit_current_ma);
+                          
+                          // Log zero mode settings
+                          ESP_LOGD(TAG_ENGINE, "  0_Mode: %u, Task: %u, Speed: %u, Direction: %s",
+                                   config.zero_mode, config.zero_task, config.zero_speed,
+                                   (config.zero_direction == Direction::CW) ? "CW" : "CCW");
                         }
                         else
                         {

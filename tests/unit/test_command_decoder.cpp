@@ -361,6 +361,99 @@ void test_read_detailed_motor_status()
 }
 
 /**
+ * Test read_all_config decoder
+ * Hardware Doc: Section 8.2.10 - Read all configuration parameters
+ * Register: 0x1147, Function: 0x04, Response: 38 bytes (19 registers)
+ */
+void test_read_all_config()
+{
+  std::cout << "\n=== read_all_config Tests (Register 0x1147) ===" << std::endl;
+
+  // Test valid configuration data (38 bytes)
+  Command cmd1(Commandtype::READ_ALL_CONFIG);
+  cmd1.response = {
+      // REG1: Mode [mode][reserved]
+      0x03, 0x00, // SR_OPEN mode
+      // REG2: Hold current [hw_hold][reserved]
+      0x04, 0x00, // 50% (hw_hold=4 → (4+1)*10 = 50%)
+      // REG3: Work current [hi][lo]
+      0x07, 0xD0, // 2000 mA
+      // REG4: Subdivision [subdivision][reserved]
+      0x10, 0x00, // 16 microsteps
+      // REG5: En + Dir [en_pin_active][shaft_reversed]
+      0x00, 0x00, // LOW, not reversed
+      // REG6: AutoSDD + Protect [auto_screen_off][protect_enable]
+      0x01, 0x00, // enabled, no protection
+      // REG7: Mplyer + NULL [mplyer][reserved]
+      0x00, 0x00, // mplyer=0
+      // REG8: Baud rate + Slave address [baud_rate][slave_address]
+      0x01, 0x01, // baud=1, slave=1
+      // REG9: Group address + Respond/Active [group_address][respond_active]
+      0x00, 0x01, // group=0, respond=enabled
+      // REG10: MODBUS + Key lock [modbus_enable][key_lock]
+      0x01, 0x00, // MODBUS enabled, keys unlocked
+      // REG11-13: Homing parameters [trigger][direction][speed_hi][speed_lo][null][endlimit]
+      0x00, 0x00, 0x00, 0x64, 0x00, 0x01, // LOW trigger, CW, 100 RPM, endlimit enabled
+      // REG14-16: No-limit homing [reverse_angle(4)][mode(2)][current_ma(2)]
+      0x00, 0x00, 0x07, 0xD0, 0x00, 0x00, 0x03, 0xE8, // 2000 ticks, disabled, 1000 mA
+      // REG17: Remap + NULL [null][limit_port_remap]
+      0x00, 0x00, // no remap
+      // REG18-19: 0_Mode parameters [zero_mode][zero_task][zero_speed][zero_direction]
+      0x00, 0x00, 0x02, 0x00 // disabled, clean, medium speed, CW
+  };
+
+  auto config1 = CommandDecoder::read_all_config(cmd1);
+  ASSERT_EQUAL(static_cast<uint8_t>(config1.mode), 0x03, "Decode control mode (SR_OPEN)");
+  ASSERT_EQUAL(config1.holding_current_percent, 50, "Decode holding current (50%)");
+  ASSERT_EQUAL(config1.working_current_ma, 2000, "Decode working current (2000 mA)");
+  ASSERT_EQUAL(config1.subdivision, 16, "Decode subdivision (16 microsteps)");
+  ASSERT_EQUAL(static_cast<uint8_t>(config1.en_pin_active), 0, "Decode EN pin active (LOW)");
+  ASSERT_TRUE(!config1.shaft_reversed, "Decode shaft reversed (false)");
+  ASSERT_TRUE(config1.auto_screen_off, "Decode auto screen off (true)");
+  ASSERT_EQUAL(config1.protect_enable, 0, "Decode protection enable");
+  ASSERT_EQUAL(config1.baud_rate, 1, "Decode baud rate");
+  ASSERT_EQUAL(config1.slave_address, 1, "Decode slave address");
+  ASSERT_TRUE(config1.modbus_enable, "Decode MODBUS enable (true)");
+  ASSERT_TRUE(!config1.key_lock, "Decode key lock (false)");
+  ASSERT_EQUAL(static_cast<uint8_t>(config1.homing_trigger), 0, "Decode homing trigger (LOW)");
+  ASSERT_EQUAL(static_cast<uint8_t>(config1.homing_direction), 0, "Decode homing direction (CW)");
+  ASSERT_EQUAL(config1.homing_speed_rpm, 100, "Decode homing speed (100 RPM)");
+  ASSERT_TRUE(config1.endlimit_enable, "Decode endlimit enable (true)");
+  ASSERT_EQUAL(config1.nolimit_reverse_angle_ticks, 2000u, "Decode nolimit reverse angle");
+  ASSERT_TRUE(!config1.nolimit_mode, "Decode nolimit mode (false)");
+  ASSERT_EQUAL(config1.nolimit_current_ma, 1000, "Decode nolimit current (1000 mA)");
+  ASSERT_TRUE(!config1.limit_port_remap, "Decode limit port remap (false)");
+  ASSERT_EQUAL(config1.zero_mode, 0, "Decode zero mode");
+  ASSERT_EQUAL(config1.zero_speed, 2, "Decode zero speed");
+
+  // Test invalid data size
+  Command cmd2(Commandtype::READ_ALL_CONFIG);
+  cmd2.response = {0x00, 0x00}; // Only 2 bytes
+  auto config2 = CommandDecoder::read_all_config(cmd2);
+  ASSERT_EQUAL(static_cast<uint8_t>(config2.mode), 0x03, "Invalid data returns default config");
+
+  // Test wrong command type
+  Command cmd3(Commandtype::READ_CURRENT_SPEED); // Wrong type
+  cmd3.response.resize(38, 0x00); // Fill with zeros
+  auto config3 = CommandDecoder::read_all_config(cmd3);
+  ASSERT_EQUAL(static_cast<uint8_t>(config3.mode), 0x03, "Wrong command type returns default config");
+
+  // Test maximum holding current (90%)
+  Command cmd4(Commandtype::READ_ALL_CONFIG);
+  cmd4.response = cmd1.response; // Copy from cmd1
+  cmd4.response[2] = 0x08; // hw_hold = 8 → 90%
+  auto config4 = CommandDecoder::read_all_config(cmd4);
+  ASSERT_EQUAL(config4.holding_current_percent, 90, "Decode maximum holding current (90%)");
+
+  // Test SR_vFOC mode
+  Command cmd5(Commandtype::READ_ALL_CONFIG);
+  cmd5.response = cmd1.response; // Copy from cmd1
+  cmd5.response[0] = 0x05; // SR_vFOC
+  auto config5 = CommandDecoder::read_all_config(cmd5);
+  ASSERT_EQUAL(static_cast<uint8_t>(config5.mode), 0x05, "Decode SR_vFOC mode");
+}
+
+/**
  * Test edge cases and boundary conditions
  */
 void test_edge_cases()
@@ -420,6 +513,7 @@ int main()
   test_read_io_port_status();
   test_read_zeroing_status();
   test_read_detailed_motor_status();
+  test_read_all_config();
   test_edge_cases();
 
   std::cout << "\n========================================" << std::endl;
