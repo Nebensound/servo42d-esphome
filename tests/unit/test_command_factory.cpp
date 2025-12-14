@@ -265,8 +265,8 @@ void test_homing_commands()
   // Example: Disabled (0x00), Clean (0x00), Medium speed (0x02), CW (0x00)
   assert_command(
       CommandFactory::set_zero_mode(
-          CommandFactory::ZeroModeMode::MODE_DISABLED,
-          CommandFactory::ZeroModeTask::CLEAN,
+          ZeroModeMode::MODE_DISABLED,
+          ZeroModeTask::CLEAN,
           ZeroingSpeed::MEDIUM,
           Direction::CW),
       Commandtype::SET_ZERO_MODE,

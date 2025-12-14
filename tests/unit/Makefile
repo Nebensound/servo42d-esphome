@@ -112,6 +112,18 @@ clean:
 	rm -f $(TESTS)
 	@echo "Done."
 
+# Format C++ code using clang-format
+format:
+	@echo "$(GREEN)Formatting C++ code...$(NC)"
+	@if command -v clang-format >/dev/null 2>&1; then \
+		find $(COMPONENT_DIR) -name "*.cpp" -o -name "*.h" | xargs clang-format -i; \
+		find . -maxdepth 1 -name "test_*.cpp" | xargs clang-format -i; \
+		echo "$(GREEN)✅ Code formatted$(NC)"; \
+	else \
+		echo "$(RED)❌ clang-format not found. Please install clang-format$(NC)"; \
+		exit 1; \
+	fi
+
 # Help
 help:
 	@echo "ServoXxd Unit Tests Makefile"

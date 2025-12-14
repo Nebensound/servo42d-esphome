@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <vector>
+#include <cstdint>
 
 namespace esphome
 {

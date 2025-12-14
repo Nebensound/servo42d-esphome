@@ -371,22 +371,6 @@ namespace esphome
       }
 
       /**
-       * @brief Zero mode configuration
-       */
-      enum class ZeroModeMode : uint8_t
-      {
-        MODE_DISABLED = 0x00,
-        DIR_MODE = 0x01,
-        NEAR_MODE = 0x02
-      };
-
-      enum class ZeroModeTask : uint8_t
-      {
-        CLEAN = 0x00,
-        SET = 0x01
-      };
-
-      /**
        * @brief Set 0_Mode auto-return parameters
        * @param mode Zero mode operation (DISABLED, DIR_MODE, or NEAR_MODE)
        * @param clean_set Task to perform (CLEAN to clear zero, SET to set zero)
@@ -590,9 +574,9 @@ namespace esphome
        * @param shaft_reversed True if shaft direction is reversed
        * @param auto_screen_off Auto screen off after 15s
        * @param protect_enable Protection enable flag
-       * @param mplyer Multiplier value
-       * @param baud_rate Baud rate code (1-7)
-       * @param slave_address Slave address (1-247)
+       * @param mplyer 256x subdivision interpolation enable
+       * @param baud_rate Baud rate code (from transport layer)
+       * @param slave_address Slave address (from transport layer/ModbusDevice)
        * @param group_address Group address (0x00-0xFF)
        * @param respond_enable Response enable flag
        * @param active_enable Active reporting enable flag
@@ -625,7 +609,7 @@ namespace esphome
           bool shaft_reversed,
           bool auto_screen_off,
           uint8_t protect_enable,
-          uint8_t mplyer,
+          bool mplyer,
           uint8_t baud_rate,
           uint8_t slave_address,
           uint8_t group_address,
@@ -674,7 +658,7 @@ namespace esphome
         detail::encode_uint8(data, protect_enable);
 
         // REG7: Mplyer + NULL (2 bytes)
-        detail::encode_uint8(data, mplyer);
+        detail::encode_uint8(data, mplyer ? 0x01 : 0x00);
         detail::encode_uint8(data, 0x00); // Reserved
 
         // REG8: Baud rate + Slave address (2 bytes)
