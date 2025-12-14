@@ -219,16 +219,19 @@ namespace esphome
                           EnPinActive desired_en_pin = parent_->get_en_pin_active();
                           if (config.en_pin_active != desired_en_pin)
                           {
+                            uint8_t current_en_idx = static_cast<uint8_t>(config.en_pin_active);
+                            uint8_t desired_en_idx = static_cast<uint8_t>(desired_en_pin);
                             ESP_LOGD(TAG_ENGINE, "  EN pin active differs: %s → %s", 
-                                     en_pin_names[static_cast<uint8_t>(config.en_pin_active)],
-                                     en_pin_names[static_cast<uint8_t>(desired_en_pin)]);
+                                     (current_en_idx < en_pin_names_count) ? en_pin_names[current_en_idx] : "UNKNOWN",
+                                     (desired_en_idx < en_pin_names_count) ? en_pin_names[desired_en_idx] : "UNKNOWN");
                             queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin),
-                                            [desired_en_pin, en_pin_names](bool success, const Command &)
+                                            [desired_en_pin, en_pin_names, en_pin_names_count](bool success, const Command &)
                                             {
                                               if (success)
                                               {
+                                                uint8_t idx = static_cast<uint8_t>(desired_en_pin);
                                                 ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", 
-                                                         en_pin_names[static_cast<uint8_t>(desired_en_pin)]);
+                                                         (idx < en_pin_names_count) ? en_pin_names[idx] : "UNKNOWN");
                                               }
                                               else
                                               {
