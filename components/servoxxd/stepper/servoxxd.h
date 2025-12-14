@@ -130,8 +130,6 @@ namespace esphome
       bool auto_screen_off{true};
       uint8_t protect_enable{0};        ///< Protection enable flags (default: all disabled)
       bool mplyer{false};               ///< 256x subdivision interpolation (default: disabled)
-      uint8_t baud_rate{1};             ///< Baud rate code (default: 1 = 9600)
-      uint8_t slave_address{1};         ///< Modbus slave address (default: 1)
       uint8_t group_address{0};         ///< Group address (default: 0)
       bool respond_enable{true};        ///< Response enable (default: true)
       bool active_enable{false};        ///< Active reporting (default: false)
@@ -677,6 +675,10 @@ namespace esphome
       // Motor configuration (single source of truth)
       ConfigData config_;                  ///< All motor configuration parameters
       float steps_per_revolution_{200.0f}; ///< Steps per revolution (typically 200 for 1.8° motors)
+      
+      // Transport layer communication parameters (not part of motor config)
+      uint8_t transport_baud_rate_{1};     ///< Baud rate from hardware (maintained for write_all_config)
+      uint8_t transport_slave_address_{1}; ///< Slave address from hardware (maintained for write_all_config)
 
       // Homing configuration
       HomingConfig homing_;

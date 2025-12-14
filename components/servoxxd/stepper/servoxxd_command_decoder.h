@@ -622,8 +622,9 @@ namespace esphome
         idx++; // Reserved
 
         // REG8: Baud rate + Slave address (2 bytes)
-        config.baud_rate = data[idx++];
-        config.slave_address = data[idx++];
+        // Note: These are transport-layer parameters, not part of motor configuration
+        // Caller should extract these separately using read_transport_params()
+        idx += 2;  // Skip baud_rate and slave_address
 
         // REG9: Group address + Respond/Active (2 bytes)
         config.group_address = data[idx++];
@@ -665,6 +666,29 @@ namespace esphome
         config.zero_direction = static_cast<Direction>(data[idx++]);
 
         return config;
+      }
+
+      /**
+       * @brief Extract transport layer parameters from READ_ALL_CONFIG response
+       * 
+       * @param cmd Command with response data (must be READ_ALL_CONFIG)
+       * @param[out] baud_rate Baud rate code from hardware
+       * @param[out] slave_address Slave address from hardware
+       * @return true if successfully extracted, false otherwise
+       */
+      static bool read_transport_params(const Command &cmd, uint8_t &baud_rate, uint8_t &slave_address)
+      {
+        if (cmd.command_type != Commandtype::READ_ALL_CONFIG || cmd.response.size() < 38)
+        {
+          return false;
+        }
+
+        const auto &data = cmd.response;
+        // REG8 is at offset 14-15 (baud_rate at byte 14, slave_address at byte 15)
+        // Offset calculation: 7 registers * 2 bytes/register = 14 bytes
+        baud_rate = data[14];
+        slave_address = data[15];
+        return true;
       }
     };
 

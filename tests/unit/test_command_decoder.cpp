@@ -411,8 +411,11 @@ void test_read_all_config()
   ASSERT_TRUE(!config1.shaft_reversed, "Decode shaft reversed (false)");
   ASSERT_TRUE(config1.auto_screen_off, "Decode auto screen off (true)");
   ASSERT_EQUAL(config1.protect_enable, 0, "Decode protection enable");
-  ASSERT_EQUAL(config1.baud_rate, 1, "Decode baud rate");
-  ASSERT_EQUAL(config1.slave_address, 1, "Decode slave address");
+  // Note: baud_rate and slave_address are transport params, extracted separately
+  uint8_t baud_rate, slave_address;
+  ASSERT_TRUE(CommandDecoder::read_transport_params(cmd1, baud_rate, slave_address), "Extract transport params");
+  ASSERT_EQUAL(baud_rate, 1, "Decode baud rate");
+  ASSERT_EQUAL(slave_address, 1, "Decode slave address");
   ASSERT_TRUE(config1.modbus_enable, "Decode MODBUS enable (true)");
   ASSERT_TRUE(!config1.key_lock, "Decode key lock (false)");
   ASSERT_EQUAL(static_cast<uint8_t>(config1.homing_trigger), 0, "Decode homing trigger (LOW)");
