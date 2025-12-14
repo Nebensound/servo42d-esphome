@@ -560,7 +560,7 @@ namespace esphome
                                                           const ServoXxd* parent)
     {
       std::vector<Command> commands;
-      commands.reserve(20); // Pre-allocate for typical number of config parameters
+      commands.reserve(5); // Pre-allocate for typical number of changes (usually 0-2)
 
       // Order commands logically for optimal motor configuration:
       // 1. Basic motor settings (mode, currents, microstepping)
