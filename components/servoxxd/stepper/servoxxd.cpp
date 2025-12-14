@@ -51,7 +51,7 @@ namespace esphome
     }
 
     // ============================================================================
-    // Stepper Base Class Overrides
+    // Stepper Compatibility Methods
     // ============================================================================
 
     void ServoXxd::set_target(int32_t steps)
@@ -63,9 +63,9 @@ namespace esphome
 
     void ServoXxd::set_max_speed(float speed)
     {
-      // Convert float RPM to Speed object and delegate to set_speed
-      // Assume base class uses RPM as unit (ESPHome standard)
-      Speed speed_obj(speed, SpeedUnit::RPM, this);
+      // Convert float steps/s to Speed object and delegate to set_speed
+      // ESPHome uses steps/s for stepper speed
+      Speed speed_obj(speed, SpeedUnit::STEPS_PER_SEC, this);
       this->set_speed(speed_obj);
       // Also update base class member for compatibility
       this->max_speed_ = speed;
@@ -74,19 +74,18 @@ namespace esphome
     void ServoXxd::set_deceleration(float decel)
     {
       // ServoXxd uses same value for acceleration and deceleration
-      // Convert to Acceleration object
-      Acceleration accel(decel, AccelerationUnit::RPM_PER_SEC, this);
-      this->set_acceleration(accel);
+      // Convert to Acceleration object (ESPHome uses steps/s^2)
+      Acceleration accel_obj(decel, AccelerationUnit::STEPS_PER_SEC_SQ, this);
+      this->set_acceleration(accel_obj);
       // Also update base class member for compatibility
       this->deceleration_ = decel;
     }
-    
+
     void ServoXxd::set_acceleration(float accel)
     {
-      // ServoXxd uses same value for acceleration and deceleration
-      // Convert to Acceleration object
-      Acceleration accel(accel, AccelerationUnit::RPM_PER_SEC, this);
-      this->set_acceleration(accel);
+      // Convert to Acceleration object (ESPHome uses steps/s^2)
+      Acceleration accel_obj(accel, AccelerationUnit::STEPS_PER_SEC_SQ, this);
+      this->set_acceleration(accel_obj);
       // Also update base class member for compatibility
       this->acceleration_ = accel;
     }

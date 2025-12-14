@@ -191,11 +191,13 @@ namespace esphome
     class ServoXxd : virtual public Component, public stepper::Stepper, public modbus::ModbusDevice
     {
     public:
-      // ==== Stepper Base Class Overrides ====
-      void set_target(int32_t steps) override;     // Override to use ServoXxd's Position tracking
-      void set_max_speed(float speed) override;    // Override to use ServoXxd's Speed objects
-      void set_deceleration(float decel) override; // Override to use ServoXxd's Acceleration (decel = accel)
-      void set_acceleration(float decel) override; // Override to use ServoXxd's Acceleration
+      // ==== Stepper Compatibility Methods ====
+      // These methods provide compatibility with ESPHome's stepper interface
+      // and delegate to ServoXxd's Position/Speed/Acceleration objects
+      void set_target(int32_t steps);     // Delegate to ServoXxd's Position tracking
+      void set_max_speed(float speed);    // Delegate to ServoXxd's Speed objects  
+      void set_deceleration(float decel); // Delegate to ServoXxd's Acceleration (decel = accel)
+      void set_acceleration(float accel); // Delegate to ServoXxd's Acceleration
 
       // ==== Action-API Methods ====
       void set_control_mode(ControlMode mode);          // Change control mode at runtime (sends Commandtype 0x82)
@@ -489,7 +491,7 @@ namespace esphome
       }
 
       // Configuration setters for motor parameters
-      void set_address(uint8_t addr) override { this->address_ = addr; }
+      void set_address(uint8_t addr) { this->address_ = addr; }
       void set_servo_type(ServoType type [[maybe_unused]]) { /* Store servo type */ }
       void set_working_current(uint16_t ma) { working_current_ = ma; }
       void set_holding_current_percent(uint8_t percent)
