@@ -1,8 +1,7 @@
 ---
 # Automatically synced from: https://github.com/esphome/esphome/blob/dev/.clang-format
-# DO NOT EDIT - Changes will be overwritten by update-clang-format workflow
+# DO NOT EDIT - Changes will be overwritten by update-format-configs workflow
 
-Language:        Cpp
 AccessModifierOffset: -1
 AlignAfterOpenBracket: Align
 AlignConsecutiveAssignments: false
@@ -57,6 +56,10 @@ DerivePointerAlignment: false
 DisableFormat:   false
 ExperimentalAutoDetectBinPacking: false
 FixNamespaceComments: true
+ForEachMacros:
+  - foreach
+  - Q_FOREACH
+  - BOOST_FOREACH
 IncludeBlocks:   Preserve
 IncludeCategories:
   - Regex:           '^<ext/.*\.h>'
@@ -86,6 +89,34 @@ PenaltyBreakTemplateDeclaration: 10
 PenaltyExcessCharacter: 1000000
 PenaltyReturnTypeOnItsOwnLine: 2000
 PointerAlignment: Right
+RawStringFormats:
+  - Language:        Cpp
+    Delimiters:
+      - cc
+      - CC
+      - cpp
+      - Cpp
+      - CPP
+      - 'c++'
+      - 'C++'
+    CanonicalDelimiter: ''
+    BasedOnStyle:    google
+  - Language:        TextProto
+    Delimiters:
+      - pb
+      - PB
+      - proto
+      - PROTO
+    EnclosingFunctions:
+      - EqualsProto
+      - EquivToProto
+      - PARSE_PARTIAL_TEXT_PROTO
+      - PARSE_TEST_PROTO
+      - PARSE_TEXT_PROTO
+      - ParseTextOrDie
+      - ParseTextProtoOrDie
+    CanonicalDelimiter: ''
+    BasedOnStyle:    google
 ReflowComments:  true
 SortIncludes:    false
 SortUsingDeclarations: false
@@ -107,99 +138,3 @@ SpacesInSquareBrackets: false
 Standard:        Auto
 TabWidth:        2
 UseTab:          Never
-BasedOnStyle:    google
-
-# Indentation
-IndentWidth: 2
-TabWidth: 2
-UseTab: Never
-ContinuationIndentWidth: 4
-ConstructorInitializerIndentWidth: 4
-AccessModifierOffset: -1
-
-# Line Length
-ColumnLimit: 120
-
-# Braces
-BreakBeforeBraces: Attach
-BraceWrapping:
-  AfterClass: false
-  AfterControlStatement: Never
-  AfterEnum: false
-  AfterFunction: false
-  AfterNamespace: false
-  AfterStruct: false
-  AfterUnion: false
-  BeforeCatch: false
-  BeforeElse: false
-
-# Spacing
-SpaceAfterCStyleCast: false
-SpaceAfterTemplateKeyword: true
-SpaceBeforeAssignmentOperators: true
-SpaceBeforeCpp11BracedList: false
-SpaceBeforeParens: ControlStatements
-SpaceInEmptyParentheses: false
-SpacesInAngles: false
-SpacesInCStyleCastParentheses: false
-SpacesInParentheses: false
-SpacesInSquareBrackets: false
-
-# Alignment
-AlignAfterOpenBracket: Align
-AlignConsecutiveAssignments: false
-AlignConsecutiveDeclarations: false
-AlignEscapedNewlines: Left
-AlignOperands: true
-AlignTrailingComments: true
-
-# Breaking
-AllowAllParametersOfDeclarationOnNextLine: true
-AllowShortBlocksOnASingleLine: false
-AllowShortCaseLabelsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: Inline
-AllowShortIfStatementsOnASingleLine: Never
-AllowShortLoopsOnASingleLine: false
-AlwaysBreakAfterReturnType: None
-AlwaysBreakBeforeMultilineStrings: false
-AlwaysBreakTemplateDeclarations: Yes
-BreakBeforeBinaryOperators: None
-BreakBeforeTernaryOperators: true
-BreakConstructorInitializers: BeforeColon
-BreakStringLiterals: true
-
-# Namespaces
-CompactNamespaces: false
-FixNamespaceComments: true
-NamespaceIndentation: None
-
-# Includes
-SortIncludes: true
-IncludeBlocks: Regroup
-IncludeCategories:
-  # ESPHome core headers
-  - Regex:           '^"esphome/'
-    Priority:        1
-  # Project headers
-  - Regex:           '^"servoxxd_'
-    Priority:        2
-  # Standard library
-  - Regex:           '^<[^/]+>'
-    Priority:        3
-  # Everything else
-  - Regex:           '.*'
-    Priority:        4
-
-# Pointers and References
-DerivePointerAlignment: false
-PointerAlignment: Left
-
-# Other
-BinPackArguments: true
-BinPackParameters: true
-ConstructorInitializerAllOnOneLineOrOnePerLine: true
-Cpp11BracedListStyle: true
-KeepEmptyLinesAtTheStartOfBlocks: false
-MaxEmptyLinesToKeep: 1
-ReflowComments: true
-Standard: c++17
