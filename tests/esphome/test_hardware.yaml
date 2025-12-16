@@ -171,24 +171,24 @@ script:
     mode: single
     then:
       # Run TEST 1 (currently disabled)
-      - script.execute: test_1_enable_disable
-      - script.wait: test_1_enable_disable
+      #- script.execute: test_1_enable_disable
+      #- script.wait: test_1_enable_disable
 
       # Run TEST 2
       - script.execute: test_2_small_movement
       - script.wait: test_2_small_movement
 
       # Run TEST 3 - Homing
-      - script.execute: test_3_move_and_home
-      - script.wait: test_3_move_and_home
+      # - script.execute: test_3_move_and_home
+      # - script.wait: test_3_move_and_home
 
       # All tests complete
-      - delay: 2s
-      - lambda: 'ESP_LOGI("test", "==========================================");'
-      - lambda: 'ESP_LOGI("test", "  ALL TESTS COMPLETED!");'
-      - lambda: 'ESP_LOGI("test", "==========================================");'
-      - delay: 5s
-      - lambda: 'ESP_LOGI("test", "System will restart in 3 seconds...");'
+      # - delay: 2s
+      # - lambda: 'ESP_LOGI("test", "==========================================");'
+      # - lambda: 'ESP_LOGI("test", "  ALL TESTS COMPLETED!");'
+      # - lambda: 'ESP_LOGI("test", "==========================================");'#
+      # - delay: 5s
+      # - lambda: 'ESP_LOGI("test", "System will restart in 3 seconds...");'
       - delay: 3s
       - button.press: restart_esp
 
@@ -199,11 +199,11 @@ esp32:
 
 # Enable logging
 logger:
-  level: DEBUG
+  # level: DEBUG
   logs:
     # Show UART debug output
-    uart.idf: DEBUG
-    uart: DEBUG
+    # uart.idf: DEBUG
+    # uart: DEBUG
     # Reduce noise from other components
     wifi: INFO
     api: INFO

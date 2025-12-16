@@ -20,42 +20,36 @@ using namespace esphome::servoxxd;
 // Tolerance for float comparisons
 constexpr float EPSILON = 0.01f;
 
-bool float_eq(float a, float b)
-{
-  return std::abs(a - b) < EPSILON;
-}
+bool float_eq(float a, float b) { return std::abs(a - b) < EPSILON; }
 
 // Mock ServoXxd for testing
-class MockServoXxd : public ServoXxd
-{
-public:
+class MockServoXxd : public ServoXxd {
+ public:
   MockServoXxd(float steps_per_rev, uint16_t microsteps = 16)
       : steps_per_rev_(steps_per_rev), microsteps_(microsteps) {}
 
   float get_steps_per_revolution() const override { return steps_per_rev_; }
   uint16_t get_microstepping() const override { return microsteps_; }
 
-private:
+ private:
   float steps_per_rev_;
   uint16_t microsteps_;
 };
 
-void test_speed_steps_per_sec()
-{
+void test_speed_steps_per_sec() {
   std::cout << "Testing STEPS_PER_SEC conversion..." << std::endl;
 
-  float steps_per_rev = 3200.0f; // 200 * 16 microsteps
+  float steps_per_rev = 3200.0f;  // 200 * 16 microsteps
   MockServoXxd mock(steps_per_rev);
 
   // Test: 1000 steps/s should be (1000 * 60) / 3200 = 18.75 RPM → rounds to 19
   Speed speed(1000.0f, SpeedUnit::STEPS_PER_SEC, &mock);
-  assert(speed.rpm() == 19.0f); // int16_t storage rounds to 19
+  assert(speed.rpm() == 19.0f);  // int16_t storage rounds to 19
 
   std::cout << "  ✓ 1000 steps/s = " << speed.rpm() << " RPM (18.75 → 19 after rounding)" << std::endl;
 }
 
-void test_speed_rpm()
-{
+void test_speed_rpm() {
   std::cout << "Testing RPM conversion (direct)..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -68,8 +62,7 @@ void test_speed_rpm()
   std::cout << "  ✓ 100 RPM = " << speed.rpm() << " RPM (expected 100)" << std::endl;
 }
 
-void test_speed_rev_per_sec()
-{
+void test_speed_rev_per_sec() {
   std::cout << "Testing REV_PER_SEC conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -82,8 +75,7 @@ void test_speed_rev_per_sec()
   std::cout << "  ✓ 1.5 rev/s = " << speed.rpm() << " RPM (expected 90)" << std::endl;
 }
 
-void test_speed_degrees_per_sec()
-{
+void test_speed_degrees_per_sec() {
   std::cout << "Testing DEGREES_PER_SEC conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -96,8 +88,7 @@ void test_speed_degrees_per_sec()
   std::cout << "  ✓ 360 deg/s = " << speed.rpm() << " RPM (expected 60)" << std::endl;
 }
 
-void test_speed_radians_per_sec()
-{
+void test_speed_radians_per_sec() {
   std::cout << "Testing RADIANS_PER_SEC conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -112,8 +103,7 @@ void test_speed_radians_per_sec()
   std::cout << "  ✓ 2π rad/s = " << speed.rpm() << " RPM (expected 60)" << std::endl;
 }
 
-void test_speed_degrees_per_min()
-{
+void test_speed_degrees_per_min() {
   std::cout << "Testing DEGREES_PER_MIN conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -126,8 +116,7 @@ void test_speed_degrees_per_min()
   std::cout << "  ✓ 360 deg/min = " << speed.rpm() << " RPM (expected 60)" << std::endl;
 }
 
-void test_speed_degrees_per_hour()
-{
+void test_speed_degrees_per_hour() {
   std::cout << "Testing DEGREES_PER_HOUR conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -140,8 +129,7 @@ void test_speed_degrees_per_hour()
   std::cout << "  ✓ 21600 deg/h = " << speed.rpm() << " RPM (expected 60)" << std::endl;
 }
 
-void test_speed_microstepping_compensation()
-{
+void test_speed_microstepping_compensation() {
   std::cout << "Testing microstepping compensation..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -173,18 +161,17 @@ void test_speed_microstepping_compensation()
   // microsteps=128: divide by 8 (hardware multiplies by 8, so we compensate)
   Speed speed_128(100.0f, SpeedUnit::RPM, &mock_128);
   int16_t rpm_128 = speed_128.rpm_for_hardware();
-  assert(rpm_128 == 12); // 100 / 8 = 12 (integer division)
+  assert(rpm_128 == 12);  // 100 / 8 = 12 (integer division)
   std::cout << "  ✓ microsteps=128: " << rpm_128 << " RPM (÷8)" << std::endl;
 
   // microsteps=256: divide by 16 (hardware multiplies by 16, so we compensate)
   Speed speed_256(100.0f, SpeedUnit::RPM, &mock_256);
   int16_t rpm_256 = speed_256.rpm_for_hardware();
-  assert(rpm_256 == 6); // 100 / 16 = 6 (integer division)
+  assert(rpm_256 == 6);  // 100 / 16 = 6 (integer division)
   std::cout << "  ✓ microsteps=256: " << rpm_256 << " RPM (÷16)" << std::endl;
 }
 
-void test_speed_steps_per_sec_conversion()
-{
+void test_speed_steps_per_sec_conversion() {
   std::cout << "Testing steps_per_sec() for ESPHome..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -198,8 +185,7 @@ void test_speed_steps_per_sec_conversion()
   std::cout << "  ✓ 60 RPM = " << steps_per_s << " steps/s (expected 3200)" << std::endl;
 }
 
-void test_speed_negative_values()
-{
+void test_speed_negative_values() {
   std::cout << "Testing negative speed values..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -213,8 +199,7 @@ void test_speed_negative_values()
   std::cout << "  ✓ -100 RPM = " << speed.rpm() << " RPM (reverse direction)" << std::endl;
 }
 
-void test_speed_range_clamping()
-{
+void test_speed_range_clamping() {
   std::cout << "Testing range clamping..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -231,8 +216,7 @@ void test_speed_range_clamping()
   std::cout << "  ✓ -40000 RPM clamped to " << speed_low.rpm_as_i16() << " (hardware min)" << std::endl;
 }
 
-void test_speed_null_parent()
-{
+void test_speed_null_parent() {
   std::cout << "Testing null parent pointer handling..." << std::endl;
 
   // Test: STEPS_PER_SEC with null parent should default to 0
@@ -246,8 +230,7 @@ void test_speed_null_parent()
   std::cout << "  ✓ RPM with null parent → 100 RPM (parent not needed)" << std::endl;
 }
 
-void test_speed_zero_value()
-{
+void test_speed_zero_value() {
   std::cout << "Testing zero speed value..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -259,8 +242,7 @@ void test_speed_zero_value()
   std::cout << "  ✓ 0 RPM = 0 RPM" << std::endl;
 }
 
-void test_speed_invalid_steps_per_revolution()
-{
+void test_speed_invalid_steps_per_revolution() {
   std::cout << "Testing invalid steps_per_revolution..." << std::endl;
 
   // Mock with invalid (negative) steps_per_rev
@@ -268,7 +250,7 @@ void test_speed_invalid_steps_per_revolution()
 
   // Should handle invalid steps_per_rev gracefully
   Speed speed(1000.0f, SpeedUnit::STEPS_PER_SEC, &mock_invalid);
-  assert(speed.rpm() == 0.0f); // Should default to 0
+  assert(speed.rpm() == 0.0f);  // Should default to 0
   std::cout << "  ✓ STEPS_PER_SEC with negative steps_per_rev → 0 RPM (error handling)" << std::endl;
 
   // Mock with zero steps_per_rev
@@ -278,8 +260,7 @@ void test_speed_invalid_steps_per_revolution()
   std::cout << "  ✓ STEPS_PER_SEC with zero steps_per_rev → 0 RPM (error handling)" << std::endl;
 }
 
-void test_speed_factory_methods()
-{
+void test_speed_factory_methods() {
   std::cout << "Testing factory methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -323,8 +304,7 @@ void test_speed_factory_methods()
   std::cout << "  ✓ from_degrees_per_hour(21600) → " << speed7.get_rpm() << " RPM" << std::endl;
 }
 
-void test_speed_unit_conversions()
-{
+void test_speed_unit_conversions() {
   std::cout << "Testing all unit accessor methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -353,8 +333,7 @@ void test_speed_unit_conversions()
   std::cout << "  ✓ 60 RPM = " << speed.get_degrees_per_hour() << " deg/h (int32)" << std::endl;
 }
 
-void test_speed_setters()
-{
+void test_speed_setters() {
   std::cout << "Testing setter methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -400,8 +379,7 @@ void test_speed_setters()
   std::cout << "  ✓ set_degrees_per_hour(21600) → " << speed.get_rpm() << " RPM" << std::endl;
 }
 
-void test_speed_int_overloads()
-{
+void test_speed_int_overloads() {
   std::cout << "Testing int constructor/setter overloads..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -429,8 +407,7 @@ void test_speed_int_overloads()
   std::cout << "  ✓ set_rpm(int32_t 50) → " << speed3.get_rpm() << " RPM" << std::endl;
 }
 
-void test_speed_comparison_operators()
-{
+void test_speed_comparison_operators() {
   std::cout << "Testing comparison operators..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -451,8 +428,7 @@ void test_speed_comparison_operators()
   std::cout << "  ✓ Inequality: speed1 != speed3, !(speed1 != speed2)" << std::endl;
 }
 
-int main()
-{
+int main() {
   std::cout << "\n========================================" << std::endl;
   std::cout << "Speed Class Unit Tests" << std::endl;
   std::cout << "========================================" << std::endl;

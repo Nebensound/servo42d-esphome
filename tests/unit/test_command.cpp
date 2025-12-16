@@ -5,35 +5,25 @@
 using namespace esphome::servoxxd;
 
 // Simple test statistics tracker
-struct TestStats
-{
+struct TestStats {
   int passed = 0;
   int failed = 0;
 
-  void check(bool condition, const char *description)
-  {
-    if (condition)
-    {
+  void check(bool condition, const char *description) {
+    if (condition) {
       std::cout << "  ✓ " << description << std::endl;
       passed++;
-    }
-    else
-    {
+    } else {
       std::cout << "  ✗ FAILED: " << description << std::endl;
       failed++;
     }
   }
 
-  void print_summary(const char *test_name)
-  {
-    std::cout << "\n"
-              << test_name << ": ";
-    if (failed == 0)
-    {
+  void print_summary(const char *test_name) {
+    std::cout << "\n" << test_name << ": ";
+    if (failed == 0) {
       std::cout << "✅ All " << passed << " assertions passed" << std::endl;
-    }
-    else
-    {
+    } else {
       std::cout << "❌ " << failed << " of " << (passed + failed) << " assertions failed" << std::endl;
       exit(1);
     }
@@ -43,8 +33,7 @@ struct TestStats
 // ============================================================================
 // Test 1: function_code() for READ commands (0x04)
 // ============================================================================
-void test_01_function_code_read_commands(TestStats &stats)
-{
+void test_01_function_code_read_commands(TestStats &stats) {
   std::cout << "\nTEST 1: function_code() returns 0x04 for READ commands" << std::endl;
 
   // Test all READ commands (0x30-0x3F range)
@@ -82,8 +71,7 @@ void test_01_function_code_read_commands(TestStats &stats)
 // ============================================================================
 // Test 2: function_code() for simple WRITE commands (0x06)
 // ============================================================================
-void test_02_function_code_simple_write(TestStats &stats)
-{
+void test_02_function_code_simple_write(TestStats &stats) {
   std::cout << "\nTEST 2: function_code() returns 0x06 for simple WRITE commands" << std::endl;
 
   Command cmd1(Commandtype::ENABLE_MOTOR);
@@ -120,8 +108,7 @@ void test_02_function_code_simple_write(TestStats &stats)
 // ============================================================================
 // Test 3: function_code() for complex WRITE commands (0x10)
 // ============================================================================
-void test_03_function_code_complex_write(TestStats &stats)
-{
+void test_03_function_code_complex_write(TestStats &stats) {
   std::cout << "\nTEST 3: function_code() returns 0x10 for complex WRITE commands" << std::endl;
 
   Command cmd1(Commandtype::MOVE_POSITION_MODE_1);
@@ -152,8 +139,7 @@ void test_03_function_code_complex_write(TestStats &stats)
 // ============================================================================
 // Test 4: register_address() returns command_type value
 // ============================================================================
-void test_04_register_address(TestStats &stats)
-{
+void test_04_register_address(TestStats &stats) {
   std::cout << "\nTEST 4: register_address() returns command_type as uint16_t" << std::endl;
 
   Command cmd1(Commandtype::READ_ENCODER_CARRY);
@@ -178,8 +164,7 @@ void test_04_register_address(TestStats &stats)
 // ============================================================================
 // Test 5: expected_response_length() for READ commands
 // ============================================================================
-void test_05_expected_response_length_read(TestStats &stats)
-{
+void test_05_expected_response_length_read(TestStats &stats) {
   std::cout << "\nTEST 5: expected_response_length() for READ commands" << std::endl;
 
   // 6-byte responses
@@ -216,8 +201,7 @@ void test_05_expected_response_length_read(TestStats &stats)
 // ============================================================================
 // Test 6: expected_response_length() for WRITE commands (always 0)
 // ============================================================================
-void test_06_expected_response_length_write(TestStats &stats)
-{
+void test_06_expected_response_length_write(TestStats &stats) {
   std::cout << "\nTEST 6: expected_response_length() returns 0 for WRITE commands" << std::endl;
 
   Command cmd1(Commandtype::ENABLE_MOTOR);
@@ -242,8 +226,7 @@ void test_06_expected_response_length_write(TestStats &stats)
 // ============================================================================
 // Test 7: Command constructor and payload handling
 // ============================================================================
-void test_07_command_constructor(TestStats &stats)
-{
+void test_07_command_constructor(TestStats &stats) {
   std::cout << "\nTEST 7: Command constructor and payload handling" << std::endl;
 
   // Constructor without payload
@@ -266,8 +249,7 @@ void test_07_command_constructor(TestStats &stats)
 // ============================================================================
 // Main Test Runner
 // ============================================================================
-int main()
-{
+int main() {
   std::cout << "========================================" << std::endl;
   std::cout << "Command Structure Unit Tests" << std::endl;
   std::cout << "========================================" << std::endl;

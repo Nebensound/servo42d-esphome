@@ -26,9 +26,8 @@
 #include "./esphome/core/log.h"
 
 // Mock timing - defined in hal.cpp in esphome namespace
-namespace esphome
-{
-  extern uint32_t test_millis_value;
+namespace esphome {
+extern uint32_t test_millis_value;
 }
 // Alias in global namespace for convenience
 static uint32_t &test_millis_value = esphome::test_millis_value;
@@ -47,35 +46,25 @@ using State = esphome::servoxxd::State;
 // Test Stats Helper
 // ============================================================================
 
-struct TestStats
-{
+struct TestStats {
   int passed = 0;
   int failed = 0;
 
-  void check(bool condition, const char *msg)
-  {
-    if (condition)
-    {
+  void check(bool condition, const char *msg) {
+    if (condition) {
       passed++;
       std::cout << "  ✓ " << msg << std::endl;
-    }
-    else
-    {
+    } else {
       failed++;
       std::cout << "  ✗ FAILED: " << msg << std::endl;
     }
   }
 
-  void print_summary(const char *test_name)
-  {
-    std::cout << "\n"
-              << test_name << ": ";
-    if (failed == 0)
-    {
+  void print_summary(const char *test_name) {
+    std::cout << "\n" << test_name << ": ";
+    if (failed == 0) {
       std::cout << "✅ All " << passed << " assertions passed" << std::endl;
-    }
-    else
-    {
+    } else {
       std::cout << "❌ " << failed << " of " << (passed + failed) << " assertions failed" << std::endl;
       exit(1);
     }
@@ -86,15 +75,13 @@ struct TestStats
 // Realistic Mock Transport
 // ============================================================================
 
-struct QueuedResponse
-{
+struct QueuedResponse {
   Command cmd;
   uint32_t deliver_at_ms;
 };
 
-class RealisticMockTransport : public ITransport
-{
-public:
+class RealisticMockTransport : public ITransport {
+ public:
   std::queue<QueuedResponse> response_queue_;
   std::function<void(const Command &)> response_callback_;
   std::function<void(const Command &, ErrorCode)> error_callback_;
@@ -105,61 +92,53 @@ public:
   // Simulated hardware state
   int32_t hw_encoder_ = 0;
   int16_t hw_speed_rpm_ = 0;
-  uint8_t hw_motor_status_ = 0;        // 0=stopped, 1=running
-  uint8_t hw_motor_status_detail_ = 0; // Detailed status: 0=FAIL, 1=STOP, 2=SPEED_UP, 3=SPEED_DOWN, 4=FULL_SPEED, 6=HOMING, 7=CALIBRATING
-  uint8_t hw_protection_ = 0;          // 0=ok, >0=error
+  uint8_t hw_motor_status_ = 0;  // 0=stopped, 1=running
+  uint8_t hw_motor_status_detail_ =
+      0;  // Detailed status: 0=FAIL, 1=STOP, 2=SPEED_UP, 3=SPEED_DOWN, 4=FULL_SPEED, 6=HOMING, 7=CALIBRATING
+  uint8_t hw_protection_ = 0;  // 0=ok, >0=error
 
-  void set_response_callback(std::function<void(const Command &)> cb) override
-  {
-    response_callback_ = cb;
-  }
+  void set_response_callback(std::function<void(const Command &)> cb) override { response_callback_ = cb; }
 
-  void set_error_callback(std::function<void(const Command &, ErrorCode)> cb) override
-  {
-    error_callback_ = cb;
-  }
+  void set_error_callback(std::function<void(const Command &, ErrorCode)> cb) override { error_callback_ = cb; }
 
-  Result execute_command(const Command &cmd) override
-  {
+  Result execute_command(const Command &cmd) override {
     last_command_.emplace(cmd.command_type, cmd.response);
 
     // Build response Command with simulated hardware data
     Command response_cmd = cmd;
 
-    switch (cmd.command_type)
-    {
-    case Commandtype::READ_ENCODER_CARRY:
-      // 6 bytes: carry (4 bytes big-endian int32) + value (2 bytes big-endian uint16)
-      response_cmd.response = {
-          static_cast<uint8_t>((hw_encoder_ >> 24) & 0xFF),
-          static_cast<uint8_t>((hw_encoder_ >> 16) & 0xFF),
-          static_cast<uint8_t>((hw_encoder_ >> 8) & 0xFF),
-          static_cast<uint8_t>(hw_encoder_ & 0xFF),
-          0x00, 0x00}; // value = 0
-      break;
+    switch (cmd.command_type) {
+      case Commandtype::READ_ENCODER_CARRY:
+        // 6 bytes: carry (4 bytes big-endian int32) + value (2 bytes big-endian uint16)
+        response_cmd.response = {static_cast<uint8_t>((hw_encoder_ >> 24) & 0xFF),
+                                 static_cast<uint8_t>((hw_encoder_ >> 16) & 0xFF),
+                                 static_cast<uint8_t>((hw_encoder_ >> 8) & 0xFF),
+                                 static_cast<uint8_t>(hw_encoder_ & 0xFF),
+                                 0x00,
+                                 0x00};  // value = 0
+        break;
 
-    case Commandtype::READ_CURRENT_SPEED:
-      // 2 bytes: speed (int16 big-endian)
-      response_cmd.response = {
-          static_cast<uint8_t>((hw_speed_rpm_ >> 8) & 0xFF),
-          static_cast<uint8_t>(hw_speed_rpm_ & 0xFF)};
-      break;
+      case Commandtype::READ_CURRENT_SPEED:
+        // 2 bytes: speed (int16 big-endian)
+        response_cmd.response = {static_cast<uint8_t>((hw_speed_rpm_ >> 8) & 0xFF),
+                                 static_cast<uint8_t>(hw_speed_rpm_ & 0xFF)};
+        break;
 
-    case Commandtype::READ_MOTOR_STATUS:
-      // 2 bytes: status (1 register = 2 bytes)
-      // Byte 0: detailed status (0=FAIL, 1=STOP, 2=SPEED_UP, 3=SPEED_DOWN, 4=FULL_SPEED, 6=HOMING, 7=CALIBRATING)
-      // Byte 1: enabled (0=disabled, 1=enabled)
-      response_cmd.response = {hw_motor_status_detail_, hw_motor_status_};
-      break;
+      case Commandtype::READ_MOTOR_STATUS:
+        // 2 bytes: status (1 register = 2 bytes)
+        // Byte 0: detailed status (0=FAIL, 1=STOP, 2=SPEED_UP, 3=SPEED_DOWN, 4=FULL_SPEED, 6=HOMING, 7=CALIBRATING)
+        // Byte 1: enabled (0=disabled, 1=enabled)
+        response_cmd.response = {hw_motor_status_detail_, hw_motor_status_};
+        break;
 
-    case Commandtype::READ_PROTECTION_STATUS:
-      // 2 bytes: protection (1 register)
-      response_cmd.response = {0x00, hw_protection_};
-      break;
+      case Commandtype::READ_PROTECTION_STATUS:
+        // 2 bytes: protection (1 register)
+        response_cmd.response = {0x00, hw_protection_};
+        break;
 
-    default:
-      // Generic success response
-      response_cmd.response = {0x01};
+      default:
+        // Generic success response
+        response_cmd.response = {0x01};
     }
 
     // Queue response with 10ms delay
@@ -167,36 +146,26 @@ public:
     return {true, ErrorCode::OK};
   }
 
-  bool is_busy() const override
-  {
-    return false;
-  }
+  bool is_busy() const override { return false; }
 
-  void update() override
-  {
+  void update() override {
     // Deliver pending responses
-    while (!response_queue_.empty() &&
-           response_queue_.front().deliver_at_ms <= test_millis_value)
-    {
+    while (!response_queue_.empty() && response_queue_.front().deliver_at_ms <= test_millis_value) {
       auto response = response_queue_.front();
       response_queue_.pop();
 
-      if (response_callback_)
-      {
+      if (response_callback_) {
         response_callback_(response.cmd);
       }
     }
   }
 
-  void queue_response(const Command &cmd, uint32_t delay_ms)
-  {
+  void queue_response(const Command &cmd, uint32_t delay_ms) {
     response_queue_.push({cmd, test_millis_value + delay_ms});
   }
 
-  void simulate_error(const Command &cmd, ErrorCode error)
-  {
-    if (error_callback_)
-    {
+  void simulate_error(const Command &cmd, ErrorCode error) {
+    if (error_callback_) {
       error_callback_(cmd, error);
     }
   }
@@ -206,10 +175,8 @@ public:
 // Helper: Process Updates for Async Operations
 // ============================================================================
 
-void process_updates(RealisticMockTransport &transport, StepperEngine &engine, int cycles = 5)
-{
-  for (int i = 0; i < cycles; i++)
-  {
+void process_updates(RealisticMockTransport &transport, StepperEngine &engine, int cycles = 5) {
+  for (int i = 0; i < cycles; i++) {
     advance_time(20);
     transport.update();
     engine.update();
@@ -220,12 +187,10 @@ void process_updates(RealisticMockTransport &transport, StepperEngine &engine, i
 // Helper: Setup motor and wait for completion (SettingUp → Idle)
 // ============================================================================
 
-void setup_and_wait(RealisticMockTransport &transport, StepperEngine &engine)
-{
+void setup_and_wait(RealisticMockTransport &transport, StepperEngine &engine) {
   engine.setup_motor();
   // Need more iterations due to restart (4000ms delay) + 13 commands
-  for (int i = 0; i < 250; i++)
-  {
+  for (int i = 0; i < 250; i++) {
     transport.update();
     engine.update();
     advance_time(20);
@@ -238,8 +203,7 @@ void setup_and_wait(RealisticMockTransport &transport, StepperEngine &engine)
 // Test Cases
 // ============================================================================
 
-void test_01_initial_state(TestStats &stats)
-{
+void test_01_initial_state(TestStats &stats) {
   std::cout << "\nTEST 1: Initial state and enable/disable transitions" << std::endl;
 
   ServoXxd parent;
@@ -274,8 +238,7 @@ void test_01_initial_state(TestStats &stats)
   stats.check(engine.get_state() == State::Disabled, "State transitions to Disabled");
 }
 
-void test_02_move_to_basic(TestStats &stats)
-{
+void test_02_move_to_basic(TestStats &stats) {
   std::cout << "\nTEST 2: Basic move_to() command" << std::endl;
 
   ServoXxd parent;
@@ -301,7 +264,7 @@ void test_02_move_to_basic(TestStats &stats)
   // Simulate arrival at target (requires multiple poll cycles)
   transport.hw_speed_rpm_ = 0;
   transport.hw_motor_status_ = 0;
-  transport.hw_encoder_ = 1000 * 16; // 1000 steps * 16 ticks/step
+  transport.hw_encoder_ = 1000 * 16;  // 1000 steps * 16 ticks/step
 
   // Need many update cycles for polling to detect motor stopped
   process_updates(transport, engine, 20);
@@ -311,8 +274,7 @@ void test_02_move_to_basic(TestStats &stats)
   stats.check(engine.get_state() != State::Error, "No error state during movement");
 }
 
-void test_03_move_to_with_params(TestStats &stats)
-{
+void test_03_move_to_with_params(TestStats &stats) {
   std::cout << "\nTEST 3: move_to() with optional speed and acceleration" << std::endl;
 
   ServoXxd parent;
@@ -339,8 +301,7 @@ void test_03_move_to_with_params(TestStats &stats)
 
   // Wait for stop to complete (Stopping → Idle transition)
   // Needs enough cycles for polling to detect motor stopped
-  for (int i = 0; i < 100; i++)
-  {
+  for (int i = 0; i < 100; i++) {
     transport.update();
     engine.update();
     advance_time(20);
@@ -349,9 +310,9 @@ void test_03_move_to_with_params(TestStats &stats)
   }
 
   // Verify we reached Idle before continuing
-  if (engine.get_state() != State::Idle)
-  {
-    std::cout << "  WARNING: Motor did not reach Idle after stop(), state=" << static_cast<int>(engine.get_state()) << std::endl;
+  if (engine.get_state() != State::Idle) {
+    std::cout << "  WARNING: Motor did not reach Idle after stop(), state=" << static_cast<int>(engine.get_state())
+              << std::endl;
   }
 
   Position target2(3000.0f, PositionUnit::STEPS, &parent);
@@ -367,8 +328,7 @@ void test_03_move_to_with_params(TestStats &stats)
   // stats.check(engine.get_state() == State::Moving, "State transitions to Moving with speed only");
 }
 
-void test_04_stop_command(TestStats &stats)
-{
+void test_04_stop_command(TestStats &stats) {
   std::cout << "\nTEST 4: stop() command" << std::endl;
 
   ServoXxd parent;
@@ -387,7 +347,8 @@ void test_04_stop_command(TestStats &stats)
   stats.check(engine.get_state() == State::Moving, "Motor is moving");
 
   // Stop
-  Commandtype cmd_before_stop = transport.last_command_.has_value() ? transport.last_command_.value().command_type : Commandtype::ENABLE_MOTOR;
+  Commandtype cmd_before_stop =
+      transport.last_command_.has_value() ? transport.last_command_.value().command_type : Commandtype::ENABLE_MOTOR;
   engine.stop();
   transport.hw_speed_rpm_ = 0;
   transport.hw_motor_status_ = 0;
@@ -401,8 +362,7 @@ void test_04_stop_command(TestStats &stats)
   stats.check(decel.get_rpm_per_sec() > 0, "Deceleration parameter created");
 }
 
-void test_05_emergency_stop(TestStats &stats)
-{
+void test_05_emergency_stop(TestStats &stats) {
   std::cout << "\nTEST 5: emergency_stop() command" << std::endl;
 
   ServoXxd parent;
@@ -433,8 +393,7 @@ void test_05_emergency_stop(TestStats &stats)
   stats.check(engine.get_state() != State::Error || engine.get_state() == State::Disabled, "Can recover from Error");
 }
 
-void test_06_transport_callbacks(TestStats &stats)
-{
+void test_06_transport_callbacks(TestStats &stats) {
   std::cout << "\nTEST 6: Transport callback propagation (verified by callback_fix test)" << std::endl;
 
   ServoXxd parent;
@@ -455,8 +414,7 @@ void test_06_transport_callbacks(TestStats &stats)
   stats.check(engine.get_state() == State::Moving, "Callbacks processed correctly");
 }
 
-void test_07_error_recovery(TestStats &stats)
-{
+void test_07_error_recovery(TestStats &stats) {
   std::cout << "\nTEST 7: Error detection and recovery" << std::endl;
 
   ServoXxd parent;
@@ -486,8 +444,7 @@ void test_07_error_recovery(TestStats &stats)
   stats.check(engine.get_state() != State::Error || engine.get_state() == State::Disabled, "Can exit Error state");
 }
 
-void test_08_state_validation(TestStats &stats)
-{
+void test_08_state_validation(TestStats &stats) {
   std::cout << "\nTEST 8: Command validation in different states" << std::endl;
 
   ServoXxd parent;
@@ -501,7 +458,7 @@ void test_08_state_validation(TestStats &stats)
 
   // Try move_to while disabled (should be rejected)
   Position target(1000.0f, PositionUnit::STEPS, &parent);
-  State disabled_state = engine.get_state(); // Should be Disabled
+  State disabled_state = engine.get_state();  // Should be Disabled
 
   engine.move_to(target);
   process_updates(transport, engine);
@@ -512,7 +469,8 @@ void test_08_state_validation(TestStats &stats)
   // Enable and verify command is now accepted
   setup_and_wait(transport, engine);
 
-  Commandtype cmd_after_enable = transport.last_command_.has_value() ? transport.last_command_.value().command_type : Commandtype::ENABLE_MOTOR;
+  Commandtype cmd_after_enable =
+      transport.last_command_.has_value() ? transport.last_command_.value().command_type : Commandtype::ENABLE_MOTOR;
 
   engine.move_to(target);
   transport.hw_speed_rpm_ = 100;
@@ -526,8 +484,7 @@ void test_08_state_validation(TestStats &stats)
 // ============================================================================
 // TEST 9: Homing State Command Validation
 // ============================================================================
-void test_09_homing_state_validation(TestStats &stats)
-{
+void test_09_homing_state_validation(TestStats &stats) {
   std::cout << "\nTEST 9: Homing State Command Validation" << std::endl;
 
   ServoXxd parent;
@@ -536,7 +493,7 @@ void test_09_homing_state_validation(TestStats &stats)
 
   // Enable motor first
   setup_and_wait(transport, engine);
-  transport.hw_motor_status_ = 1; // Motor enabled
+  transport.hw_motor_status_ = 1;  // Motor enabled
 
   stats.check(engine.get_state() == State::Idle, "Motor is Idle");
 
@@ -577,15 +534,14 @@ void test_09_homing_state_validation(TestStats &stats)
   stats.check(engine.get_state() == State::Error, "emergency_stop() accepted - transitioned to Error");
 
   // Test 6: release_protection() should be ALLOWED (even from Error after Homing)
-  transport.hw_protection_ = 0; // Clear protection
+  transport.hw_protection_ = 0;  // Clear protection
   engine.release_protection();
   process_updates(transport, engine);
   stats.check(engine.get_state() == State::Idle, "release_protection() accepted - recovered to Idle");
 }
 
 // Test 10: Motor Status Validation - Engine State is Leading
-void test_10_motor_status_validation(TestStats &stats)
-{
+void test_10_motor_status_validation(TestStats &stats) {
   std::cout << "\nTEST 10: Motor Status Validation - Engine State Leading" << std::endl;
 
   ServoXxd parent;
@@ -594,12 +550,12 @@ void test_10_motor_status_validation(TestStats &stats)
 
   // Test 1: Enable motor → Engine goes to Idle
   setup_and_wait(transport, engine);
-  transport.hw_motor_status_ = 1; // Hardware confirms enabled
+  transport.hw_motor_status_ = 1;  // Hardware confirms enabled
   stats.check(engine.get_state() == State::Idle, "Engine in Idle after enable");
 
   // Test 2: Engine disabled → State goes to Disabled
   engine.disable();
-  transport.hw_motor_status_ = 0; // Hardware confirms disabled
+  transport.hw_motor_status_ = 0;  // Hardware confirms disabled
   process_updates(transport, engine);
   stats.check(engine.get_state() == State::Disabled, "Engine in Disabled after disable");
 
@@ -630,8 +586,7 @@ void test_10_motor_status_validation(TestStats &stats)
 }
 
 // Test 11: Stopping State Transitions and Command Validation
-void test_11_stopping_state_transitions(TestStats &stats)
-{
+void test_11_stopping_state_transitions(TestStats &stats) {
   std::cout << "\nTEST 11: Stopping State Transitions and Command Validation" << std::endl;
 
   ServoXxd parent;
@@ -640,12 +595,12 @@ void test_11_stopping_state_transitions(TestStats &stats)
 
   // Setup: Enable and start movement
   setup_and_wait(transport, engine);
-  transport.hw_motor_status_ = 1; // Hardware enabled
+  transport.hw_motor_status_ = 1;  // Hardware enabled
   stats.check(engine.get_state() == State::Idle, "Engine in Idle");
 
   Position target = Position::from_steps(10000, nullptr);
   engine.move_to(target);
-  transport.hw_motor_status_ = 4; // Hardware at full speed
+  transport.hw_motor_status_ = 4;  // Hardware at full speed
   process_updates(transport, engine);
   stats.check(engine.get_state() == State::Moving, "Engine in Moving");
 
@@ -672,7 +627,7 @@ void test_11_stopping_state_transitions(TestStats &stats)
   stats.check(engine.get_state() == State::Stopping, "disable() rejected - state still Stopping");
 
   // Test 5: stop() accepted during Stopping (idempotent)
-  engine.stop(); // Call stop() again while already Stopping
+  engine.stop();  // Call stop() again while already Stopping
   process_updates(transport, engine);
   stats.check(engine.get_state() == State::Stopping, "stop() during Stopping is idempotent");
 
@@ -696,7 +651,7 @@ void test_11_stopping_state_transitions(TestStats &stats)
   stats.check(engine.get_state() == State::Stopping, "Engine in Stopping");
 
   // Simulate speed decrease to 0 by setting hw_speed_rpm_ to 0 BEFORE polling
-  transport.hw_speed_rpm_ = 0; // 0 RPM
+  transport.hw_speed_rpm_ = 0;  // 0 RPM
   // Manually trigger speed polling to get the updated value
   engine.poll_motor_speed();
   // Advance time and process the queued response
@@ -716,8 +671,8 @@ void test_11_stopping_state_transitions(TestStats &stats)
   stats.check(engine.get_state() == State::Stopping, "Engine in Stopping again");
 
   // Simulate hardware confirms STOP by setting values BEFORE polling
-  transport.hw_motor_status_ = 1;        // Enabled but stopped
-  transport.hw_motor_status_detail_ = 1; // STOP
+  transport.hw_motor_status_ = 1;         // Enabled but stopped
+  transport.hw_motor_status_detail_ = 1;  // STOP
   // Manually trigger motor status polling to get the updated value
   engine.poll_motor_status();
   test_millis_value += 15;
@@ -727,8 +682,7 @@ void test_11_stopping_state_transitions(TestStats &stats)
   // stats.check(engine.get_state() == State::Idle, "Stopping → Idle when hardware confirms STOP");
 }
 
-void test_12_calibrating_state_transitions(TestStats &stats)
-{
+void test_12_calibrating_state_transitions(TestStats &stats) {
   std::cout << "\nTEST 12: Calibrating State Transitions and Command Validation" << std::endl;
 
   RealisticMockTransport transport;
@@ -766,7 +720,7 @@ void test_12_calibrating_state_transitions(TestStats &stats)
 
   // Simulate stopping completion
   transport.hw_speed_rpm_ = 0;
-  transport.hw_motor_status_detail_ = 1; // STOP
+  transport.hw_motor_status_detail_ = 1;  // STOP
   engine.poll_motor_speed();
   engine.poll_motor_status();
   test_millis_value += 15;
@@ -798,8 +752,8 @@ void test_12_calibrating_state_transitions(TestStats &stats)
   stats.check(engine.get_state() == State::Calibrating, "Engine in Calibrating");
 
   // Simulate calibration completion - hardware reports STOP
-  transport.hw_motor_status_ = 1;        // Enabled
-  transport.hw_motor_status_detail_ = 1; // STOP (calibration complete)
+  transport.hw_motor_status_ = 1;         // Enabled
+  transport.hw_motor_status_detail_ = 1;  // STOP (calibration complete)
   engine.poll_motor_status();
   test_millis_value += 15;
   process_updates(transport, engine);
@@ -823,8 +777,7 @@ void test_12_calibrating_state_transitions(TestStats &stats)
 // TEST 13: SettingUp State Transitions
 // ============================================================================
 
-void test_13_settingup_state(TestStats &stats)
-{
+void test_13_settingup_state(TestStats &stats) {
   printf("\n=== TEST 13: SettingUp State Transitions ===\n");
 
   // Reset time BEFORE creating engine so state_enter_time_ is correct
@@ -872,7 +825,7 @@ void test_13_settingup_state(TestStats &stats)
 
   // Simulate stop completion to get back to testable state
   transport.hw_speed_rpm_ = 0;
-  transport.hw_motor_status_detail_ = 1; // STOP
+  transport.hw_motor_status_detail_ = 1;  // STOP
   engine.poll_motor_speed();
   engine.poll_motor_status();
   process_updates(transport, engine);
@@ -883,16 +836,15 @@ void test_13_settingup_state(TestStats &stats)
   // Reset time BEFORE creating engine2 so state_enter_time_ is initialized correctly
   test_millis_value = 0;
   StepperEngine engine2(&parent, &transport);
-  printf("  After construction: state=%d, test_millis_value=%u\n",
-         static_cast<int>(engine2.get_state()), test_millis_value);
+  printf("  After construction: state=%d, test_millis_value=%u\n", static_cast<int>(engine2.get_state()),
+         test_millis_value);
   stats.check(engine2.get_state() == State::SettingUp, "Fresh engine starts in SettingUp");
 
-  test_millis_value = 30001; // Advance beyond 30s timeout
-  printf("  After advancing time: state=%d, test_millis_value=%u\n",
-         static_cast<int>(engine2.get_state()), test_millis_value);
-  engine2.update(); // Trigger check_state_timeouts()
-  printf("  After update(): state=%d (Error=8, SettingUp=1)\n",
-         static_cast<int>(engine2.get_state()));
+  test_millis_value = 30001;  // Advance beyond 30s timeout
+  printf("  After advancing time: state=%d, test_millis_value=%u\n", static_cast<int>(engine2.get_state()),
+         test_millis_value);
+  engine2.update();  // Trigger check_state_timeouts()
+  printf("  After update(): state=%d (Error=8, SettingUp=1)\n", static_cast<int>(engine2.get_state()));
 
   // Accept either Error state OR verify timeout logic exists
   // Note: timeout may not trigger in test environment if handle_error() logging is disabled
@@ -912,20 +864,17 @@ void test_13_settingup_state(TestStats &stats)
   // Note: In real scenario, transport would respond to all commands
   // Here we just verify the final callback logic
   // Need more iterations due to restart (4000ms delay) + 13 commands instead of 11
-  for (int i = 0; i < 250; i++)
-  {
+  for (int i = 0; i < 250; i++) {
     transport.update();
     engine3.update();
     advance_time(20);
-    if (engine3.get_state() != State::SettingUp && engine3.get_state() != State::Homing)
-    {
-      break; // Setup completed or failed
+    if (engine3.get_state() != State::SettingUp && engine3.get_state() != State::Homing) {
+      break;  // Setup completed or failed
     }
   }
 
   // After successful setup_motor(), engine should be in Idle or Homing (if homing at startup)
-  bool valid_final_state = (engine3.get_state() == State::Idle ||
-                            engine3.get_state() == State::Homing);
+  bool valid_final_state = (engine3.get_state() == State::Idle || engine3.get_state() == State::Homing);
   stats.check(valid_final_state, "setup_motor() completes → Idle or Homing state");
 }
 
@@ -933,8 +882,7 @@ void test_13_settingup_state(TestStats &stats)
 // Main Test Runner
 // ============================================================================
 
-int main()
-{
+int main() {
   std::cout << "========================================" << std::endl;
   std::cout << "StepperEngine Unit Tests" << std::endl;
   std::cout << "========================================" << std::endl;

@@ -24,35 +24,24 @@ using namespace esphome::servoxxd;
 // So we need larger epsilon than Speed/Acceleration
 constexpr double EPSILON = 0.025;
 
-bool float_eq(double a, double b)
-{
-  return std::abs(a - b) < EPSILON;
-}
+bool float_eq(double a, double b) { return std::abs(a - b) < EPSILON; }
 
-bool float_eq(float a, float b)
-{
-  return std::abs(a - b) < static_cast<float>(EPSILON);
-}
+bool float_eq(float a, float b) { return std::abs(a - b) < static_cast<float>(EPSILON); }
 
-bool int64_eq(int64_t a, int64_t b, int64_t tolerance = 1)
-{
-  return std::abs(a - b) <= tolerance;
-}
+bool int64_eq(int64_t a, int64_t b, int64_t tolerance = 1) { return std::abs(a - b) <= tolerance; }
 
 // Mock ServoXxd for testing
-class MockServoXxd : public ServoXxd
-{
-public:
+class MockServoXxd : public ServoXxd {
+ public:
   explicit MockServoXxd(float steps_per_rev) : steps_per_rev_(steps_per_rev) {}
 
   float get_steps_per_revolution() const override { return steps_per_rev_; }
 
-private:
+ private:
   float steps_per_rev_;
 };
 
-void test_position_steps()
-{
+void test_position_steps() {
   std::cout << "Testing STEPS conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -73,8 +62,7 @@ void test_position_steps()
   std::cout << "  ✓ Reverse: 1 rev = " << steps << " steps" << std::endl;
 }
 
-void test_position_revolutions()
-{
+void test_position_revolutions() {
   std::cout << "Testing REVOLUTIONS conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -89,12 +77,11 @@ void test_position_revolutions()
 
   // Test fractional conversion
   double degrees_val = pos.get_degrees();
-  assert(float_eq(degrees_val, 900.0)); // 2.5 * 360 = 900°
+  assert(float_eq(degrees_val, 900.0));  // 2.5 * 360 = 900°
   std::cout << "  ✓ 2.5 rev = " << degrees_val << " degrees" << std::endl;
 }
 
-void test_position_degrees()
-{
+void test_position_degrees() {
   std::cout << "Testing DEGREES conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -114,8 +101,7 @@ void test_position_degrees()
   std::cout << "  ✓ 45° = " << pos_45.revolutions() << " rev + " << pos_45.angle_ticks() << " ticks" << std::endl;
 }
 
-void test_position_radians()
-{
+void test_position_radians() {
   std::cout << "Testing RADIANS conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -135,8 +121,7 @@ void test_position_radians()
   std::cout << "  ✓ Reverse: 1 rev = " << radians_val << " rad (expected " << two_pi << ")" << std::endl;
 }
 
-void test_position_arcminutes()
-{
+void test_position_arcminutes() {
   std::cout << "Testing ARCMINUTES conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -156,8 +141,7 @@ void test_position_arcminutes()
   std::cout << "  ✓ 60 arcmin = " << degrees_val << "° (expected 1)" << std::endl;
 }
 
-void test_position_arcseconds()
-{
+void test_position_arcseconds() {
   std::cout << "Testing ARCSECONDS conversion..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -177,19 +161,19 @@ void test_position_arcseconds()
   std::cout << "  ✓ 3600 arcsec = " << degrees_val << "° (expected 1)" << std::endl;
 }
 
-void test_position_split_format()
-{
+void test_position_split_format() {
   std::cout << "Testing split format construction..." << std::endl;
 
   // Test: Create from total ticks - 3.5 revolutions
-  int64_t total_ticks = 3 * 16384 + 8192; // 57344
+  int64_t total_ticks = 3 * 16384 + 8192;  // 57344
   Position pos = Position::from_ticks(total_ticks);
   assert(pos.revolutions() == 3);
   assert(pos.angle_ticks() == 8192);
 
   int64_t total = pos.get_ticks();
   assert(total == total_ticks);
-  std::cout << "  ✓ from_ticks(57344) = " << pos.revolutions() << " rev + " << pos.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ from_ticks(57344) = " << pos.revolutions() << " rev + " << pos.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test: Create from ticks and verify round-trip
   Position pos2 = Position::from_ticks(57344);
@@ -199,27 +183,27 @@ void test_position_split_format()
   std::cout << "  ✓ from_ticks(57344) → get_ticks() = " << pos2.get_ticks() << " (round-trip)" << std::endl;
 }
 
-void test_position_carry_borrow()
-{
+void test_position_carry_borrow() {
   std::cout << "Testing carry/borrow behavior..." << std::endl;
 
   // Test: Overflow in ticks should normalize to revolutions
-  int64_t ticks_overflow = 16384 + 100; // Should be 1 rev + 100 ticks
+  int64_t ticks_overflow = 16384 + 100;  // Should be 1 rev + 100 ticks
   Position pos = Position::from_ticks(ticks_overflow);
   assert(pos.revolutions() == 1);
   assert(pos.angle_ticks() == 100);
-  std::cout << "  ✓ Overflow: from_ticks(16484) → " << pos.revolutions() << " rev + " << pos.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ Overflow: from_ticks(16484) → " << pos.revolutions() << " rev + " << pos.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test: Large overflow
-  int64_t ticks_large = 32768 + 200; // Should be 2 rev + 200 ticks
+  int64_t ticks_large = 32768 + 200;  // Should be 2 rev + 200 ticks
   Position pos2 = Position::from_ticks(ticks_large);
   assert(pos2.revolutions() == 2);
   assert(pos2.angle_ticks() == 200);
-  std::cout << "  ✓ Large overflow: from_ticks(32968) → " << pos2.revolutions() << " rev + " << pos2.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ Large overflow: from_ticks(32968) → " << pos2.revolutions() << " rev + " << pos2.angle_ticks()
+            << " ticks" << std::endl;
 }
 
-void test_position_negative_values()
-{
+void test_position_negative_values() {
   std::cout << "Testing negative position values..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -236,18 +220,18 @@ void test_position_negative_values()
   Position pos_half(-0.5, PositionUnit::REVOLUTIONS, &mock);
   assert(pos_half.revolutions() == -1);
   assert(pos_half.angle_ticks() == 8192);
-  std::cout << "  ✓ -0.5 rev = " << pos_half.revolutions() << " rev + " << pos_half.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ -0.5 rev = " << pos_half.revolutions() << " rev + " << pos_half.angle_ticks() << " ticks"
+            << std::endl;
 }
 
-void test_position_arithmetic()
-{
+void test_position_arithmetic() {
   std::cout << "Testing arithmetic operators..." << std::endl;
 
   float steps_per_rev = 3200.0f;
   MockServoXxd mock(steps_per_rev);
 
-  Position pos1(1.0, PositionUnit::REVOLUTIONS, &mock); // 1 rev
-  Position pos2(0.5, PositionUnit::REVOLUTIONS, &mock); // 0.5 rev
+  Position pos1(1.0, PositionUnit::REVOLUTIONS, &mock);  // 1 rev
+  Position pos2(0.5, PositionUnit::REVOLUTIONS, &mock);  // 0.5 rev
 
   // Test addition: 1 + 0.5 = 1.5 rev
   Position sum = pos1 + pos2;
@@ -259,7 +243,8 @@ void test_position_arithmetic()
   Position diff = pos1 - pos2;
   assert(diff.revolutions() == 0);
   assert(diff.angle_ticks() == 8192);
-  std::cout << "  ✓ 1 rev - 0.5 rev = " << diff.revolutions() << " rev + " << diff.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ 1 rev - 0.5 rev = " << diff.revolutions() << " rev + " << diff.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test equality
   Position pos3(1.0, PositionUnit::REVOLUTIONS, &mock);
@@ -273,8 +258,7 @@ void test_position_arithmetic()
   std::cout << "  ✓ Inequality: pos1 != pos2, !(pos1 != pos3)" << std::endl;
 }
 
-void test_position_zero()
-{
+void test_position_zero() {
   std::cout << "Testing zero position..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -288,8 +272,7 @@ void test_position_zero()
   std::cout << "  ✓ 0 rev = " << pos.revolutions() << " rev + " << pos.angle_ticks() << " ticks" << std::endl;
 }
 
-void test_position_unit_conversions()
-{
+void test_position_unit_conversions() {
   std::cout << "Testing all unit accessor methods..." << std::endl;
 
   float steps_per_rev = 3200.0f;
@@ -311,8 +294,7 @@ void test_position_unit_conversions()
   std::cout << "  ✓ 1 rev = " << pos.get_arcseconds() << " arcsec" << std::endl;
 }
 
-void test_position_null_parent()
-{
+void test_position_null_parent() {
   std::cout << "Testing null parent pointer handling..." << std::endl;
 
   // Test: STEPS with null parent should default to 0
@@ -328,8 +310,7 @@ void test_position_null_parent()
   std::cout << "  ✓ REVOLUTIONS with null parent → 1 rev (parent not needed)" << std::endl;
 }
 
-void test_position_invalid_steps_per_revolution()
-{
+void test_position_invalid_steps_per_revolution() {
   std::cout << "Testing invalid steps_per_revolution..." << std::endl;
 
   // Mock with invalid (negative) steps_per_rev
@@ -349,8 +330,7 @@ void test_position_invalid_steps_per_revolution()
   std::cout << "  ✓ STEPS with zero steps_per_rev → 0 position (error handling)" << std::endl;
 }
 
-void test_position_large_values()
-{
+void test_position_large_values() {
   std::cout << "Testing large position values..." << std::endl;
 
   MockServoXxd mock(3200.0f);
@@ -370,21 +350,22 @@ void test_position_large_values()
 
 // ========== EDGE CASE TESTS ==========
 
-void test_angle_ticks_boundaries()
-{
+void test_angle_ticks_boundaries() {
   std::cout << "Testing angle_ticks boundaries..." << std::endl;
 
   // Test: from_ticks(-1) should normalize to -1 rev + 16383 ticks
   Position pos_neg1 = Position::from_ticks(-1);
   assert(pos_neg1.revolutions() == -1);
   assert(pos_neg1.angle_ticks() == 16383);
-  std::cout << "  ✓ from_ticks(-1) = " << pos_neg1.revolutions() << " rev + " << pos_neg1.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ from_ticks(-1) = " << pos_neg1.revolutions() << " rev + " << pos_neg1.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test: from_ticks(16384 + 16383) = 2 rev - 1 tick = 1 rev + 16383 ticks
   Position pos_over = Position::from_ticks(16384 + 16383);
   assert(pos_over.revolutions() == 1);
   assert(pos_over.angle_ticks() == 16383);
-  std::cout << "  ✓ from_ticks(32767) = " << pos_over.revolutions() << " rev + " << pos_over.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ from_ticks(32767) = " << pos_over.revolutions() << " rev + " << pos_over.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test: Extreme value - INT32_MAX ticks
   int64_t extreme_ticks = static_cast<int64_t>(INT32_MAX);
@@ -393,40 +374,43 @@ void test_angle_ticks_boundaries()
   uint16_t expected_ticks = INT32_MAX % 16384;
   assert(pos_extreme.revolutions() == expected_revs);
   assert(pos_extreme.angle_ticks() == expected_ticks);
-  std::cout << "  ✓ from_ticks(INT32_MAX) = " << pos_extreme.revolutions() << " rev + " << pos_extreme.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ from_ticks(INT32_MAX) = " << pos_extreme.revolutions() << " rev + " << pos_extreme.angle_ticks()
+            << " ticks" << std::endl;
 
   // Test: Extreme negative - INT32_MIN ticks
   int64_t extreme_neg_ticks = static_cast<int64_t>(INT32_MIN);
   Position pos_extreme_neg = Position::from_ticks(extreme_neg_ticks);
-  std::cout << "  ✓ from_ticks(INT32_MIN) = " << pos_extreme_neg.revolutions() << " rev + " << pos_extreme_neg.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ from_ticks(INT32_MIN) = " << pos_extreme_neg.revolutions() << " rev + "
+            << pos_extreme_neg.angle_ticks() << " ticks" << std::endl;
 }
 
-void test_negative_angle_conversions()
-{
+void test_negative_angle_conversions() {
   std::cout << "Testing negative angle conversions..." << std::endl;
 
   MockServoXxd mock(3200.0f);
 
   // Test: -45° = -0.125 rev = -1 rev + 0.875 rev = -1 rev + 14336 ticks
   Position pos_neg45(-45.0, PositionUnit::DEGREES, &mock);
-  std::cout << "  ✓ -45° = " << pos_neg45.revolutions() << " rev + " << pos_neg45.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ -45° = " << pos_neg45.revolutions() << " rev + " << pos_neg45.angle_ticks() << " ticks"
+            << std::endl;
   // Allow both representations depending on normalization
   assert(pos_neg45.revolutions() == -1 || pos_neg45.revolutions() == 0);
 
   // Test: -2π * 1.25 = -2.5 revolutions
   constexpr double two_pi = TWO_PI;
   Position pos_neg_rad(-two_pi * 1.25, PositionUnit::RADIANS, &mock);
-  std::cout << "  ✓ -2π*1.25 rad = " << pos_neg_rad.revolutions() << " rev + " << pos_neg_rad.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ -2π*1.25 rad = " << pos_neg_rad.revolutions() << " rev + " << pos_neg_rad.angle_ticks() << " ticks"
+            << std::endl;
   assert(pos_neg_rad.revolutions() <= -2);
 
   // Test: -270° = -0.75 rev
   Position pos_neg270(-270.0, PositionUnit::DEGREES, &mock);
-  std::cout << "  ✓ -270° = " << pos_neg270.revolutions() << " rev + " << pos_neg270.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ -270° = " << pos_neg270.revolutions() << " rev + " << pos_neg270.angle_ticks() << " ticks"
+            << std::endl;
   assert(pos_neg270.revolutions() <= -1 || pos_neg270.revolutions() == 0);
 }
 
-void test_rounding_policy()
-{
+void test_rounding_policy() {
   std::cout << "Testing rounding policy..." << std::endl;
 
   MockServoXxd mock(3200.0f);
@@ -447,23 +431,23 @@ void test_rounding_policy()
   Position pos_small(smallest_angle, PositionUnit::RADIANS, &mock);
   assert(pos_small.revolutions() == 0);
   assert(pos_small.angle_ticks() == 1);
-  std::cout << "  ✓ π/16384 rad = " << pos_small.revolutions() << " rev + " << pos_small.angle_ticks() << " ticks (smallest angle)" << std::endl;
+  std::cout << "  ✓ π/16384 rad = " << pos_small.revolutions() << " rev + " << pos_small.angle_ticks()
+            << " ticks (smallest angle)" << std::endl;
 
   // Test: Rounding threshold for arcminutes (60 arcmin = 1°)
-  Position pos_arcmin_49(29, PositionUnit::ARCMINUTES, &mock); // 29 arcmin = 0.4833°
-  Position pos_arcmin_50(30, PositionUnit::ARCMINUTES, &mock); // 30 arcmin = 0.5°
+  Position pos_arcmin_49(29, PositionUnit::ARCMINUTES, &mock);  // 29 arcmin = 0.4833°
+  Position pos_arcmin_50(30, PositionUnit::ARCMINUTES, &mock);  // 30 arcmin = 0.5°
   std::cout << "  ✓ 29 arcmin = " << pos_arcmin_49.get_degrees() << "°" << std::endl;
   std::cout << "  ✓ 30 arcmin = " << pos_arcmin_50.get_degrees() << "°" << std::endl;
 
   // Test: Rounding threshold for arcseconds (3600 arcsec = 1°)
-  Position pos_arcsec_49(1764, PositionUnit::ARCSECONDS, &mock); // 1764 arcsec = 0.49°
-  Position pos_arcsec_50(1800, PositionUnit::ARCSECONDS, &mock); // 1800 arcsec = 0.5°
+  Position pos_arcsec_49(1764, PositionUnit::ARCSECONDS, &mock);  // 1764 arcsec = 0.49°
+  Position pos_arcsec_50(1800, PositionUnit::ARCSECONDS, &mock);  // 1800 arcsec = 0.5°
   std::cout << "  ✓ 1764 arcsec = " << pos_arcsec_49.get_degrees() << "°" << std::endl;
   std::cout << "  ✓ 1800 arcsec = " << pos_arcsec_50.get_degrees() << "°" << std::endl;
 }
 
-void test_int32_boundaries()
-{
+void test_int32_boundaries() {
   std::cout << "Testing INT32 boundaries..." << std::endl;
 
   MockServoXxd mock(3200.0f);
@@ -484,11 +468,11 @@ void test_int32_boundaries()
   Position pos_almost_max(static_cast<double>(INT32_MAX) - 0.5, PositionUnit::REVOLUTIONS, &mock);
   assert(pos_almost_max.revolutions() == INT32_MAX - 1);
   assert(pos_almost_max.angle_ticks() == 8192);
-  std::cout << "  ✓ (INT32_MAX - 0.5) revolutions = " << pos_almost_max.revolutions() << " rev + " << pos_almost_max.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ (INT32_MAX - 0.5) revolutions = " << pos_almost_max.revolutions() << " rev + "
+            << pos_almost_max.angle_ticks() << " ticks" << std::endl;
 }
 
-void test_various_steps_per_rev()
-{
+void test_various_steps_per_rev() {
   std::cout << "Testing various steps_per_rev values..." << std::endl;
 
   // Test: 200 steps/rev (common NEMA 17)
@@ -520,14 +504,13 @@ void test_various_steps_per_rev()
   std::cout << "  ✓ 102400 steps @ 102400 steps/rev = 1 rev" << std::endl;
 
   // Test: Fractional steps
-  Position pos_frac_200(100, PositionUnit::STEPS, &mock_200); // 100 steps @ 200 = 0.5 rev
+  Position pos_frac_200(100, PositionUnit::STEPS, &mock_200);  // 100 steps @ 200 = 0.5 rev
   assert(pos_frac_200.revolutions() == 0);
   assert(pos_frac_200.angle_ticks() == 8192);
   std::cout << "  ✓ 100 steps @ 200 steps/rev = 0.5 rev" << std::endl;
 }
 
-void test_factory_method_roundtrips()
-{
+void test_factory_method_roundtrips() {
   std::cout << "Testing factory method round-trips..." << std::endl;
 
   MockServoXxd mock(3200.0f);
@@ -555,23 +538,22 @@ void test_factory_method_roundtrips()
   std::cout << "  ✓ from_radians(π) → get_radians() = " << pos_rad.get_radians() << std::endl;
 
   // Test: from_arcminutes() → get_arcminutes() round-trip
-  Position pos_arcmin = Position::from_arcminutes(10800); // 180°
+  Position pos_arcmin = Position::from_arcminutes(10800);  // 180°
   assert(int64_eq(pos_arcmin.get_arcminutes(), 10800, 2));
   std::cout << "  ✓ from_arcminutes(10800) → get_arcminutes() = " << pos_arcmin.get_arcminutes() << std::endl;
 
   // Test: from_arcseconds() → get_arcseconds() round-trip
-  Position pos_arcsec = Position::from_arcseconds(648000); // 180°
+  Position pos_arcsec = Position::from_arcseconds(648000);  // 180°
   assert(int64_eq(pos_arcsec.get_arcseconds(), 648000, 100));
   std::cout << "  ✓ from_arcseconds(648000) → get_arcseconds() = " << pos_arcsec.get_arcseconds() << std::endl;
 
   // Test: from_ticks() → get_ticks() round-trip
-  Position pos_ticks = Position::from_ticks(32768); // 2 revolutions
+  Position pos_ticks = Position::from_ticks(32768);  // 2 revolutions
   assert(pos_ticks.get_ticks() == 32768);
   std::cout << "  ✓ from_ticks(32768) → get_ticks() = " << pos_ticks.get_ticks() << std::endl;
 }
 
-void test_mixed_sign_operators()
-{
+void test_mixed_sign_operators() {
   std::cout << "Testing mixed sign operators..." << std::endl;
 
   MockServoXxd mock(3200.0f);
@@ -581,16 +563,18 @@ void test_mixed_sign_operators()
   Position pos_pos(1.125, PositionUnit::REVOLUTIONS, &mock);
   Position sum = pos_neg + pos_pos;
   assert(sum.revolutions() == 0);
-  assert(sum.angle_ticks() == 6144); // 0.375 * 16384
-  std::cout << "  ✓ (-0.75 rev) + (1.125 rev) = " << sum.revolutions() << " rev + " << sum.angle_ticks() << " ticks" << std::endl;
+  assert(sum.angle_ticks() == 6144);  // 0.375 * 16384
+  std::cout << "  ✓ (-0.75 rev) + (1.125 rev) = " << sum.revolutions() << " rev + " << sum.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test: (0.125 rev) - (0.5 rev) = -0.375 rev = -1 rev + 10240 ticks
   Position pos_small(0.125, PositionUnit::REVOLUTIONS, &mock);
   Position pos_large(0.5, PositionUnit::REVOLUTIONS, &mock);
   Position diff = pos_small - pos_large;
   assert(diff.revolutions() == -1);
-  assert(diff.angle_ticks() == 10240); // -0.375 rev = -1 rev + 0.625 rev = -1 rev + 10240 ticks
-  std::cout << "  ✓ (0.125 rev) - (0.5 rev) = " << diff.revolutions() << " rev + " << diff.angle_ticks() << " ticks" << std::endl;
+  assert(diff.angle_ticks() == 10240);  // -0.375 rev = -1 rev + 0.625 rev = -1 rev + 10240 ticks
+  std::cout << "  ✓ (0.125 rev) - (0.5 rev) = " << diff.revolutions() << " rev + " << diff.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test: (2 rev) + (-3 rev) = -1 rev
   Position pos_2(2.0, PositionUnit::REVOLUTIONS, &mock);
@@ -609,8 +593,7 @@ void test_mixed_sign_operators()
   std::cout << "  ✓ (-1.5 rev) - (-0.5 rev) = " << diff2.revolutions() << " rev" << std::endl;
 }
 
-void test_parent_handling_in_operators()
-{
+void test_parent_handling_in_operators() {
   std::cout << "Testing parent handling in operators..." << std::endl;
 
   MockServoXxd mock1(3200.0f);
@@ -622,7 +605,8 @@ void test_parent_handling_in_operators()
   Position sum = pos1 + pos2;
   assert(sum.revolutions() == 1);
   assert(sum.angle_ticks() == 8192);
-  std::cout << "  ✓ Same parent: (1 rev) + (0.5 rev) = " << sum.revolutions() << " rev + " << sum.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ Same parent: (1 rev) + (0.5 rev) = " << sum.revolutions() << " rev + " << sum.angle_ticks()
+            << " ticks" << std::endl;
 
   // Test: Adding positions with different parents (should warn + use lhs parent)
   Position pos3(1.0, PositionUnit::REVOLUTIONS, &mock1);
@@ -630,7 +614,8 @@ void test_parent_handling_in_operators()
   Position sum2 = pos3 + pos4;
   assert(sum2.revolutions() == 1);
   assert(sum2.angle_ticks() == 8192);
-  std::cout << "  ✓ Different parents: (1 rev) + (0.5 rev) = " << sum2.revolutions() << " rev + " << sum2.angle_ticks() << " ticks (WARNING expected)" << std::endl;
+  std::cout << "  ✓ Different parents: (1 rev) + (0.5 rev) = " << sum2.revolutions() << " rev + " << sum2.angle_ticks()
+            << " ticks (WARNING expected)" << std::endl;
 
   // Test: Adding positions with null parents
   Position pos5(1.0, PositionUnit::REVOLUTIONS, nullptr);
@@ -638,7 +623,8 @@ void test_parent_handling_in_operators()
   Position sum3 = pos5 + pos6;
   assert(sum3.revolutions() == 1);
   assert(sum3.angle_ticks() == 8192);
-  std::cout << "  ✓ Null parents: (1 rev) + (0.5 rev) = " << sum3.revolutions() << " rev + " << sum3.angle_ticks() << " ticks" << std::endl;
+  std::cout << "  ✓ Null parents: (1 rev) + (0.5 rev) = " << sum3.revolutions() << " rev + " << sum3.angle_ticks()
+            << " ticks" << std::endl;
 
   // Test: One null + one non-null parent (should use non-null)
   Position pos7(1.0, PositionUnit::REVOLUTIONS, &mock1);
@@ -647,7 +633,7 @@ void test_parent_handling_in_operators()
   assert(sum4.revolutions() == 1);
   assert(sum4.angle_ticks() == 8192);
   // Verify parent propagation: result should have mock1 as parent
-  assert(sum4.get_steps() == 4800); // 1.5 rev * 3200 steps/rev = 4800 steps
+  assert(sum4.get_steps() == 4800);  // 1.5 rev * 3200 steps/rev = 4800 steps
   std::cout << "  ✓ Mixed parents (non-null + null): result has non-null parent" << std::endl;
 
   // Test: Subtraction with parent propagation
@@ -656,24 +642,27 @@ void test_parent_handling_in_operators()
   Position diff = pos9 - pos10;
   assert(diff.revolutions() == 1);
   assert(diff.angle_ticks() == 8192);
-  assert(diff.get_steps() == 4800); // 1.5 rev * 3200 steps/rev
-  std::cout << "  ✓ Subtraction: (2 rev) - (0.5 rev) = " << diff.revolutions() << " rev + " << diff.angle_ticks() << " ticks" << std::endl;
+  assert(diff.get_steps() == 4800);  // 1.5 rev * 3200 steps/rev
+  std::cout << "  ✓ Subtraction: (2 rev) - (0.5 rev) = " << diff.revolutions() << " rev + " << diff.angle_ticks()
+            << " ticks" << std::endl;
 
   // Test: Multiplication (scalar) with parent propagation
   Position pos11(1.0, PositionUnit::REVOLUTIONS, &mock1);
   Position prod = pos11 * 2.5;
   assert(prod.revolutions() == 2);
-  assert(prod.angle_ticks() == 8192); // 2.5 rev = 2 rev + 0.5 rev (8192 ticks)
-  assert(prod.get_steps() == 8000);   // 2.5 rev * 3200 steps/rev = 8000 steps
-  std::cout << "  ✓ Multiplication: 1 rev * 2.5 = " << prod.revolutions() << " rev + " << prod.angle_ticks() << " ticks" << std::endl;
+  assert(prod.angle_ticks() == 8192);  // 2.5 rev = 2 rev + 0.5 rev (8192 ticks)
+  assert(prod.get_steps() == 8000);    // 2.5 rev * 3200 steps/rev = 8000 steps
+  std::cout << "  ✓ Multiplication: 1 rev * 2.5 = " << prod.revolutions() << " rev + " << prod.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test: Division (scalar) with parent propagation
   Position pos12(4.0, PositionUnit::REVOLUTIONS, &mock1);
   Position quot = pos12 / 2.0;
   assert(quot.revolutions() == 2);
   assert(quot.angle_ticks() == 0);
-  assert(quot.get_steps() == 6400); // 2 rev * 3200 steps/rev = 6400 steps
-  std::cout << "  ✓ Division: 4 rev / 2 = " << quot.revolutions() << " rev + " << quot.angle_ticks() << " ticks" << std::endl;
+  assert(quot.get_steps() == 6400);  // 2 rev * 3200 steps/rev = 6400 steps
+  std::cout << "  ✓ Division: 4 rev / 2 = " << quot.revolutions() << " rev + " << quot.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test: Division by zero (should return zero with parent)
   Position pos13(1.0, PositionUnit::REVOLUTIONS, &mock1);
@@ -683,51 +672,54 @@ void test_parent_handling_in_operators()
   std::cout << "  ✓ Division by zero: returns zero position (ERROR expected)" << std::endl;
 }
 
-void test_nan_inf_steps_per_rev()
-{
+void test_nan_inf_steps_per_rev() {
   std::cout << "Testing NaN/Inf steps_per_rev handling..." << std::endl;
 
   // Test: NaN steps_per_rev - actual behavior may vary
   MockServoXxd mock_nan(std::nan(""));
   Position pos_nan(3200, PositionUnit::STEPS, &mock_nan);
-  std::cout << "  ✓ STEPS with NaN steps_per_rev → " << pos_nan.revolutions() << " rev + " << pos_nan.angle_ticks() << " ticks (implementation-defined)" << std::endl;
+  std::cout << "  ✓ STEPS with NaN steps_per_rev → " << pos_nan.revolutions() << " rev + " << pos_nan.angle_ticks()
+            << " ticks (implementation-defined)" << std::endl;
 
   // Test: Inf steps_per_rev
   MockServoXxd mock_inf(std::numeric_limits<float>::infinity());
   Position pos_inf(3200, PositionUnit::STEPS, &mock_inf);
-  std::cout << "  ✓ STEPS with Inf steps_per_rev → " << pos_inf.revolutions() << " rev + " << pos_inf.angle_ticks() << " ticks (implementation-defined)" << std::endl;
+  std::cout << "  ✓ STEPS with Inf steps_per_rev → " << pos_inf.revolutions() << " rev + " << pos_inf.angle_ticks()
+            << " ticks (implementation-defined)" << std::endl;
 
   // Test: -Inf steps_per_rev
   MockServoXxd mock_neg_inf(-std::numeric_limits<float>::infinity());
   Position pos_neg_inf(3200, PositionUnit::STEPS, &mock_neg_inf);
-  std::cout << "  ✓ STEPS with -Inf steps_per_rev → " << pos_neg_inf.revolutions() << " rev + " << pos_neg_inf.angle_ticks() << " ticks (implementation-defined)" << std::endl;
+  std::cout << "  ✓ STEPS with -Inf steps_per_rev → " << pos_neg_inf.revolutions() << " rev + "
+            << pos_neg_inf.angle_ticks() << " ticks (implementation-defined)" << std::endl;
 }
 
-void test_operator_edge_cases()
-{
+void test_operator_edge_cases() {
   std::cout << "Testing operator edge cases..." << std::endl;
 
   MockServoXxd mock(3200.0f);
 
   // Test: Addition causing overflow in angle_ticks
   Position pos1(0, PositionUnit::REVOLUTIONS, &mock);
-  pos1.set_ticks(16380); // Close to overflow (16384)
+  pos1.set_ticks(16380);  // Close to overflow (16384)
   Position pos2(0, PositionUnit::REVOLUTIONS, &mock);
   pos2.set_ticks(10);
   Position sum = pos1 + pos2;
   assert(sum.revolutions() == 1);
-  assert(sum.angle_ticks() == 6); // 16380 + 10 = 16390 → 1 rev + 6 ticks
-  std::cout << "  ✓ Addition overflow: 16380 + 10 = " << sum.revolutions() << " rev + " << sum.angle_ticks() << " ticks" << std::endl;
+  assert(sum.angle_ticks() == 6);  // 16380 + 10 = 16390 → 1 rev + 6 ticks
+  std::cout << "  ✓ Addition overflow: 16380 + 10 = " << sum.revolutions() << " rev + " << sum.angle_ticks() << " ticks"
+            << std::endl;
 
   // Test: Subtraction causing underflow in angle_ticks
   Position pos3(1, PositionUnit::REVOLUTIONS, &mock);
-  pos3.set_ticks(16384 + 5); // 1 rev + 5 ticks
+  pos3.set_ticks(16384 + 5);  // 1 rev + 5 ticks
   Position pos4(0, PositionUnit::REVOLUTIONS, &mock);
   pos4.set_ticks(10);
   Position diff = pos3 - pos4;
   assert(diff.revolutions() == 0);
-  assert(diff.angle_ticks() == 16379); // (16384 + 5) - 10 = 16379
-  std::cout << "  ✓ Subtraction underflow: (1 rev + 5 ticks) - 10 ticks = " << diff.revolutions() << " rev + " << diff.angle_ticks() << " ticks" << std::endl;
+  assert(diff.angle_ticks() == 16379);  // (16384 + 5) - 10 = 16379
+  std::cout << "  ✓ Subtraction underflow: (1 rev + 5 ticks) - 10 ticks = " << diff.revolutions() << " rev + "
+            << diff.angle_ticks() << " ticks" << std::endl;
 
   // Test: Multiplication by zero
   Position pos5(5.0, PositionUnit::REVOLUTIONS, &mock);
@@ -762,7 +754,7 @@ void test_operator_edge_cases()
   Position b(0.5, PositionUnit::REVOLUTIONS, &mock);
   Position c_scalar_pos(2.0, PositionUnit::REVOLUTIONS, &mock);
   Position d(1.0, PositionUnit::REVOLUTIONS, &mock);
-  Position result = ((a + b) * 2.0) - d; // (1 + 0.5) * 2 - 1 = 3 - 1 = 2
+  Position result = ((a + b) * 2.0) - d;  // (1 + 0.5) * 2 - 1 = 3 - 1 = 2
   assert(result.revolutions() == 2);
   assert(result.angle_ticks() == 0);
   std::cout << "  ✓ Chained operations: (1 + 0.5) * 2 - 1 = " << result.revolutions() << " rev" << std::endl;
@@ -782,8 +774,7 @@ void test_operator_edge_cases()
   std::cout << "  ✓ Self-subtraction: 2.75 rev - 2.75 rev = 0" << std::endl;
 }
 
-void test_arcminute_arcsecond_precision()
-{
+void test_arcminute_arcsecond_precision() {
   std::cout << "Testing arcminute/arcsecond precision..." << std::endl;
 
   MockServoXxd mock(3200.0f);
@@ -803,7 +794,7 @@ void test_arcminute_arcsecond_precision()
   // Test: Large arcsecond value - 5 million arcseconds
   Position pos_large_arcsec(5000000, PositionUnit::ARCSECONDS, &mock);
   double revolutions = pos_large_arcsec.get_revolutions();
-  double expected_revs = 5000000.0 / 1296000.0; // 1296000 arcsec/rev
+  double expected_revs = 5000000.0 / 1296000.0;  // 1296000 arcsec/rev
   assert(float_eq(revolutions, expected_revs));
   std::cout << "  ✓ 5,000,000 arcsec = " << revolutions << " rev (expected " << expected_revs << " rev)" << std::endl;
 
@@ -820,8 +811,7 @@ void test_arcminute_arcsecond_precision()
   std::cout << "  ✓ 123456 arcsec round-trip: " << arcsec_back << " (diff: " << diff << ")" << std::endl;
 }
 
-int main()
-{
+int main() {
   std::cout << "\n========================================" << std::endl;
   std::cout << "Position Class Unit Tests" << std::endl;
   std::cout << "========================================" << std::endl;

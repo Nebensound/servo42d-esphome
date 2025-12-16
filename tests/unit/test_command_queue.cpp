@@ -25,9 +25,8 @@ uint32_t millis() { return test_millis; }
 using namespace esphome::servoxxd;
 
 // Mock Transport for testing
-class MockTransport : public ITransport
-{
-public:
+class MockTransport : public ITransport {
+ public:
   MockTransport() : execute_count_(0), read_count_(0), busy_(false) {}
 
   // Track calls
@@ -43,13 +42,11 @@ public:
   std::function<void(const Command &, ErrorCode)> error_callback_;
 
   // Override ITransport interface
-  Result execute_command(const Command &cmd) override
-  {
+  Result execute_command(const Command &cmd) override {
     execute_count_++;
     executed_commands_.push_back(cmd.command_type);
     last_executed_commandtype_ = cmd.command_type;
-    if (cmd.expected_response_length() > 0)
-    {
+    if (cmd.expected_response_length() > 0) {
       read_count_++;
       read_commands_.push_back(cmd.command_type);
     }
@@ -66,39 +63,28 @@ public:
 
   void update() override {}
 
-  void set_response_callback(std::function<void(const Command &)> cb) override
-  {
-    response_callback_ = cb;
-  }
+  void set_response_callback(std::function<void(const Command &)> cb) override { response_callback_ = cb; }
 
-  void set_error_callback(std::function<void(const Command &, ErrorCode)> cb) override
-  {
-    error_callback_ = cb;
-  }
+  void set_error_callback(std::function<void(const Command &, ErrorCode)> cb) override { error_callback_ = cb; }
 
   // Helper methods for tests
-  void simulate_response(const Command &cmd)
-  {
+  void simulate_response(const Command &cmd) {
     busy_ = false;
-    if (response_callback_)
-    {
+    if (response_callback_) {
       response_callback_(cmd);
     }
   }
 
-  void simulate_error(const Command &cmd, ErrorCode error)
-  {
+  void simulate_error(const Command &cmd, ErrorCode error) {
     busy_ = false;
-    if (error_callback_)
-    {
+    if (error_callback_) {
       error_callback_(cmd, error);
     }
   }
 };
 
 // Test helpers
-struct TestResult
-{
+struct TestResult {
   bool callback_called = false;
   bool success = false;
   std::vector<uint8_t> data;
@@ -107,8 +93,7 @@ struct TestResult
 // ============================================================================
 // TEST 1: Basic Enqueue and Execution
 // ============================================================================
-void test_basic_enqueue()
-{
+void test_basic_enqueue() {
   std::cout << "TEST 1: Basic enqueue and execution..." << std::endl;
 
   MockTransport transport;
@@ -119,11 +104,11 @@ void test_basic_enqueue()
   assert(queue.size() == 0);
 
   TestResult result;
-  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool success, const Command &cmd)
-                {
+  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool success, const Command &cmd) {
     result.callback_called = true;
     result.success = success;
-    result.data = cmd.response; });
+    result.data = cmd.response;
+  });
 
   // After enqueue: size should be 1
   assert(queue.size() == 1);
@@ -158,8 +143,7 @@ void test_basic_enqueue()
 // ============================================================================
 // TEST 2: FIFO Order
 // ============================================================================
-void test_fifo_order()
-{
+void test_fifo_order() {
   std::cout << "\nTEST 2: FIFO order preservation..." << std::endl;
 
   MockTransport transport;
@@ -168,12 +152,12 @@ void test_fifo_order()
   std::vector<int> callback_order;
 
   // Enqueue 3 commands
-  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool, const Command &cmd)
-                { callback_order.push_back(1); });
-  queue.enqueue(Command(Commandtype::READ_CURRENT_SPEED), [&](bool, const Command &cmd)
-                { callback_order.push_back(2); });
-  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS), [&](bool, const Command &cmd)
-                { callback_order.push_back(3); });
+  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY),
+                [&](bool, const Command &cmd) { callback_order.push_back(1); });
+  queue.enqueue(Command(Commandtype::READ_CURRENT_SPEED),
+                [&](bool, const Command &cmd) { callback_order.push_back(2); });
+  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS),
+                [&](bool, const Command &cmd) { callback_order.push_back(3); });
 
   assert(queue.size() == 3);
 
@@ -205,19 +189,18 @@ void test_fifo_order()
 // ============================================================================
 // TEST 3: Error Handling
 // ============================================================================
-void test_error_handling()
-{
+void test_error_handling() {
   std::cout << "\nTEST 3: Error handling..." << std::endl;
 
   MockTransport transport;
   CommandQueue queue(&transport);
 
   TestResult result;
-  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool success, const Command &cmd)
-                {
+  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool success, const Command &cmd) {
     result.callback_called = true;
     result.success = success;
-    result.data = cmd.response; });
+    result.data = cmd.response;
+  });
 
   queue.update();
 
@@ -237,8 +220,7 @@ void test_error_handling()
 // ============================================================================
 // TEST 4: Queue Clear (Emergency Stop)
 // ============================================================================
-void test_clear()
-{
+void test_clear() {
   std::cout << "\nTEST 4: Queue clear (emergency stop)..." << std::endl;
 
   MockTransport transport;
@@ -247,19 +229,18 @@ void test_clear()
   int callbacks_invoked = 0;
 
   // Enqueue 3 commands
-  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool success, const Command &cmd)
-                {
-                  callbacks_invoked++;
-                  assert(!success); // Should be called with failure
-                });
-  queue.enqueue(Command(Commandtype::READ_CURRENT_SPEED), [&](bool success, const Command &cmd)
-                {
+  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool success, const Command &cmd) {
     callbacks_invoked++;
-    assert(!success); });
-  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS), [&](bool success, const Command &cmd)
-                {
+    assert(!success);  // Should be called with failure
+  });
+  queue.enqueue(Command(Commandtype::READ_CURRENT_SPEED), [&](bool success, const Command &cmd) {
     callbacks_invoked++;
-    assert(!success); });
+    assert(!success);
+  });
+  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS), [&](bool success, const Command &cmd) {
+    callbacks_invoked++;
+    assert(!success);
+  });
 
   // First command is already being executed (enqueue_read calls execute_next)
   // So we have: 1 executing + 2 pending = 3 total
@@ -273,7 +254,7 @@ void test_clear()
   // Only 2 callbacks should be invoked (pending commands)
   // The executing command is NOT cleared
   assert(callbacks_invoked == 2);
-  assert(queue.size() == 1); // 1 executing command remains
+  assert(queue.size() == 1);  // 1 executing command remains
 
   std::cout << "  ✓ Queue cleared (pending commands only)" << std::endl;
   std::cout << "  ✓ Executing command preserved" << std::endl;
@@ -283,8 +264,7 @@ void test_clear()
 // ============================================================================
 // TEST 5: Deduplication of Read Commands
 // ============================================================================
-void test_deduplication()
-{
+void test_deduplication() {
   std::cout << "\nTEST 5: Deduplication of read commands..." << std::endl;
 
   MockTransport transport;
@@ -303,29 +283,38 @@ void test_deduplication()
   assert(queue.size() == 1);
 
   // Now enqueue two identical commands (both will be PENDING) with deduplication enabled
-  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool, const Command &cmd)
-                {
-    callback1_count++;
-    received_data1 = cmd.response; }, Priority::NORMAL, 0, true); // Force deduplication
+  queue.enqueue(
+      Command(Commandtype::READ_ENCODER_CARRY),
+      [&](bool, const Command &cmd) {
+        callback1_count++;
+        received_data1 = cmd.response;
+      },
+      Priority::NORMAL, 0, true);  // Force deduplication
 
   assert(queue.size() == 2);
 
   // Enqueue duplicate - should deduplicate with the PENDING one
-  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool, const Command &cmd)
-                {
-    callback2_count++;
-    received_data2 = cmd.response; }, Priority::NORMAL, 0, true); // Force deduplication
+  queue.enqueue(
+      Command(Commandtype::READ_ENCODER_CARRY),
+      [&](bool, const Command &cmd) {
+        callback2_count++;
+        received_data2 = cmd.response;
+      },
+      Priority::NORMAL, 0, true);  // Force deduplication
 
   // Should still be size 2 (first command + deduplicated second/third)
   assert(queue.size() == 2);
 
   // Add a third duplicate
-  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool, const Command &cmd)
-                {
-    callback3_count++;
-    received_data3 = cmd.response; }, Priority::NORMAL, 0, true); // Force deduplication
+  queue.enqueue(
+      Command(Commandtype::READ_ENCODER_CARRY),
+      [&](bool, const Command &cmd) {
+        callback3_count++;
+        received_data3 = cmd.response;
+      },
+      Priority::NORMAL, 0, true);  // Force deduplication
 
-  assert(queue.size() == 2); // Still 2
+  assert(queue.size() == 2);  // Still 2
 
   // Complete first command
   queue.update();
@@ -341,10 +330,10 @@ void test_deduplication()
   }
 
   // Only the LAST callback is invoked (deduplication replaces callback, doesn't accumulate)
-  assert(callback1_count == 0);            // Not called (replaced by callback2)
-  assert(callback2_count == 0);            // Not called (replaced by callback3)
-  assert(callback3_count == 1);            // Only the last one is called
-  assert(received_data3 == response_data); // Only the last callback received data
+  assert(callback1_count == 0);             // Not called (replaced by callback2)
+  assert(callback2_count == 0);             // Not called (replaced by callback3)
+  assert(callback3_count == 1);             // Only the last one is called
+  assert(received_data3 == response_data);  // Only the last callback received data
   assert(queue.is_empty());
 
   std::cout << "  ✓ Duplicate read commands merged" << std::endl;
@@ -354,8 +343,7 @@ void test_deduplication()
 // ============================================================================
 // TEST 6: No Deduplication for Different Commands
 // ============================================================================
-void test_no_deduplication_different()
-{
+void test_no_deduplication_different() {
   std::cout << "\nTEST 6: No deduplication for different commands..." << std::endl;
 
   MockTransport transport;
@@ -373,15 +361,14 @@ void test_no_deduplication_different()
 // ============================================================================
 // TEST 7: No Deduplication for Write Commands
 // ============================================================================
-void test_no_deduplication_writes()
-{
+void test_no_deduplication_writes() {
   std::cout << "\nTEST 7: No deduplication for write commands..." << std::endl;
 
   MockTransport transport;
   CommandQueue queue(&transport);
 
   std::vector<uint8_t> data1 = {0x12, 0x34};
-  std::vector<uint8_t> data2 = {0x12, 0x34}; // Same data
+  std::vector<uint8_t> data2 = {0x12, 0x34};  // Same data
 
   // Enqueue two identical write commands
   queue.enqueue(Command(Commandtype::SET_ZERO, data1), [](bool, const Command &cmd) {});
@@ -396,8 +383,7 @@ void test_no_deduplication_writes()
 // ============================================================================
 // TEST 8: Priority Queue (Front Insertion)
 // ============================================================================
-void test_priority_queue()
-{
+void test_priority_queue() {
   std::cout << "\nTEST 8: Priority queue handling..." << std::endl;
 
   MockTransport transport;
@@ -406,20 +392,23 @@ void test_priority_queue()
   std::vector<int> callback_order;
 
   // Enqueue normal commands
-  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool, const Command &cmd)
-                { callback_order.push_back(1); }, Priority::NORMAL);
+  queue.enqueue(
+      Command(Commandtype::READ_ENCODER_CARRY), [&](bool, const Command &cmd) { callback_order.push_back(1); },
+      Priority::NORMAL);
 
-  queue.enqueue(Command(Commandtype::READ_CURRENT_SPEED), [&](bool, const Command &cmd)
-                { callback_order.push_back(2); }, Priority::NORMAL);
+  queue.enqueue(
+      Command(Commandtype::READ_CURRENT_SPEED), [&](bool, const Command &cmd) { callback_order.push_back(2); },
+      Priority::NORMAL);
 
   // Enqueue priority command (use READ_MOTOR_STATUS as priority, not EMERGENCY_STOP)
-  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS), [&](bool, const Command &cmd)
-                { callback_order.push_back(3); }, Priority::NORMAL);
+  queue.enqueue(
+      Command(Commandtype::READ_MOTOR_STATUS), [&](bool, const Command &cmd) { callback_order.push_back(3); },
+      Priority::NORMAL);
 
   // Enqueue a CRITICAL priority command
-  queue.enqueue(Command(Commandtype::RELEASE_PROTECTION), [&](bool, const Command &cmd)
-                { callback_order.push_back(99); },
-                Priority::CRITICAL); // Critical priority
+  queue.enqueue(
+      Command(Commandtype::RELEASE_PROTECTION), [&](bool, const Command &cmd) { callback_order.push_back(99); },
+      Priority::CRITICAL);  // Critical priority
 
   // Should be: 1 EXECUTING + 3 PENDING = 4 total
   // (READ_ENCODER_CARRY executing, READ_CURRENT_SPEED + READ_MOTOR_STATUS + RELEASE_PROTECTION pending)
@@ -464,22 +453,21 @@ void test_priority_queue()
 // ============================================================================
 // TEST 9: Timeout Detection
 // ============================================================================
-void test_timeout_detection()
-{
+void test_timeout_detection() {
   std::cout << "\nTEST 9: Timeout detection..." << std::endl;
 
-  test_millis = 0; // Reset time
+  test_millis = 0;  // Reset time
 
   MockTransport transport;
-  CommandQueue queue(&transport, 500); // 500ms timeout
+  CommandQueue queue(&transport, 500);  // 500ms timeout
 
   bool timeout_detected = false;
   std::vector<uint8_t> timeout_data;
 
-  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS), [&](bool success, const Command &cmd)
-                {
+  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS), [&](bool success, const Command &cmd) {
     timeout_detected = !success;
-    timeout_data = cmd.response; });
+    timeout_data = cmd.response;
+  });
 
   // Command starts executing
   queue.update();
@@ -489,11 +477,11 @@ void test_timeout_detection()
   // Advance time but not past timeout
   test_millis = 400;
   queue.update();
-  assert(!timeout_detected); // Should not timeout yet
+  assert(!timeout_detected);  // Should not timeout yet
   assert(queue.size() == 1);
 
   // Advance time past timeout
-  test_millis = 600; // 600 > 500 timeout
+  test_millis = 600;  // 600 > 500 timeout
   queue.update();
 
   // Command should timeout
@@ -504,14 +492,13 @@ void test_timeout_detection()
   std::cout << "  ✓ Timeout detected at correct time" << std::endl;
   std::cout << "  ✓ Callback invoked with success=false" << std::endl;
 
-  test_millis = 0; // Reset for other tests
+  test_millis = 0;  // Reset for other tests
 }
 
 // ============================================================================
 // TEST 10: Timeout Allows Next Command
 // ============================================================================
-void test_timeout_recovery()
-{
+void test_timeout_recovery() {
   std::cout << "\nTEST 10: Timeout recovery and queue continuation..." << std::endl;
 
   test_millis = 0;
@@ -523,11 +510,11 @@ void test_timeout_recovery()
   bool second_success = false;
 
   // Enqueue two commands
-  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS), [&](bool success, const Command &cmd)
-                { first_timeout = !success; });
+  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS),
+                [&](bool success, const Command &cmd) { first_timeout = !success; });
 
-  queue.enqueue(Command(Commandtype::READ_CURRENT_SPEED), [&](bool success, const Command &cmd)
-                { second_success = success; });
+  queue.enqueue(Command(Commandtype::READ_CURRENT_SPEED),
+                [&](bool success, const Command &cmd) { second_success = success; });
 
   assert(queue.size() == 2);
 
@@ -541,10 +528,10 @@ void test_timeout_recovery()
 
   // First command should timeout
   assert(first_timeout);
-  assert(queue.size() == 1); // Second command still in queue
+  assert(queue.size() == 1);  // Second command still in queue
 
   // Second command should execute automatically
-  assert(transport.read_count_ == 2); // Second command sent
+  assert(transport.read_count_ == 2);  // Second command sent
 
   // Respond to second command
   {
@@ -565,8 +552,7 @@ void test_timeout_recovery()
 // ============================================================================
 // TEST 11: Multiple Callbacks on Same Command (Deduplication)
 // ============================================================================
-void test_multiple_callbacks()
-{
+void test_multiple_callbacks() {
   std::cout << "\nTEST 11: Multiple callbacks on deduplicated command..." << std::endl;
 
   MockTransport transport;
@@ -580,12 +566,14 @@ void test_multiple_callbacks()
 
   // Now enqueue same command 3 times (all will be PENDING and should be deduplicated)
   // NOTE: Deduplication is only automatic for BACKGROUND/IDLE priority, or must be forced with deduplicate=true
-  for (int i = 0; i < 3; i++)
-  {
-    queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool, const Command &cmd)
-                  {
-      callback_count++;
-      received_data.push_back(cmd.response); }, Priority::NORMAL, 0, true); // Force deduplication
+  for (int i = 0; i < 3; i++) {
+    queue.enqueue(
+        Command(Commandtype::READ_ENCODER_CARRY),
+        [&](bool, const Command &cmd) {
+          callback_count++;
+          received_data.push_back(cmd.response);
+        },
+        Priority::NORMAL, 0, true);  // Force deduplication
   }
 
   // Should be: 1 EXECUTING (READ_MOTOR_STATUS) + 1 PENDING (deduplicated READ_ENCODER_CARRY) = 2
@@ -605,7 +593,7 @@ void test_multiple_callbacks()
   }
 
   // Only the LAST callback is invoked (deduplication replaces callback, doesn't accumulate)
-  assert(callback_count == 1); // Only the last of the 3 callbacks is invoked
+  assert(callback_count == 1);  // Only the last of the 3 callbacks is invoked
   assert(received_data.size() == 1);
   assert(received_data[0] == response);
 
@@ -616,8 +604,7 @@ void test_multiple_callbacks()
 // ============================================================================
 // TEST 12: Update on Empty Queue (No Crash)
 // ============================================================================
-void test_update_empty_queue()
-{
+void test_update_empty_queue() {
   std::cout << "\nTEST 12: Update on empty queue..." << std::endl;
 
   MockTransport transport;
@@ -639,8 +626,7 @@ void test_update_empty_queue()
 // ============================================================================
 // TEST 13: Error After Timeout (Ignore Late Response)
 // ============================================================================
-void test_late_response_ignored()
-{
+void test_late_response_ignored() {
   std::cout << "\nTEST 13: Late response ignored after timeout..." << std::endl;
 
   test_millis = 0;
@@ -651,11 +637,10 @@ void test_late_response_ignored()
   bool callback_called = false;
   int callback_count = 0;
 
-  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS), [&](bool success, const Command &cmd)
-                {
-                  callback_count++;
-                  callback_called = !success; // Timeout = !success
-                });
+  queue.enqueue(Command(Commandtype::READ_MOTOR_STATUS), [&](bool success, const Command &cmd) {
+    callback_count++;
+    callback_called = !success;  // Timeout = !success
+  });
 
   queue.update();
 
@@ -675,7 +660,7 @@ void test_late_response_ignored()
   }
 
   // Callback should NOT be called again
-  assert(callback_count == 1); // Still 1, not 2
+  assert(callback_count == 1);  // Still 1, not 2
 
   std::cout << "  ✓ Late response ignored" << std::endl;
   std::cout << "  ✓ Callback not invoked twice" << std::endl;
@@ -686,8 +671,7 @@ void test_late_response_ignored()
 // ============================================================================
 // TEST 14: Mixed Read and Write Commands
 // ============================================================================
-void test_mixed_read_write()
-{
+void test_mixed_read_write() {
   std::cout << "\nTEST 14: Mixed read and write commands..." << std::endl;
 
   MockTransport transport;
@@ -696,15 +680,12 @@ void test_mixed_read_write()
   std::vector<int> order;
 
   // Mix of reads and writes
-  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool, const Command &cmd)
-                { order.push_back(1); });
+  queue.enqueue(Command(Commandtype::READ_ENCODER_CARRY), [&](bool, const Command &cmd) { order.push_back(1); });
 
   std::vector<uint8_t> data = {0x00, 0x00};
-  queue.enqueue(Command(Commandtype::SET_ZERO, data), [&](bool, const Command &cmd)
-                { order.push_back(2); });
+  queue.enqueue(Command(Commandtype::SET_ZERO, data), [&](bool, const Command &cmd) { order.push_back(2); });
 
-  queue.enqueue(Command(Commandtype::READ_CURRENT_SPEED), [&](bool, const Command &cmd)
-                { order.push_back(3); });
+  queue.enqueue(Command(Commandtype::READ_CURRENT_SPEED), [&](bool, const Command &cmd) { order.push_back(3); });
 
   assert(queue.size() == 3);
 
@@ -727,15 +708,13 @@ void test_mixed_read_write()
 // ============================================================================
 // Main
 // ============================================================================
-int main()
-{
+int main() {
   std::cout << "========================================" << std::endl;
   std::cout << "CommandQueue Unit Tests" << std::endl;
   std::cout << "========================================" << std::endl;
   std::cout << std::endl;
 
-  try
-  {
+  try {
     test_basic_enqueue();
     test_fifo_order();
     test_error_handling();
@@ -756,14 +735,10 @@ int main()
     std::cout << "========================================" << std::endl;
 
     return 0;
-  }
-  catch (const std::exception &e)
-  {
+  } catch (const std::exception &e) {
     std::cerr << "\n❌ Test failed with exception: " << e.what() << std::endl;
     return 1;
-  }
-  catch (...)
-  {
+  } catch (...) {
     std::cerr << "\n❌ Test failed with unknown exception" << std::endl;
     return 1;
   }
