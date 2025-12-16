@@ -160,7 +160,11 @@ void ServoXxd::set_target_pos(const Position &pos) {
 // ============================================================================
 
 ServoXxd::ServoXxd() {
-  // Initialize Position object parent pointer in config_
+  // Set parent pointer for ConfigData
+  config_.parent = this;
+
+  // Initialize Speed/Position objects with parent pointer
+  config_.homing_speed = Speed(100.0f, SpeedUnit::RPM, this);  // Default 100 RPM
   config_.nolimit_reverse_angle_ticks.parent_ = this;
 
   // Note: homing_ union will be initialized by Python setters from YAML configuration
@@ -368,11 +372,11 @@ void ServoXxd::dump_config() {
   }
 
   // Motor behavior
-  ESP_LOGCONFIG(TAG, "  Shaft Direction: %s", this->config_.shaft_reversed ? "Reversed" : "Normal");
+  ESP_LOGCONFIG(TAG, "  Shaft Direction: %s", direction_to_string(this->config_.shaft_direction));
   [[maybe_unused]] const char *en_modes[] = {"LOW", "HIGH", "ALWAYS"};
   ESP_LOGCONFIG(TAG, "  EN Pin Active: %s", en_modes[static_cast<uint8_t>(this->config_.en_pin_active)]);
-  ESP_LOGCONFIG(TAG, "  Auto Screen Off: %s", this->config_.auto_screen_off ? "enabled" : "disabled");
-  ESP_LOGCONFIG(TAG, "  Lock Keys at Startup: %s", this->config_.key_lock ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "  Auto Screen Off: %s", screen_mode_to_string(this->config_.screen_mode));
+  ESP_LOGCONFIG(TAG, "  Lock Keys at Startup: %s", keypad_lock_to_string(this->config_.keypad_lock));
 
   // Homing configuration (only in POSITION mode)
   if (this->operating_mode_ == OperatingMode::POSITION) {
@@ -484,172 +488,127 @@ void ServoXxd::move_to(const Position &position, std::optional<Speed> speed, std
 }
 
 // ============================================================================
-// Config Update Command Generator
-// ============================================================================
-
-std::vector<Command> generate_config_update_commands(const ConfigData &current, const ConfigData &desired,
-                                                     const ServoXxd *parent) {
-  std::vector<Command> commands;
-  commands.reserve(5);  // Pre-allocate for typical number of changes (usually 0-2)
-
-  // Order commands logically for optimal motor configuration:
-  // 1. Basic motor settings (mode, currents, microstepping)
-  // 2. Pin and display settings
-  // 3. Homing configuration
-  // 4. Special features (zero mode, port remap, etc.)
-
-  // ========== Basic Motor Settings ==========
-
-  if (current.mode != desired.mode) {
-    commands.push_back(CommandFactory::set_control_mode(desired.mode));
-  }
-
-  if (current.working_current_ma != desired.working_current_ma) {
-    commands.push_back(CommandFactory::set_working_current(desired.working_current_ma));
-  }
-
-  if (current.holding_current_percent != desired.holding_current_percent) {
-    commands.push_back(CommandFactory::set_holding_current_percent(desired.holding_current_percent));
-  }
-
-  if (current.subdivision != desired.subdivision) {
-    commands.push_back(CommandFactory::set_subdivision(desired.subdivision));
-  }
-
-  // ========== Pin and Display Settings ==========
-
-  if (current.en_pin_active != desired.en_pin_active) {
-    commands.push_back(CommandFactory::set_en_pin_active(desired.en_pin_active));
-  }
-
-  if (current.auto_screen_off != desired.auto_screen_off) {
-    commands.push_back(CommandFactory::set_auto_screen_off(desired.auto_screen_off));
-  }
-
-  if (current.key_lock != desired.key_lock) {
-    commands.push_back(CommandFactory::set_lock_keys(desired.key_lock));
-  }
-
-  // ========== Homing Configuration ==========
-
-  // Check if any homing parameters changed
-  bool homing_params_changed =
-      (current.homing_trigger != desired.homing_trigger || current.homing_direction != desired.homing_direction ||
-       current.homing_speed_rpm != desired.homing_speed_rpm || current.endlimit_enable != desired.endlimit_enable);
-
-  if (homing_params_changed) {
-    // Create Speed object for homing speed
-    Speed homing_speed = Speed::from_rpm(desired.homing_speed_rpm, parent);
-    commands.push_back(CommandFactory::set_homing_parameters(desired.homing_trigger, desired.homing_direction,
-                                                             homing_speed, desired.endlimit_enable));
-  }
-
-  // Check if sensorless homing parameters changed
-  bool nolimit_params_changed =
-      (current.nolimit_reverse_angle_ticks.get_ticks() != desired.nolimit_reverse_angle_ticks.get_ticks() ||
-       current.nolimit_mode != desired.nolimit_mode || current.nolimit_current_ma != desired.nolimit_current_ma);
-
-  if (nolimit_params_changed) {
-    commands.push_back(CommandFactory::set_nolimit_homing_params(desired.nolimit_reverse_angle_ticks,
-                                                                 desired.nolimit_mode, desired.nolimit_current_ma));
-  }
-
-  // ========== Special Features ==========
-
-  // Check if zero mode parameters changed
-  bool zero_mode_changed =
-      (current.zero_mode != desired.zero_mode || current.zero_task != desired.zero_task ||
-       current.zero_speed != desired.zero_speed || current.zero_direction != desired.zero_direction);
-
-  if (zero_mode_changed) {
-    commands.push_back(CommandFactory::set_zero_mode(desired.zero_mode, desired.zero_task, desired.zero_speed,
-                                                     desired.zero_direction));
-  }
-
-  if (current.limit_port_remap != desired.limit_port_remap) {
-    commands.push_back(CommandFactory::set_limit_port_remap(desired.limit_port_remap));
-  }
-
-  return commands;
-}
-
-// ============================================================================
 // ConfigData::get_update_command_types - Generate list of command types to update config
 // ============================================================================
 std::vector<Commandtype> ConfigData::get_update_command_types(const ConfigData &desired) const {
-  std::vector<Commandtype> command_types;
+  // Step 1: Collect all changed parameters with their corresponding Commandtype
+  std::vector<Commandtype> changed_commands;
 
-  // Order of commands (optimized for dependency chain):
-  // 1. Basic settings (subdivision, en_pin, screen, keys)
-  // 2. Protection and trigger config (safety features)
-  // 3. Control mode (requires other settings to be stable first)
-  // 4. Current settings (holding current depends on control mode)
-  // 5. Homing configuration
-  // 6. Special features (zero mode, limit remap)
+  // Check each ConfigData field and add Commandtype if changed
+  if (this->mode != desired.mode) {
+    changed_commands.push_back(Commandtype::SET_WORK_MODE);
+  }
 
-  // === Basic Settings ===
+  if (this->holding_current_percent != desired.holding_current_percent) {
+    changed_commands.push_back(Commandtype::SET_HOLDING_CURRENT_PERCENT);
+  }
+
+  if (this->working_current_ma != desired.working_current_ma) {
+    changed_commands.push_back(Commandtype::SET_WORKING_CURRENT_RUNTIME);
+  }
+
   if (this->subdivision != desired.subdivision) {
-    command_types.push_back(Commandtype::SET_SUBDIVISION);
+    changed_commands.push_back(Commandtype::SET_SUBDIVISION);
   }
 
   if (this->en_pin_active != desired.en_pin_active) {
-    command_types.push_back(Commandtype::SET_EN_PIN_ACTIVE);
+    changed_commands.push_back(Commandtype::SET_EN_PIN_ACTIVE);
   }
 
-  if (this->auto_screen_off != desired.auto_screen_off) {
-    command_types.push_back(Commandtype::SET_AUTO_SCREEN_OFF);
+  if (this->shaft_direction != desired.shaft_direction) {
+    changed_commands.push_back(Commandtype::SET_DIR_MOTOR_ROTATION);
   }
 
-  if (this->key_lock != desired.key_lock) {
-    command_types.push_back(Commandtype::SET_LOCK_KEYS);
+  if (this->screen_mode != desired.screen_mode) {
+    changed_commands.push_back(Commandtype::SET_AUTO_SCREEN_OFF);
   }
 
-  // === Safety Features ===
+  if (this->protection != desired.protection) {
+    changed_commands.push_back(Commandtype::SET_PROTECT_ENABLE);
+  }
+
+  if (this->interpolation != desired.interpolation) {
+    changed_commands.push_back(Commandtype::SET_MPLYER);
+  }
+
+  if (this->keypad_lock != desired.keypad_lock) {
+    changed_commands.push_back(Commandtype::SET_LOCK_KEYS);
+  }
+
+  // Homing parameters (composite check)
+  if (this->homing_trigger != desired.homing_trigger || this->homing_direction != desired.homing_direction ||
+      this->homing_speed.rpm() != desired.homing_speed.rpm()) {
+    changed_commands.push_back(Commandtype::SET_HOMING_PARAMETERS);
+  }
+
+  if (this->endstop_limit != desired.endstop_limit) {
+    changed_commands.push_back(Commandtype::SET_ENDLIMIT_ENABLE);
+  }
+
+  // No-limit homing parameters (composite check)
+  if (this->nolimit_reverse_angle_ticks.get_ticks() != desired.nolimit_reverse_angle_ticks.get_ticks() ||
+      this->homing_limit_mode != desired.homing_limit_mode || this->nolimit_current_ma != desired.nolimit_current_ma) {
+    changed_commands.push_back(Commandtype::SET_NOLIMIT_HOMING_PARAMS);
+  }
+
+  if (this->limit_port_mapping != desired.limit_port_mapping) {
+    changed_commands.push_back(Commandtype::SET_LIMIT_PORT_REMAP);
+  }
+
+  // Zero mode parameters (composite check)
+  if (this->zero_mode != desired.zero_mode || this->zero_task != desired.zero_task ||
+      this->zero_speed != desired.zero_speed || this->zero_direction != desired.zero_direction) {
+    changed_commands.push_back(Commandtype::SET_ZERO_MODE);
+  }
+
   // Always set EN trigger config (safety feature, always configured)
-  command_types.push_back(Commandtype::SET_EN_TRIGGER_CONFIG);
+  changed_commands.push_back(Commandtype::SET_EN_TRIGGER_CONFIG);
 
-  // === Control Mode ===
-  if (this->mode != desired.mode) {
-    command_types.push_back(Commandtype::SET_WORK_MODE);
+  // Step 2: Define priority order for commands (optimized for dependency chain)
+  // Commands are executed in this order regardless of which parameters changed
+  static const std::vector<Commandtype> priority_order = {
+      // 1. Basic hardware settings (must be set before motion parameters)
+      Commandtype::SET_SUBDIVISION,
+      Commandtype::SET_EN_PIN_ACTIVE,
+      Commandtype::SET_DIR_MOTOR_ROTATION,
+      Commandtype::SET_AUTO_SCREEN_OFF,
+      Commandtype::SET_LOCK_KEYS,
+      Commandtype::SET_PROTECT_ENABLE,
+      Commandtype::SET_MPLYER,
+
+      // 2. Safety features (before control mode changes)
+      Commandtype::SET_EN_TRIGGER_CONFIG,
+
+      // 3. Control mode (requires basic settings to be stable)
+      Commandtype::SET_WORK_MODE,
+
+      // 4. Current settings (depend on control mode)
+      Commandtype::SET_WORKING_CURRENT_RUNTIME,
+      Commandtype::SET_HOLDING_CURRENT_PERCENT,
+
+      // 5. Homing configuration
+      Commandtype::SET_HOMING_PARAMETERS,
+      Commandtype::SET_ENDLIMIT_ENABLE,
+      Commandtype::SET_NOLIMIT_HOMING_PARAMS,
+
+      // 6. Special features
+      Commandtype::SET_ZERO_MODE,
+      Commandtype::SET_LIMIT_PORT_REMAP,
+  };
+
+  // Step 3: Sort changed_commands according to priority_order
+  std::vector<Commandtype> sorted_commands;
+  sorted_commands.reserve(changed_commands.size());
+
+  for (const auto &priority_cmd : priority_order) {
+    // Check if this priority command is in changed_commands
+    auto it = std::find(changed_commands.begin(), changed_commands.end(), priority_cmd);
+    if (it != changed_commands.end()) {
+      sorted_commands.push_back(priority_cmd);
+    }
   }
 
-  // === Current Settings ===
-  // Holding current only applicable for SR_OPEN and SR_CLOSE modes
-  if ((desired.mode == ControlMode::SR_OPEN || desired.mode == ControlMode::SR_CLOSE) &&
-      this->holding_current_percent != desired.holding_current_percent) {
-    command_types.push_back(Commandtype::SET_HOLDING_CURRENT_PERCENT);
-  }
-
-  // === Homing Configuration ===
-  bool homing_changed =
-      (this->homing_trigger != desired.homing_trigger || this->homing_direction != desired.homing_direction ||
-       this->homing_speed_rpm != desired.homing_speed_rpm || this->endlimit_enable != desired.endlimit_enable);
-
-  if (homing_changed) {
-    command_types.push_back(Commandtype::SET_HOMING_PARAMETERS);
-  }
-
-  bool nolimit_homing_changed =
-      (this->nolimit_mode != desired.nolimit_mode || this->nolimit_current_ma != desired.nolimit_current_ma ||
-       this->nolimit_reverse_angle_ticks.get_ticks() != desired.nolimit_reverse_angle_ticks.get_ticks());
-
-  if (nolimit_homing_changed) {
-    command_types.push_back(Commandtype::SET_NOLIMIT_HOMING_PARAMS);
-  }
-
-  // === Special Features ===
-  bool zero_mode_changed = (this->zero_mode != desired.zero_mode || this->zero_task != desired.zero_task ||
-                            this->zero_speed != desired.zero_speed || this->zero_direction != desired.zero_direction);
-
-  if (zero_mode_changed) {
-    command_types.push_back(Commandtype::SET_ZERO_MODE);
-  }
-
-  if (this->limit_port_remap != desired.limit_port_remap) {
-    command_types.push_back(Commandtype::SET_LIMIT_PORT_REMAP);
-  }
-
-  return command_types;
+  return sorted_commands;
 }
 
 }  // namespace servoxxd

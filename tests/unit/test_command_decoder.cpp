@@ -398,8 +398,9 @@ void test_read_all_config() {
   ASSERT_TRUE(!config1.key_lock, "Decode key lock (false)");
   ASSERT_EQUAL(static_cast<uint8_t>(config1.homing_trigger), 0, "Decode homing trigger (LOW)");
   ASSERT_EQUAL(static_cast<uint8_t>(config1.homing_direction), 0, "Decode homing direction (CW)");
-  ASSERT_EQUAL(config1.homing_speed_rpm, 100, "Decode homing speed (100 RPM)");
-  ASSERT_TRUE(config1.endlimit_enable, "Decode endlimit enable (true)");
+  ASSERT_EQUAL(static_cast<int>(config1.homing_speed.rpm()), 100, "Decode homing speed (100 RPM)");
+  ASSERT_EQUAL(static_cast<uint8_t>(config1.endlimit_enable), static_cast<uint8_t>(EndstopLimit::ENABLED),
+               "Decode endlimit enable (true)");
   ASSERT_EQUAL(config1.nolimit_reverse_angle_ticks.get_ticks(), 2000, "Decode nolimit reverse angle");
   ASSERT_TRUE(!config1.nolimit_mode, "Decode nolimit mode (false)");
   ASSERT_EQUAL(config1.nolimit_current_ma, 1000, "Decode nolimit current (1000 mA)");

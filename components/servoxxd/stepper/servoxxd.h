@@ -49,11 +49,25 @@ enum class ControlMode : uint8_t {
   SR_VFOC = 5,   // SR vector FOC mode (serial interface)
 };
 
+// Helper function to convert ControlMode enum to human-readable string
+inline const char *control_mode_to_string(ControlMode mode) {
+  static const char *names[] = {"CR_OPEN", "CR_CLOSE", "CR_vFOC", "SR_OPEN", "SR_CLOSE", "SR_vFOC"};
+  uint8_t idx = static_cast<uint8_t>(mode);
+  return (idx < 6) ? names[idx] : "UNKNOWN";
+}
+
 enum class EnPinActive : uint8_t {
   EN_LOW = 0,     // EN pin active low (motor enabled when LOW)
   EN_HIGH = 1,    // EN pin active high (motor enabled when HIGH)
   EN_ALWAYS = 2,  // Motor always enabled (ignore EN pin)
 };
+
+// Helper function to convert EnPinActive enum to human-readable string
+inline const char *en_pin_active_to_string(EnPinActive mode) {
+  static const char *names[] = {"LOW", "HIGH", "ALWAYS"};
+  uint8_t idx = static_cast<uint8_t>(mode);
+  return (idx < 3) ? names[idx] : "UNKNOWN";
+}
 
 enum class OperatingMode : uint8_t {
   POSITION = 0,  // Position control mode
@@ -83,6 +97,13 @@ enum class Direction : uint8_t {
   CCW = 1,  // Counter-clockwise
 };
 
+// Helper function to convert Direction enum to human-readable string
+inline const char *direction_to_string(Direction dir) {
+  static const char *names[] = {"CW", "CCW"};
+  uint8_t idx = static_cast<uint8_t>(dir);
+  return (idx < 2) ? names[idx] : "UNKNOWN";
+}
+
 enum class ZeroingSpeed : uint8_t {
   VERY_SLOW = 0,
   SLOW = 1,
@@ -95,6 +116,170 @@ enum class ZeroModeMode : uint8_t { MODE_DISABLED = 0x00, DIR_MODE = 0x01, NEAR_
 
 enum class ZeroModeTask : uint8_t { CLEAN = 0x00, SET = 0x01 };
 
+enum class HoldingCurrentPercent : uint8_t {
+  PERCENT_10 = 0,  // 10% of working current
+  PERCENT_20 = 1,  // 20% of working current
+  PERCENT_30 = 2,  // 30% of working current
+  PERCENT_40 = 3,  // 40% of working current
+  PERCENT_50 = 4,  // 50% of working current (default)
+  PERCENT_60 = 5,  // 60% of working current
+  PERCENT_70 = 6,  // 70% of working current
+  PERCENT_80 = 7,  // 80% of working current
+  PERCENT_90 = 8,  // 90% of working current
+};
+
+// Helper function to convert HoldingCurrentPercent enum to human-readable string
+inline const char *holding_current_percent_to_string(HoldingCurrentPercent percent) {
+  static const char *names[] = {"10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%"};
+  uint8_t idx = static_cast<uint8_t>(percent);
+  return (idx < 9) ? names[idx] : "UNKNOWN";
+}
+
+// Helper function to get actual percentage value from enum
+inline uint8_t holding_current_percent_to_value(HoldingCurrentPercent percent) {
+  return (static_cast<uint8_t>(percent) + 1) * 10;  // 0→10%, 1→20%, ..., 8→90%
+}
+
+enum class ScreenMode : uint8_t {
+  ALWAYS_ON = 0,  // Screen stays on permanently
+  AUTO_OFF = 1,   // Screen automatically turns off when idle
+};
+
+// Helper function to convert ScreenMode enum to human-readable string
+inline const char *screen_mode_to_string(ScreenMode mode) {
+  static const char *names[] = {"ALWAYS_ON", "AUTO_OFF"};
+  uint8_t idx = static_cast<uint8_t>(mode);
+  return (idx < 2) ? names[idx] : "UNKNOWN";
+}
+
+// Helper function to convert ScreenMode enum to bool (for hardware)
+inline bool screen_mode_to_bool(ScreenMode mode) { return mode == ScreenMode::AUTO_OFF; }
+
+// Helper function to convert bool to ScreenMode enum (from hardware)
+inline ScreenMode screen_mode_from_bool(bool auto_off) {
+  return auto_off ? ScreenMode::AUTO_OFF : ScreenMode::ALWAYS_ON;
+}
+
+enum class ProtectionMode : uint8_t {
+  PROTECTION_OFF = 0,  // Stall protection disabled
+  PROTECTION_ON = 1,   // Stall protection enabled
+};
+
+// Helper function to convert ProtectionMode enum to human-readable string
+inline const char *protection_mode_to_string(ProtectionMode mode) {
+  static const char *names[] = {"PROTECTION_OFF", "PROTECTION_ON"};
+  uint8_t idx = static_cast<uint8_t>(mode);
+  return (idx < 2) ? names[idx] : "UNKNOWN";
+}
+
+// Helper function to convert ProtectionMode enum to bool (for hardware)
+inline bool protection_mode_to_bool(ProtectionMode mode) { return mode == ProtectionMode::PROTECTION_ON; }
+
+// Helper function to convert bool to ProtectionMode enum (from hardware)
+inline ProtectionMode protection_mode_from_bool(bool enabled) {
+  return enabled ? ProtectionMode::PROTECTION_ON : ProtectionMode::PROTECTION_OFF;
+}
+
+enum class InterpolationMode : uint8_t {
+  INTERP_OFF = 0,   // No interpolation
+  INTERP_256X = 1,  // 256x microstepping interpolation
+};
+
+// Helper function to convert InterpolationMode enum to human-readable string
+inline const char *interpolation_mode_to_string(InterpolationMode mode) {
+  static const char *names[] = {"INTERP_OFF", "INTERP_256X"};
+  uint8_t idx = static_cast<uint8_t>(mode);
+  return (idx < 2) ? names[idx] : "UNKNOWN";
+}
+
+// Helper function to convert InterpolationMode enum to bool (for hardware)
+inline bool interpolation_mode_to_bool(InterpolationMode mode) { return mode == InterpolationMode::INTERP_256X; }
+
+// Helper function to convert bool to InterpolationMode enum (from hardware)
+inline InterpolationMode interpolation_mode_from_bool(bool enabled) {
+  return enabled ? InterpolationMode::INTERP_256X : InterpolationMode::INTERP_OFF;
+}
+
+enum class KeypadLock : uint8_t {
+  UNLOCKED = 0,  // Physical keypad is unlocked
+  LOCKED = 1,    // Physical keypad is locked
+};
+
+// Helper function to convert KeypadLock enum to human-readable string
+inline const char *keypad_lock_to_string(KeypadLock lock) {
+  static const char *names[] = {"UNLOCKED", "LOCKED"};
+  uint8_t idx = static_cast<uint8_t>(lock);
+  return (idx < 2) ? names[idx] : "UNKNOWN";
+}
+
+// Helper function to convert KeypadLock enum to bool (for hardware)
+inline bool keypad_lock_to_bool(KeypadLock lock) { return lock == KeypadLock::LOCKED; }
+
+// Helper function to convert bool to KeypadLock enum (from hardware)
+inline KeypadLock keypad_lock_from_bool(bool locked) { return locked ? KeypadLock::LOCKED : KeypadLock::UNLOCKED; }
+
+enum class EndstopLimit : uint8_t {
+  LIMIT_OFF = 0,  // Endstop limit checking disabled
+  LIMIT_ON = 1,   // Endstop limit checking enabled
+};
+
+// Helper function to convert EndstopLimit enum to human-readable string
+inline const char *endstop_limit_to_string(EndstopLimit limit) {
+  static const char *names[] = {"LIMIT_OFF", "LIMIT_ON"};
+  uint8_t idx = static_cast<uint8_t>(limit);
+  return (idx < 2) ? names[idx] : "UNKNOWN";
+}
+
+// Helper function to convert EndstopLimit enum to bool (for hardware)
+inline bool endstop_limit_to_bool(EndstopLimit limit) { return limit == EndstopLimit::LIMIT_ON; }
+
+// Helper function to convert bool to EndstopLimit enum (from hardware)
+inline EndstopLimit endstop_limit_from_bool(bool enabled) {
+  return enabled ? EndstopLimit::LIMIT_ON : EndstopLimit::LIMIT_OFF;
+}
+
+enum class HomingLimitMode : uint8_t {
+  WITH_LIMIT = 0,  // Homing with limit switch
+  NO_LIMIT = 1,    // Homing without limit switch (sensorless)
+};
+
+// Helper function to convert HomingLimitMode enum to human-readable string
+inline const char *homing_limit_mode_to_string(HomingLimitMode mode) {
+  static const char *names[] = {"WITH_LIMIT", "NO_LIMIT"};
+  uint8_t idx = static_cast<uint8_t>(mode);
+  return (idx < 2) ? names[idx] : "UNKNOWN";
+}
+
+// Helper function to convert HomingLimitMode enum to bool (for hardware)
+inline bool homing_limit_mode_to_bool(HomingLimitMode mode) { return mode == HomingLimitMode::NO_LIMIT; }
+
+// Helper function to convert bool to HomingLimitMode enum (from hardware)
+inline HomingLimitMode homing_limit_mode_from_bool(bool no_limit) {
+  return no_limit ? HomingLimitMode::NO_LIMIT : HomingLimitMode::WITH_LIMIT;
+}
+
+enum class LimitPortMapping : uint8_t {
+  MAPPING_DEFAULT = 0,   // Default limit port mapping
+  MAPPING_REMAPPED = 1,  // Limit ports remapped
+};
+
+// Helper function to convert LimitPortMapping enum to human-readable string
+inline const char *limit_port_mapping_to_string(LimitPortMapping mapping) {
+  static const char *names[] = {"MAPPING_DEFAULT", "MAPPING_REMAPPED"};
+  uint8_t idx = static_cast<uint8_t>(mapping);
+  return (idx < 2) ? names[idx] : "UNKNOWN";
+}
+
+// Helper function to convert LimitPortMapping enum to bool (for hardware)
+inline bool limit_port_mapping_to_bool(LimitPortMapping mapping) {
+  return mapping == LimitPortMapping::MAPPING_REMAPPED;
+}
+
+// Helper function to convert bool to LimitPortMapping enum (from hardware)
+inline LimitPortMapping limit_port_mapping_from_bool(bool remapped) {
+  return remapped ? LimitPortMapping::MAPPING_REMAPPED : LimitPortMapping::MAPPING_DEFAULT;
+}
+
 // Forward declaration for HomingConfig (defined after class for access to Speed)
 class ServoXxd;
 
@@ -105,34 +290,32 @@ class ServoXxd;
  * This serves as the single source of truth for motor settings and
  * matches the hardware READ_ALL_CONFIG response format.
  *
+ * Requires parent pointer for Speed/Position object initialization.
  * Default values ensure consistent motor behavior after setup.
  */
 struct ConfigData {
-  ControlMode mode{ControlMode::SR_OPEN};
-  uint8_t holding_current_percent{50};
-  uint16_t working_current_ma{2000};
-  uint8_t subdivision{16};
-  EnPinActive en_pin_active{EnPinActive::EN_LOW};
-  bool shaft_reversed{false};
-  bool auto_screen_off{true};
-  uint8_t protect_enable{0};  ///< Protection enable flags (default: all disabled)
-  bool mplyer{false};         ///< 256x subdivision interpolation (default: disabled)
-  uint8_t group_address{0};   ///< Group address (default: 0)
-  bool respond_enable{true};  ///< Response enable (default: true)
-  bool active_enable{false};  ///< Active reporting (default: false)
-  bool modbus_enable{true};   ///< MODBUS protocol enable (default: true)
-  bool key_lock{false};       ///< Physical key lock (default: unlocked)
-  EndstopTrigger homing_trigger{EndstopTrigger::TRIGGER_LOW};
-  Direction homing_direction{Direction::CW};
-  uint16_t homing_speed_rpm{0};
-  bool endlimit_enable{false};
-  Position nolimit_reverse_angle_ticks{nullptr};  ///< No-limit reverse angle as Position object
-  bool nolimit_mode{false};
-  uint16_t nolimit_current_ma{1000};
-  bool limit_port_remap{false};
-  ZeroModeMode zero_mode{ZeroModeMode::MODE_DISABLED};  ///< 0_Mode configuration
-  ZeroModeTask zero_task{ZeroModeTask::CLEAN};          ///< Zero task
-  ZeroingSpeed zero_speed{ZeroingSpeed::MEDIUM};        ///< Zero speed
+  ServoXxd *parent{nullptr};               ///< Parent pointer for Speed/Position object construction
+  ControlMode mode{ControlMode::SR_VFOC};  ///< Control mode (default: SR_VFOC)
+  HoldingCurrentPercent holding_current_percent{HoldingCurrentPercent::PERCENT_50};  ///< Holding current (default: 50%)
+  uint16_t working_current_ma{2000};                                ///< Working current in mA (default: 2000 mA)
+  uint8_t subdivision{16};                                          ///< Microstepping subdivisions 1-256 (default: 16)
+  EnPinActive en_pin_active{EnPinActive::EN_LOW};                   ///< EN pin active level (default: active LOW)
+  Direction shaft_direction{Direction::CW};                         ///< Motor shaft rotation direction (default: CW)
+  ScreenMode screen_mode{ScreenMode::AUTO_OFF};                     ///< Screen power mode (default: auto off)
+  ProtectionMode protection{ProtectionMode::PROTECTION_OFF};        ///< Stall protection mode (default: disabled)
+  InterpolationMode interpolation{InterpolationMode::INTERP_256X};  ///< Microstepping interpolation (default: 256x)
+  KeypadLock keypad_lock{KeypadLock::UNLOCKED};                     ///< Physical keypad lock (default: unlocked)
+  EndstopTrigger homing_trigger{EndstopTrigger::TRIGGER_LOW};       ///< Homing endstop trigger level
+  Direction homing_direction{Direction::CW};                        ///< Homing movement direction
+  Speed homing_speed{nullptr};                                      ///< Homing speed (requires parent initialization)
+  EndstopLimit endstop_limit{EndstopLimit::LIMIT_OFF};              ///< Endstop limit checking (default: disabled)
+  Position nolimit_reverse_angle_ticks{nullptr};                    ///< No-limit reverse angle as Position object
+  HomingLimitMode homing_limit_mode{HomingLimitMode::WITH_LIMIT};   ///< Homing with/without limit (default: with limit)
+  uint16_t nolimit_current_ma{1000};                                ///< No-limit homing current in mA
+  LimitPortMapping limit_port_mapping{LimitPortMapping::MAPPING_DEFAULT};  ///< Limit port mapping (default: default)
+  ZeroModeMode zero_mode{ZeroModeMode::MODE_DISABLED};                     ///< 0_Mode configuration
+  ZeroModeTask zero_task{ZeroModeTask::CLEAN};                             ///< Zero task
+  ZeroingSpeed zero_speed{ZeroingSpeed::MEDIUM};                           ///< Zero speed
   Direction zero_direction{Direction::CW};
 
   /**
@@ -386,7 +569,7 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
    *
    * Used by StepperEngine for motor setup.
    */
-  uint8_t get_holding_current_percent() const { return config_.holding_current_percent; }
+  HoldingCurrentPercent get_holding_current_percent() const { return config_.holding_current_percent; }
 
   /**
    * @brief Get EN pin active mode
@@ -400,14 +583,14 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
    *
    * Used by StepperEngine for motor setup.
    */
-  bool get_auto_screen_off() const { return config_.auto_screen_off; }
+  ScreenMode get_auto_screen_off() const { return config_.screen_mode; }
 
   /**
    * @brief Get lock keys at startup setting
    *
    * Used by StepperEngine for motor setup.
    */
-  bool get_lock_keys_at_startup() const { return config_.key_lock; }
+  KeypadLock get_lock_keys_at_startup() const { return config_.keypad_lock; }
 
   /**
    * @brief Get homing configuration
@@ -527,16 +710,10 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
   void set_address(uint8_t addr) { this->address_ = addr; }
   void set_servo_type(ServoType type [[maybe_unused]]) { /* Store servo type */ }
   void set_working_current(uint16_t ma) { config_.working_current_ma = ma; }
-  void set_holding_current_percent(uint8_t percent) {
-    if (percent > 100) {
-      ESP_LOGE("servoxxd_modbus", "Invalid holding current percent: %u (must be 0-100)", percent);
-      return;
-    }
-    config_.holding_current_percent = percent;
-  }
+  void set_holding_current_percent(HoldingCurrentPercent percent) { config_.holding_current_percent = percent; }
   void set_en_pin_active(EnPinActive value) { config_.en_pin_active = value; }
-  void set_auto_screen_off(bool enable) { config_.auto_screen_off = enable; }
-  void set_lock_keys_at_startup(bool lock) { config_.key_lock = lock; }
+  void set_auto_screen_off(ScreenMode mode) { config_.screen_mode = mode; }
+  void set_lock_keys_at_startup(KeypadLock lock) { config_.keypad_lock = lock; }
   void set_mode(OperatingMode mode) { operating_mode_ = mode; }
   void set_sleep_when_done(uint32_t ms [[maybe_unused]]) { /* Store sleep delay */ }
 

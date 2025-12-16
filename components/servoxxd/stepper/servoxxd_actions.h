@@ -474,11 +474,11 @@ namespace esphome
     public:
       explicit SetHoldingCurrentPercentAction(ServoXxd *parent) : parent_(parent) {}
 
-      TEMPLATABLE_VALUE(uint8_t, percent)
+      TEMPLATABLE_VALUE(HoldingCurrentPercent, percent)
 
       void play(Ts... x) override
       {
-        uint8_t percent = this->percent_.value(x...);
+        HoldingCurrentPercent percent = this->percent_.value(x...);
         parent_->set_holding_current_percent(percent);
       }
 

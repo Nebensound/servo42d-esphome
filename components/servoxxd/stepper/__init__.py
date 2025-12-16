@@ -98,6 +98,18 @@ POSITION_UNITS = {
     "ARCSECONDS": PositionUnit.ARCSECONDS,
 }
 
+ScreenMode = servoxxd_ns.enum("ScreenMode", is_class=True)
+SCREEN_MODES = {
+    "ALWAYS_ON": ScreenMode.ALWAYS_ON,
+    "AUTO_OFF": ScreenMode.AUTO_OFF,
+}
+
+KeypadLock = servoxxd_ns.enum("KeypadLock", is_class=True)
+KEYPAD_LOCK_VALUES = {
+    "UNLOCKED": KeypadLock.UNLOCKED,
+    "LOCKED": KeypadLock.LOCKED,
+}
+
 ZeroingSpeed = servoxxd_ns.enum("ZeroingSpeed", is_class=True)
 ZEROING_SPEEDS = {
     "VERY_SLOW": ZeroingSpeed.VERY_SLOW,
@@ -143,6 +155,9 @@ SERVO_TYPES = {
 
 ControlMode = servoxxd_ns.enum("ControlMode", is_class=True)
 CONTROL_MODES = {
+    "CR_OPEN": ControlMode.CR_OPEN,
+    "CR_CLOSE": ControlMode.CR_CLOSE,
+    "CR_VFOC": ControlMode.CR_VFOC,
     "SR_OPEN": ControlMode.SR_OPEN,
     "SR_CLOSE": ControlMode.SR_CLOSE,
     "SR_VFOC": ControlMode.SR_VFOC,
@@ -153,6 +168,19 @@ EN_PIN_ACTIVE_VALUES = {
     "LOW": EnPinActive.EN_LOW,
     "HIGH": EnPinActive.EN_HIGH,
     "ALWAYS": EnPinActive.EN_ALWAYS,
+}
+
+HoldingCurrentPercent = servoxxd_ns.enum("HoldingCurrentPercent", is_class=True)
+HOLDING_CURRENT_PERCENT_VALUES = {
+    10: HoldingCurrentPercent.PERCENT_10,
+    20: HoldingCurrentPercent.PERCENT_20,
+    30: HoldingCurrentPercent.PERCENT_30,
+    40: HoldingCurrentPercent.PERCENT_40,
+    50: HoldingCurrentPercent.PERCENT_50,
+    60: HoldingCurrentPercent.PERCENT_60,
+    70: HoldingCurrentPercent.PERCENT_70,
+    80: HoldingCurrentPercent.PERCENT_80,
+    90: HoldingCurrentPercent.PERCENT_90,
 }
 
 OperatingMode = servoxxd_ns.enum("OperatingMode", is_class=True)
@@ -713,8 +741,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_EN_PIN_ACTIVE, default="LOW"): cv.enum(
                 EN_PIN_ACTIVE_VALUES, upper=True
             ),
-            cv.Optional(CONF_AUTO_SCREEN_OFF, default=True): cv.boolean,
-            cv.Optional(CONF_LOCK_KEYS_AT_STARTUP, default=False): cv.boolean,
+            cv.Optional(CONF_AUTO_SCREEN_OFF, default="AUTO_OFF"): cv.enum(SCREEN_MODES, upper=True),
+            cv.Optional(CONF_LOCK_KEYS_AT_STARTUP, default="UNLOCKED"): cv.enum(KEYPAD_LOCK_VALUES, upper=True),
             # Operating mode
             cv.Optional(CONF_MODE, default="POSITION"): cv.enum(
                 OPERATING_MODES, upper=True
@@ -867,9 +895,13 @@ async def to_code(config):
 
     # Set motor configuration
     cg.add(var.set_working_current(config[CONF_WORKING_CURRENT]))
-    # cv.percentage returns float 0.0-1.0, convert to uint8_t 0-100
-    holding_percent_int = int(config[CONF_HOLDING_CURRENT_PERCENT] * 100)
-    cg.add(var.set_holding_current_percent(holding_percent_int))
+    # cv.percentage returns float 0.0-1.0, map to enum (10%-90% in 10% steps)
+    holding_percent_float = config[CONF_HOLDING_CURRENT_PERCENT]
+    holding_percent_int = int(round(holding_percent_float * 100))
+    # Round to nearest 10% and clamp to 10-90 range
+    holding_percent_int = max(10, min(90, (holding_percent_int + 5) // 10 * 10))
+    holding_enum = HOLDING_CURRENT_PERCENT_VALUES[holding_percent_int]
+    cg.add(var.set_holding_current_percent(holding_enum))
     cg.add(var.set_en_pin_active(config[CONF_EN_PIN_ACTIVE]))
     cg.add(var.set_auto_screen_off(config[CONF_AUTO_SCREEN_OFF]))
     cg.add(var.set_lock_keys_at_startup(config[CONF_LOCK_KEYS_AT_STARTUP]))
@@ -1313,9 +1345,28 @@ async def stepper_set_holding_current_percent_to_code(
     """Change holding current percentage at runtime."""
     parent = await cg.get_variable(config[CONF_ID])
     var = cg.new_Pvariable(action_id, template_arg, parent)
-    # Convert percentage (0.0-1.0) to 0-100
-    template_ = await cg.templatable(config[CONF_PERCENT], args, cg.float_)
-    cg.add(var.set_percent(template_))
+    # Convert percentage (0.0-1.0) to enum value (10%-90% in 10% steps)
+    # For non-templatable values, convert directly
+    if cg.is_template(config[CONF_PERCENT]):
+        # For templates, we need to generate code that rounds to nearest 10%
+        # This is complex, so for now we just pass the raw template and handle in C++
+        template_ = await cg.templatable(config[CONF_PERCENT], args, cg.float_)
+        # Generate lambda that converts float to enum
+        cg.add(var.set_percent(cg.RawExpression(
+            f"[](float p) {{ "
+            f"uint8_t percent_int = static_cast<uint8_t>(std::round(p * 100.0f)); "
+            f"percent_int = std::max(10, std::min(90, (percent_int + 5) / 10 * 10)); "
+            f"return static_cast<HoldingCurrentPercent>((percent_int - 10) / 10); "
+            f"}}({template_})"
+        )))
+    else:
+        # For static values, convert at compile time
+        holding_percent_float = config[CONF_PERCENT]
+        holding_percent_int = int(round(holding_percent_float * 100))
+        # Round to nearest 10% and clamp to 10-90 range
+        holding_percent_int = max(10, min(90, (holding_percent_int + 5) // 10 * 10))
+        holding_enum = HOLDING_CURRENT_PERCENT_VALUES[holding_percent_int]
+        cg.add(var.set_percent(holding_enum))
     return var
 
 

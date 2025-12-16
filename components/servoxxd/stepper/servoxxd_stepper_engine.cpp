@@ -147,40 +147,28 @@ void StepperEngine::setup_motor() {
       // Decode and log individual configuration values
       auto config = CommandDecoder::read_all_config(cmd);
 
-      // Define common string arrays for configuration value names
-      static const char *mode_names[] = {"CR_OPEN", "CR_CLOSE", "CR_vFOC", "SR_OPEN", "SR_CLOSE", "SR_vFOC"};
-      static constexpr size_t mode_names_count = sizeof(mode_names) / sizeof(mode_names[0]);
-      static const char *en_pin_names[] = {"LOW", "HIGH", "ALWAYS"};
-      static constexpr size_t en_pin_names_count = sizeof(en_pin_names) / sizeof(en_pin_names[0]);
-
       // Log control settings
-      uint8_t mode_idx = static_cast<uint8_t>(config.mode);
-      ESP_LOGD(TAG_ENGINE, "  Control mode: %s", (mode_idx < mode_names_count) ? mode_names[mode_idx] : "UNKNOWN");
+      ESP_LOGD(TAG_ENGINE, "  Control mode: %s", control_mode_to_string(config.mode));
       ESP_LOGD(TAG_ENGINE, "  Working current: %u mA", config.working_current_ma);
-      ESP_LOGD(TAG_ENGINE, "  Holding current: %u%%", config.holding_current_percent);
+      ESP_LOGD(TAG_ENGINE, "  Holding current: %s", holding_current_percent_to_string(config.holding_current_percent));
       ESP_LOGD(TAG_ENGINE, "  Microstepping: 1/%u", config.subdivision);
 
       // Log pin settings
-      uint8_t en_pin_idx = static_cast<uint8_t>(config.en_pin_active);
-      ESP_LOGD(TAG_ENGINE, "  EN pin active: %s",
-               (en_pin_idx < en_pin_names_count) ? en_pin_names[en_pin_idx] : "UNKNOWN");
-      ESP_LOGD(TAG_ENGINE, "  Shaft reversed: %s", config.shaft_reversed ? "yes" : "no");
+      ESP_LOGD(TAG_ENGINE, "  EN pin active: %s", en_pin_active_to_string(config.en_pin_active));
+      ESP_LOGD(TAG_ENGINE, "  Shaft direction: %s", direction_to_string(config.shaft_direction));
 
       // Log display and protection
-      ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s", config.auto_screen_off ? "enabled" : "disabled");
-      ESP_LOGD(TAG_ENGINE, "  Protection: 0x%02X", config.protect_enable);
-      ESP_LOGD(TAG_ENGINE, "  Keys: %s", config.key_lock ? "locked" : "unlocked");
-
-      // Log communication settings
-      ESP_LOGD(TAG_ENGINE, "  MODBUS: %s", config.modbus_enable ? "enabled" : "disabled");
+      ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s", screen_mode_to_string(config.screen_mode));
+      ESP_LOGD(TAG_ENGINE, "  Protection: %s", protection_mode_to_string(config.protection));
+      ESP_LOGD(TAG_ENGINE, "  Keys: %s", keypad_lock_to_string(config.keypad_lock));
 
       // Log homing settings
       ESP_LOGD(TAG_ENGINE, "  Homing trigger: %s",
                (config.homing_trigger == EndstopTrigger::TRIGGER_LOW) ? "LOW" : "HIGH");
-      ESP_LOGD(TAG_ENGINE, "  Homing direction: %s", (config.homing_direction == Direction::CW) ? "CW" : "CCW");
-      ESP_LOGD(TAG_ENGINE, "  Homing speed: %u RPM", config.homing_speed_rpm);
-      ESP_LOGD(TAG_ENGINE, "  Endlimit: %s", config.endlimit_enable ? "enabled" : "disabled");
-      ESP_LOGD(TAG_ENGINE, "  Sensorless mode: %s", config.nolimit_mode ? "enabled" : "disabled");
+      ESP_LOGD(TAG_ENGINE, "  Homing direction: %s", direction_to_string(config.homing_direction));
+      ESP_LOGD(TAG_ENGINE, "  Homing speed: %.1f RPM", config.homing_speed.rpm());
+      ESP_LOGD(TAG_ENGINE, "  Endlimit: %s", endstop_limit_to_string(config.endstop_limit));
+      ESP_LOGD(TAG_ENGINE, "  Homing limit mode: %s", homing_limit_mode_to_string(config.homing_limit_mode));
       ESP_LOGD(TAG_ENGINE, "  Sensorless current: %u mA", config.nolimit_current_ma);
 
       // Log zero mode settings
@@ -204,6 +192,64 @@ void StepperEngine::setup_motor() {
         // Process each command type in the optimal order (already sorted by get_update_command_types)
         for (const auto &cmd_type : update_commands) {
           switch (cmd_type) {
+            case Commandtype::SET_WORK_MODE: {
+              ESP_LOGD(TAG_ENGINE, "  Control mode: %s → %s", control_mode_to_string(config.mode),
+                       control_mode_to_string(desired_config.mode));
+
+              const char *mode_string = control_mode_to_string(desired_config.mode);
+
+              queue_->enqueue(CommandFactory::set_control_mode(desired_config.mode),
+                              [mode_string, this](bool success, const Command &) {
+                                if (success) {
+                                  ESP_LOGD(TAG_ENGINE, "✓ Control mode updated to %s", mode_string);
+                                } else {
+                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update control mode");
+                                  transition_to(State::Error);
+                                  parent_->mark_failed();
+                                }
+                              });
+              break;
+            }
+
+            case Commandtype::SET_HOLDING_CURRENT_PERCENT: {
+              ESP_LOGD(TAG_ENGINE, "  Holding current: %s → %s",
+                       holding_current_percent_to_string(config.holding_current_percent),
+                       holding_current_percent_to_string(desired_config.holding_current_percent));
+
+              const char *holding_percent_string =
+                  holding_current_percent_to_string(desired_config.holding_current_percent);
+
+              queue_->enqueue(CommandFactory::set_holding_current_percent(desired_config.holding_current_percent),
+                              [holding_percent_string, this](bool success, const Command &) {
+                                if (success) {
+                                  ESP_LOGD(TAG_ENGINE, "✓ Holding current updated to %s", holding_percent_string);
+                                } else {
+                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update holding current");
+                                  transition_to(State::Error);
+                                  parent_->mark_failed();
+                                }
+                              });
+              break;
+            }
+
+            case Commandtype::SET_WORKING_CURRENT_RUNTIME: {
+              ESP_LOGD(TAG_ENGINE, "  Working current: %u mA → %u mA", config.working_current_ma,
+                       desired_config.working_current_ma);
+
+              queue_->enqueue(
+                  CommandFactory::set_working_current(desired_config.working_current_ma),
+                  [desired_current_ma = desired_config.working_current_ma, this](bool success, const Command &) {
+                    if (success) {
+                      ESP_LOGD(TAG_ENGINE, "✓ Working current updated to %u mA", desired_current_ma);
+                    } else {
+                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update working current");
+                      transition_to(State::Error);
+                      parent_->mark_failed();
+                    }
+                  });
+              break;
+            }
+
             case Commandtype::SET_SUBDIVISION: {
               uint8_t desired_microstepping = desired_config.subdivision;
               ESP_LOGD(TAG_ENGINE, "  Microstepping: %u → %u", config.subdivision, desired_microstepping);
@@ -220,33 +266,28 @@ void StepperEngine::setup_motor() {
 
             case Commandtype::SET_EN_PIN_ACTIVE: {
               EnPinActive desired_en_pin = desired_config.en_pin_active;
-              uint8_t current_en_idx = static_cast<uint8_t>(config.en_pin_active);
-              uint8_t desired_en_idx = static_cast<uint8_t>(desired_en_pin);
-              ESP_LOGD(TAG_ENGINE, "  EN pin active: %s → %s",
-                       (current_en_idx < en_pin_names_count) ? en_pin_names[current_en_idx] : "UNKNOWN",
-                       (desired_en_idx < en_pin_names_count) ? en_pin_names[desired_en_idx] : "UNKNOWN");
-              queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin),
-                              [desired_en_pin](bool success, const Command &) {
-                                if (success) {
-                                  uint8_t idx = static_cast<uint8_t>(desired_en_pin);
-                                  ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s",
-                                           (idx < en_pin_names_count) ? en_pin_names[idx] : "UNKNOWN");
-                                } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update EN pin active level");
-                                }
-                              });
+              ESP_LOGD(TAG_ENGINE, "  EN pin active: %s → %s", en_pin_active_to_string(config.en_pin_active),
+                       en_pin_active_to_string(desired_en_pin));
+              queue_->enqueue(
+                  CommandFactory::set_en_pin_active(desired_en_pin), [desired_en_pin](bool success, const Command &) {
+                    if (success) {
+                      ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", en_pin_active_to_string(desired_en_pin));
+                    } else {
+                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update EN pin active level");
+                    }
+                  });
               break;
             }
 
             case Commandtype::SET_AUTO_SCREEN_OFF: {
-              bool desired_auto_screen_off = desired_config.auto_screen_off;
-              ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s → %s", config.auto_screen_off ? "enabled" : "disabled",
-                       desired_auto_screen_off ? "enabled" : "disabled");
-              queue_->enqueue(CommandFactory::set_auto_screen_off(desired_auto_screen_off),
-                              [desired_auto_screen_off](bool success, const Command &) {
+              ScreenMode desired_screen_mode = desired_config.screen_mode;
+              ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s → %s", screen_mode_to_string(config.screen_mode),
+                       screen_mode_to_string(desired_screen_mode));
+              queue_->enqueue(CommandFactory::set_auto_screen_off(desired_screen_mode),
+                              [desired_screen_mode](bool success, const Command &) {
                                 if (success) {
                                   ESP_LOGD(TAG_ENGINE, "✓ Auto screen off updated to %s",
-                                           desired_auto_screen_off ? "enabled" : "disabled");
+                                           screen_mode_to_string(desired_screen_mode));
                                 } else {
                                   ESP_LOGW(TAG_ENGINE, "✗ Failed to update auto screen off");
                                 }
@@ -255,13 +296,13 @@ void StepperEngine::setup_motor() {
             }
 
             case Commandtype::SET_LOCK_KEYS: {
-              bool desired_lock_keys = desired_config.key_lock;
-              ESP_LOGD(TAG_ENGINE, "  Key lock: %s → %s", config.key_lock ? "locked" : "unlocked",
-                       desired_lock_keys ? "locked" : "unlocked");
+              KeypadLock desired_keypad_lock = desired_config.keypad_lock;
+              ESP_LOGD(TAG_ENGINE, "  Key lock: %s → %s", keypad_lock_to_string(config.keypad_lock),
+                       keypad_lock_to_string(desired_keypad_lock));
               queue_->enqueue(
-                  CommandFactory::set_lock_keys(desired_lock_keys), [desired_lock_keys](bool success, const Command &) {
+                  CommandFactory::set_lock_keys(desired_keypad_lock), [desired_keypad_lock](bool success, const Command &) {
                     if (success) {
-                      ESP_LOGD(TAG_ENGINE, "✓ Keys updated to %s", desired_lock_keys ? "locked" : "unlocked");
+                      ESP_LOGD(TAG_ENGINE, "✓ Keys updated to %s", keypad_lock_to_string(desired_keypad_lock));
                     } else {
                       ESP_LOGW(TAG_ENGINE, "✗ Failed to update key lock");
                     }
@@ -278,42 +319,6 @@ void StepperEngine::setup_motor() {
                   ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
                 }
               });
-              break;
-            }
-
-            case Commandtype::SET_WORK_MODE: {
-              ControlMode desired_mode = desired_config.mode;
-              uint8_t current_mode_idx = static_cast<uint8_t>(config.mode);
-              uint8_t desired_mode_idx = static_cast<uint8_t>(desired_mode);
-              ESP_LOGD(TAG_ENGINE, "  Control mode: %s → %s",
-                       (current_mode_idx < mode_names_count) ? mode_names[current_mode_idx] : "UNKNOWN",
-                       (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN");
-
-              const char *mode_name = (desired_mode_idx < mode_names_count) ? mode_names[desired_mode_idx] : "UNKNOWN";
-
-              queue_->enqueue(CommandFactory::set_control_mode(desired_mode),
-                              [mode_name](bool success, const Command &) {
-                                if (success) {
-                                  ESP_LOGD(TAG_ENGINE, "✓ Control mode updated to %s", mode_name);
-                                } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update control mode");
-                                }
-                              });
-              break;
-            }
-
-            case Commandtype::SET_HOLDING_CURRENT_PERCENT: {
-              uint8_t desired_holding_percent = desired_config.holding_current_percent;
-              ESP_LOGD(TAG_ENGINE, "  Holding current: %u%% → %u%%", config.holding_current_percent,
-                       desired_holding_percent);
-              queue_->enqueue(CommandFactory::set_holding_current_percent(desired_holding_percent),
-                              [desired_holding_percent](bool success, const Command &) {
-                                if (success) {
-                                  ESP_LOGD(TAG_ENGINE, "✓ Holding current updated to %u%%", desired_holding_percent);
-                                } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update holding current");
-                                }
-                              });
               break;
             }
 
@@ -942,14 +947,14 @@ void StepperEngine::key_lock() {
   ESP_LOGD(TAG_ENGINE, "key_lock(): Locking physical keys");
 
   // Send key lock command via queue (Commandtype 0x8F SET_LOCK_KEYS)
-  queue_->enqueue(CommandFactory::set_lock_keys(true), nullptr);
+  queue_->enqueue(CommandFactory::set_lock_keys(KeypadLock::LOCKED), nullptr);
 }
 
 void StepperEngine::key_unlock() {
   ESP_LOGD(TAG_ENGINE, "key_unlock(): Unlocking physical keys");
 
   // Send key unlock command via queue (Commandtype 0x8F SET_LOCK_KEYS)
-  queue_->enqueue(CommandFactory::set_lock_keys(false), nullptr);
+  queue_->enqueue(CommandFactory::set_lock_keys(KeypadLock::UNLOCKED), nullptr);
 }
 
 void StepperEngine::set_zero() {
