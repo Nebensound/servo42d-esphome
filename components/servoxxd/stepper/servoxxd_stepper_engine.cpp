@@ -226,7 +226,7 @@ void StepperEngine::setup_motor() {
                        (current_en_idx < en_pin_names_count) ? en_pin_names[current_en_idx] : "UNKNOWN",
                        (desired_en_idx < en_pin_names_count) ? en_pin_names[desired_en_idx] : "UNKNOWN");
               queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin),
-                              [desired_en_pin, en_pin_names, en_pin_names_count](bool success, const Command &) {
+                              [desired_en_pin](bool success, const Command &) {
                                 if (success) {
                                   uint8_t idx = static_cast<uint8_t>(desired_en_pin);
                                   ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s",
