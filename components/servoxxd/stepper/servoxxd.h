@@ -300,7 +300,7 @@ struct ConfigData {
   uint16_t working_current_ma{2000};                                ///< Working current in mA (default: 2000 mA)
   uint8_t subdivision{16};                                          ///< Microstepping subdivisions 1-256 (default: 16)
   EnPinActive en_pin_active{EnPinActive::EN_LOW};                   ///< EN pin active level (default: active LOW)
-  Direction shaft_direction{Direction::CW};                         ///< Motor shaft rotation direction (default: CW)
+  Direction direction{Direction::CW};                               ///< Motor shaft rotation direction (default: CW)
   ScreenMode screen_mode{ScreenMode::AUTO_OFF};                     ///< Screen power mode (default: auto off)
   ProtectionMode protection{ProtectionMode::PROTECTION_OFF};        ///< Stall protection mode (default: disabled)
   InterpolationMode interpolation{InterpolationMode::INTERP_256X};  ///< Microstepping interpolation (default: 256x)

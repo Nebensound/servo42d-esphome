@@ -549,7 +549,7 @@ class CommandDecoder {
 
     // REG5: En + Dir (2 bytes)
     config.en_pin_active = static_cast<EnPinActive>(data[idx++]);
-    config.shaft_direction = static_cast<Direction>(data[idx++]);
+    config.direction = static_cast<Direction>(data[idx++]);
 
     // REG6: AutoSDD + Protect (2 bytes)
     config.screen_mode = screen_mode_from_bool(data[idx++] != 0);

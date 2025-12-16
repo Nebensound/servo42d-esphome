@@ -155,7 +155,7 @@ void StepperEngine::setup_motor() {
 
       // Log pin settings
       ESP_LOGD(TAG_ENGINE, "  EN pin active: %s", en_pin_active_to_string(config.en_pin_active));
-      ESP_LOGD(TAG_ENGINE, "  Shaft direction: %s", direction_to_string(config.shaft_direction));
+      ESP_LOGD(TAG_ENGINE, "  Shaft direction: %s", direction_to_string(config.direction));
 
       // Log display and protection
       ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s", screen_mode_to_string(config.screen_mode));
@@ -196,12 +196,13 @@ void StepperEngine::setup_motor() {
               ESP_LOGD(TAG_ENGINE, "  Control mode: %s → %s", control_mode_to_string(config.mode),
                        control_mode_to_string(desired_config.mode));
 
-              const char *mode_string = control_mode_to_string(desired_config.mode);
+              ControlMode desired_mode = desired_config.mode;
 
               queue_->enqueue(CommandFactory::set_control_mode(desired_config.mode),
-                              [mode_string, this](bool success, const Command &) {
+                              [desired_mode, this](bool success, const Command &) {
                                 if (success) {
-                                  ESP_LOGD(TAG_ENGINE, "✓ Control mode updated to %s", mode_string);
+                                  ESP_LOGD(TAG_ENGINE, "✓ Control mode updated to %s",
+                                           control_mode_to_string(desired_mode));
                                 } else {
                                   ESP_LOGW(TAG_ENGINE, "✗ Failed to update control mode");
                                   transition_to(State::Error);
@@ -216,13 +217,13 @@ void StepperEngine::setup_motor() {
                        holding_current_percent_to_string(config.holding_current_percent),
                        holding_current_percent_to_string(desired_config.holding_current_percent));
 
-              const char *holding_percent_string =
-                  holding_current_percent_to_string(desired_config.holding_current_percent);
+              HoldingCurrentPercent desired_holding_current = desired_config.holding_current_percent;
 
-              queue_->enqueue(CommandFactory::set_holding_current_percent(desired_config.holding_current_percent),
-                              [holding_percent_string, this](bool success, const Command &) {
+              queue_->enqueue(CommandFactory::set_holding_current_percent(desired_holding_current),
+                              [desired_holding_current, this](bool success, const Command &) {
                                 if (success) {
-                                  ESP_LOGD(TAG_ENGINE, "✓ Holding current updated to %s", holding_percent_string);
+                                  ESP_LOGD(TAG_ENGINE, "✓ Holding current updated to %s",
+                                           holding_current_percent_to_string(desired_holding_current));
                                 } else {
                                   ESP_LOGW(TAG_ENGINE, "✗ Failed to update holding current");
                                   transition_to(State::Error);
@@ -236,99 +237,182 @@ void StepperEngine::setup_motor() {
               ESP_LOGD(TAG_ENGINE, "  Working current: %u mA → %u mA", config.working_current_ma,
                        desired_config.working_current_ma);
 
-              queue_->enqueue(
-                  CommandFactory::set_working_current(desired_config.working_current_ma),
-                  [desired_current_ma = desired_config.working_current_ma, this](bool success, const Command &) {
-                    if (success) {
-                      ESP_LOGD(TAG_ENGINE, "✓ Working current updated to %u mA", desired_current_ma);
-                    } else {
-                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update working current");
-                      transition_to(State::Error);
-                      parent_->mark_failed();
-                    }
-                  });
+              uint16_t desired_current_ma = desired_config.working_current_ma;
+
+              queue_->enqueue(CommandFactory::set_working_current(desired_current_ma),
+                              [desired_current_ma, this](bool success, const Command &) {
+                                if (success) {
+                                  ESP_LOGD(TAG_ENGINE, "✓ Working current updated to %u mA", desired_current_ma);
+                                } else {
+                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update working current");
+                                  transition_to(State::Error);
+                                  parent_->mark_failed();
+                                }
+                              });
               break;
             }
 
             case Commandtype::SET_SUBDIVISION: {
+              ESP_LOGD(TAG_ENGINE, "  Microstepping: %u → %u", config.subdivision, desired_config.subdivision);
+
               uint8_t desired_microstepping = desired_config.subdivision;
-              ESP_LOGD(TAG_ENGINE, "  Microstepping: %u → %u", config.subdivision, desired_microstepping);
+
               queue_->enqueue(CommandFactory::set_subdivision(desired_microstepping),
-                              [desired_microstepping](bool success, const Command &) {
+                              [desired_microstepping, this](bool success, const Command &) {
                                 if (success) {
                                   ESP_LOGD(TAG_ENGINE, "✓ Microstepping updated to %u", desired_microstepping);
                                 } else {
                                   ESP_LOGW(TAG_ENGINE, "✗ Failed to update microstepping");
+                                  transition_to(State::Error);
+                                  parent_->mark_failed();
                                 }
                               });
               break;
             }
 
             case Commandtype::SET_EN_PIN_ACTIVE: {
-              EnPinActive desired_en_pin = desired_config.en_pin_active;
               ESP_LOGD(TAG_ENGINE, "  EN pin active: %s → %s", en_pin_active_to_string(config.en_pin_active),
-                       en_pin_active_to_string(desired_en_pin));
-              queue_->enqueue(
-                  CommandFactory::set_en_pin_active(desired_en_pin), [desired_en_pin](bool success, const Command &) {
-                    if (success) {
-                      ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", en_pin_active_to_string(desired_en_pin));
-                    } else {
-                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update EN pin active level");
-                    }
-                  });
-              break;
-            }
+                       en_pin_active_to_string(desired_config.en_pin_active));
 
-            case Commandtype::SET_AUTO_SCREEN_OFF: {
-              ScreenMode desired_screen_mode = desired_config.screen_mode;
-              ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s → %s", screen_mode_to_string(config.screen_mode),
-                       screen_mode_to_string(desired_screen_mode));
-              queue_->enqueue(CommandFactory::set_auto_screen_off(desired_screen_mode),
-                              [desired_screen_mode](bool success, const Command &) {
-                                if (success) {
-                                  ESP_LOGD(TAG_ENGINE, "✓ Auto screen off updated to %s",
-                                           screen_mode_to_string(desired_screen_mode));
-                                } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update auto screen off");
-                                }
-                              });
-              break;
-            }
+              EnPinActive desired_en_pin = desired_config.en_pin_active;
 
-            case Commandtype::SET_LOCK_KEYS: {
-              KeypadLock desired_keypad_lock = desired_config.keypad_lock;
-              ESP_LOGD(TAG_ENGINE, "  Key lock: %s → %s", keypad_lock_to_string(config.keypad_lock),
-                       keypad_lock_to_string(desired_keypad_lock));
-              queue_->enqueue(
-                  CommandFactory::set_lock_keys(desired_keypad_lock), [desired_keypad_lock](bool success, const Command &) {
-                    if (success) {
-                      ESP_LOGD(TAG_ENGINE, "✓ Keys updated to %s", keypad_lock_to_string(desired_keypad_lock));
-                    } else {
-                      ESP_LOGW(TAG_ENGINE, "✗ Failed to update key lock");
-                    }
-                  });
-              break;
-            }
-
-            case Commandtype::SET_EN_TRIGGER_CONFIG: {
-              ESP_LOGD(TAG_ENGINE, "  Setting EN trigger config to safe defaults (always set)");
-              queue_->enqueue(CommandFactory::set_en_trigger_config(), [](bool success, const Command &) {
+              queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin), [desired_en_pin, this](
+                                                                                     bool success, const Command &) {
                 if (success) {
-                  ESP_LOGD(TAG_ENGINE, "✓ EN trigger config set to safe defaults");
+                  ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", en_pin_active_to_string(desired_en_pin));
                 } else {
-                  ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
+                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update EN pin active level");
+                  transition_to(State::Error);
+                  parent_->mark_failed();
                 }
               });
               break;
             }
 
-            case Commandtype::SET_HOMING_PARAMETERS:
-            case Commandtype::SET_NOLIMIT_HOMING_PARAMS:
-            case Commandtype::SET_ZERO_MODE:
+            case Commandtype::SET_DIR_MOTOR_ROTATION: {
+              ESP_LOGD(TAG_ENGINE, "  Direction: %s → %s", direction_to_string(config.direction),
+                       direction_to_string(desired_config.direction));
+
+              Direction desired_direction = desired_config.direction;
+
+              queue_->enqueue(CommandFactory::set_dir_motor_rotation(desired_direction),
+                              [desired_direction, this](bool success, const Command &) {
+                                if (success) {
+                                  ESP_LOGD(TAG_ENGINE, "✓ Direction updated to %s",
+                                           direction_to_string(desired_direction));
+                                } else {
+                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update direction");
+                                  transition_to(State::Error);
+                                  parent_->mark_failed();
+                                }
+                              });
+              break;
+            }
+
+            case Commandtype::SET_AUTO_SCREEN_OFF: {
+              ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s → %s", screen_mode_to_string(config.screen_mode),
+                       screen_mode_to_string(desired_config.screen_mode));
+
+              ScreenMode desired_screen_mode = desired_config.screen_mode;
+
+              queue_->enqueue(CommandFactory::set_auto_screen_off(desired_screen_mode),
+                              [desired_screen_mode, this](bool success, const Command &) {
+                                if (success) {
+                                  ESP_LOGD(TAG_ENGINE, "✓ Auto screen off updated to %s",
+                                           screen_mode_to_string(desired_screen_mode));
+                                } else {
+                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update auto screen off");
+                                  transition_to(State::Error);
+                                  parent_->mark_failed();
+                                }
+                              });
+              break;
+            }
+
+            case Commandtype::SET_PROTECT_ENABLE: {
+              ESP_LOGD(TAG_ENGINE, "  Protection mode: %s → %s", protection_mode_to_string(config.protection),
+                       protection_mode_to_string(desired_config.protection));
+
+              ProtectionMode desired_protection = desired_config.protection;
+
+              queue_->enqueue(CommandFactory::set_protect_enable(protection_mode_to_bool(desired_protection)),
+                              [desired_protection, this](bool success, const Command &) {
+                                if (success) {
+                                  ESP_LOGD(TAG_ENGINE, "✓ Protection mode updated to %s",
+                                           protection_mode_to_string(desired_protection));
+                                } else {
+                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update protection mode");
+                                  transition_to(State::Error);
+                                  parent_->mark_failed();
+                                }
+                              });
+              break;
+            }
+
+              // TODO: Interpolation mode (not currently in switch - would be here if needed)
+
+            case Commandtype::SET_LOCK_KEYS: {
+              ESP_LOGD(TAG_ENGINE, "  Key lock: %s → %s", keypad_lock_to_string(config.keypad_lock),
+                       keypad_lock_to_string(desired_config.keypad_lock));
+
+              KeypadLock desired_keypad_lock = desired_config.keypad_lock;
+
+              queue_->enqueue(CommandFactory::set_lock_keys(desired_keypad_lock), [desired_keypad_lock, this](
+                                                                                      bool success, const Command &) {
+                if (success) {
+                  ESP_LOGD(TAG_ENGINE, "✓ Keys updated to %s", keypad_lock_to_string(desired_keypad_lock));
+                } else {
+                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update key lock");
+                  transition_to(State::Error);
+                  parent_->mark_failed();
+                }
+              });
+              break;
+            }
+
+            case Commandtype::SET_HOMING_PARAMETERS: {
+              // TODO: Implement handler for homing parameters
+              ESP_LOGW(TAG_ENGINE, "  SET_HOMING_PARAMETERS not yet implemented");
+              break;
+            }
+
+              // TODO: Endstop limit (not currently in switch - would be here if needed)
+
+            case Commandtype::SET_NOLIMIT_HOMING_PARAMS: {
+              // TODO: Implement handler for no-limit homing parameters
+              ESP_LOGW(TAG_ENGINE, "  SET_NOLIMIT_HOMING_PARAMS not yet implemented");
+              break;
+            }
+
+              // TODO: Homing limit mode (not currently in switch - would be here if needed)
+
+              // TODO: No-limit homing current (part of SET_NOLIMIT_HOMING_PARAMS)
+
             case Commandtype::SET_LIMIT_PORT_REMAP: {
-              // TODO: Implement handlers for these command types
-              ESP_LOGW(TAG_ENGINE, "  Command type 0x%04X not yet implemented in switch",
-                       static_cast<uint16_t>(cmd_type));
+              // TODO: Implement handler for limit port remapping
+              ESP_LOGW(TAG_ENGINE, "  SET_LIMIT_PORT_REMAP not yet implemented");
+              break;
+            }
+
+            case Commandtype::SET_ZERO_MODE: {
+              // TODO: Implement handler for zero mode
+              ESP_LOGW(TAG_ENGINE, "  SET_ZERO_MODE not yet implemented");
+              break;
+            }
+
+            // Special: EN trigger configuration (not part of ConfigData but always set)
+            case Commandtype::SET_EN_TRIGGER_CONFIG: {
+              ESP_LOGD(TAG_ENGINE, "  Setting EN trigger config to safe defaults (always set)");
+
+              queue_->enqueue(CommandFactory::set_en_trigger_config(), [this](bool success, const Command &) {
+                if (success) {
+                  ESP_LOGD(TAG_ENGINE, "✓ EN trigger config set to safe defaults");
+                } else {
+                  ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
+                  transition_to(State::Error);
+                  parent_->mark_failed();
+                }
+              });
               break;
             }
 
@@ -351,28 +435,6 @@ void StepperEngine::setup_motor() {
     }
   });
 
-  // 2. OPTIONAL: Clear any error/protection states first
-  // Only send if motor is actually in error state (motor will reject with 0xFFFF otherwise)
-  // Note: This is non-critical and failure is expected if motor is healthy
-  queue_->enqueue(CommandFactory::release_protection(), [](bool success, const Command &) {
-    if (success) {
-      ESP_LOGD(TAG_ENGINE, "✓ Protection state cleared");
-    } else {
-      ESP_LOGD(TAG_ENGINE, "  Release protection not needed (motor not in error state)");
-    }
-  });
-
-  // Note: Configuration update commands are now enqueued conditionally
-  // in the read_all_config() callback above (lines 137-342)
-  // Only values that differ from desired configuration are updated
-
-  // Note: SET_ZERO command is NOT called here during setup.
-  // Position zeroing should be done explicitly via set_zero() or during homing.
-  // Automatically resetting position during motor initialization could cause unexpected behavior.
-
-  // 10. Configure homing parameters (if homing is enabled)
-  // Homing parameters are static (set once at startup, not changed at runtime)
-  // Note: Actual homing execution happens via home() method
   auto &homing = parent_->homing_;
 
   switch (homing.mode) {

@@ -372,7 +372,7 @@ void ServoXxd::dump_config() {
   }
 
   // Motor behavior
-  ESP_LOGCONFIG(TAG, "  Shaft Direction: %s", direction_to_string(this->config_.shaft_direction));
+  ESP_LOGCONFIG(TAG, "  Direction: %s", direction_to_string(this->config_.direction));
   [[maybe_unused]] const char *en_modes[] = {"LOW", "HIGH", "ALWAYS"};
   ESP_LOGCONFIG(TAG, "  EN Pin Active: %s", en_modes[static_cast<uint8_t>(this->config_.en_pin_active)]);
   ESP_LOGCONFIG(TAG, "  Auto Screen Off: %s", screen_mode_to_string(this->config_.screen_mode));
@@ -515,7 +515,7 @@ std::vector<Commandtype> ConfigData::get_update_command_types(const ConfigData &
     changed_commands.push_back(Commandtype::SET_EN_PIN_ACTIVE);
   }
 
-  if (this->shaft_direction != desired.shaft_direction) {
+  if (this->direction != desired.direction) {
     changed_commands.push_back(Commandtype::SET_DIR_MOTOR_ROTATION);
   }
 
