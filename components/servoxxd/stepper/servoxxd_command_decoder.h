@@ -512,19 +512,21 @@ class CommandDecoder {
    * - REG18-19 (4B): 0_Mode [zero_mode][zero_task][zero_speed][zero_direction]
    *
    * @param cmd Command object with command_type=READ_ALL_CONFIG and response data
+   * @param parent Parent ServoXxd pointer (REQUIRED for Speed/Position initialization)
    * @return ConfigData struct with decoded configuration parameters
    */
-  static ConfigData read_all_config(const Command &cmd) {
-    ConfigData config{};
+  static ConfigData read_all_config(const Command &cmd, ServoXxd *parent) {
     if (!validate_command_type(cmd, Commandtype::READ_ALL_CONFIG))
-      return config;
+      return ConfigData(parent);
 
     const auto &data = cmd.response;
     if (data.size() < 38) {
       ESP_LOGW(TAG, "Invalid READ_ALL_CONFIG response size: %zu bytes (expected 38)", data.size());
-      return config;
+      return ConfigData(parent);
     }
 
+    // Create ConfigData with required parent pointer
+    ConfigData config(parent);
     size_t idx = 0;
 
     // REG1: Mode (2 bytes)

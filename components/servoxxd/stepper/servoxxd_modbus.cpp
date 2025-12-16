@@ -40,10 +40,16 @@ Result ModbusTransport::execute_command(const Command &cmd) {
     case 0x10: {
       const std::vector<uint8_t> &data = cmd.payload;
 
-      // Pad data if necessary (Modbus registers are 16-bit)
-      std::vector<uint8_t> padded(data.begin(), data.end());
-      if (padded.size() % 2 != 0)
-        padded.push_back(0x00);
+      // Pad data if necessary (Modbus registers are 16-bit, BIG-ENDIAN)
+      // For single-byte payloads: prepend 0x00 (not append) to maintain big-endian order
+      // Example: {16} → {0, 16} (0x0010) NOT {16, 0} (0x1000)
+      std::vector<uint8_t> padded;
+      if (data.size() % 2 != 0) {
+        padded.push_back(0x00);  // High byte first (big-endian)
+        padded.insert(padded.end(), data.begin(), data.end());
+      } else {
+        padded.assign(data.begin(), data.end());
+      }
 
       uint16_t register_count = padded.size() / 2;
 
@@ -194,12 +200,21 @@ void ModbusTransport::handle_response(const std::vector<uint8_t> &data) {
           return;
         }
 
-        // Send and received payload should match (for successful writes)
-        if (send_payload != data) {
-          ESP_LOGW(TAG, "Write response value mismatch for register 0x%04X (expected echo, got different value)",
-                   response_register);
-          ESP_LOGW(TAG, "  Sent: [%02X %02X %02X %02X], Received: [%02X %02X %02X %02X]", send_payload[0],
-                   send_payload[1], send_payload[2], send_payload[3], data[0], data[1], data[2], data[3]);
+        // Validate value bytes only (data[2:3] should match send_payload)
+        // Response format: [addr_hi][addr_lo][value_hi][value_lo]
+        if (send_payload.size() != 2) {
+          ESP_LOGW(TAG, "Invalid send_payload size for 0x06: %d bytes (expected 2)", send_payload.size());
+          state_ = State::IDLE;
+          if (error_callback_) {
+            error_callback_(pending_command_.value(), ErrorCode::PROTOCOL_ERROR);
+          }
+          return;
+        }
+
+        if (send_payload[0] != data[2] || send_payload[1] != data[3]) {
+          ESP_LOGW(TAG, "Write response value mismatch for register 0x%04X", response_register);
+          ESP_LOGW(TAG, "  Sent value: [%02X %02X], Received value: [%02X %02X]", send_payload[0], send_payload[1],
+                   data[2], data[3]);
           state_ = State::IDLE;
           if (error_callback_) {
             error_callback_(pending_command_.value(), ErrorCode::INVALID_RESPONSE);

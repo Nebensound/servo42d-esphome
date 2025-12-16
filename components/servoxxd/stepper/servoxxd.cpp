@@ -89,9 +89,9 @@ void ServoXxd::set_speed(const Speed &speed) {
   ESP_LOGD(TAG, "set_speed: %.2f RPM", speed.rpm());
 }
 
-void ServoXxd::set_microsteps(uint16_t microsteps) {
+void ServoXxd::set_microsteps(uint8_t microsteps) {
   // Validate microstepping value (1-256 per spec)
-  if (microsteps < 1 || microsteps > 256) {
+  if (microsteps < 1) {
     ESP_LOGE(TAG, "Invalid microsteps: %u (must be 1-256)", microsteps);
     return;
   }
@@ -159,13 +159,10 @@ void ServoXxd::set_target_pos(const Position &pos) {
 // Constructor / Destructor
 // ============================================================================
 
-ServoXxd::ServoXxd() {
-  // Set parent pointer for ConfigData
-  config_.parent = this;
-
-  // Initialize Speed/Position objects with parent pointer
-  config_.homing_speed = Speed(100.0f, SpeedUnit::RPM, this);  // Default 100 RPM
-  config_.nolimit_reverse_angle_ticks.parent_ = this;
+ServoXxd::ServoXxd() 
+  : config_(this) {  // ConfigData REQUIRES parent pointer - no defaults allowed
+  // config_.parent is now set via constructor
+  // Speed/Position objects (homing_speed, nolimit_reverse_angle_ticks) are initialized with parent via ConfigData constructor
 
   // Note: homing_ union will be initialized by Python setters from YAML configuration
   // Note: transport_ and engine_ are created in setup() after all setters have run

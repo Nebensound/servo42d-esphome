@@ -294,7 +294,16 @@ class ServoXxd;
  * Default values ensure consistent motor behavior after setup.
  */
 struct ConfigData {
-  ServoXxd *parent{nullptr};               ///< Parent pointer for Speed/Position object construction
+  ServoXxd *parent;  ///< Parent pointer for Speed/Position object construction (REQUIRED - no default)
+  
+  // TODO: Consider whether these fields should have defaults or be required constructor parameters:
+  // - working_current_ma: Motor-specific, varies by model (28D/35D/42D/57D)
+  // - subdivision: Application-specific, depends on required resolution
+  // - homing_trigger: Hardware-specific, depends on endstop wiring
+  // - homing_direction: Mechanical setup specific
+  // - homing_speed: Application-specific, depends on mechanical constraints
+  // For now keeping defaults for backwards compatibility and convenience
+  
   ControlMode mode{ControlMode::SR_VFOC};  ///< Control mode (default: SR_VFOC)
   HoldingCurrentPercent holding_current_percent{HoldingCurrentPercent::PERCENT_50};  ///< Holding current (default: 50%)
   uint16_t working_current_ma{2000};                                ///< Working current in mA (default: 2000 mA)
@@ -307,9 +316,9 @@ struct ConfigData {
   KeypadLock keypad_lock{KeypadLock::UNLOCKED};                     ///< Physical keypad lock (default: unlocked)
   EndstopTrigger homing_trigger{EndstopTrigger::TRIGGER_LOW};       ///< Homing endstop trigger level
   Direction homing_direction{Direction::CW};                        ///< Homing movement direction
-  Speed homing_speed{nullptr};                                      ///< Homing speed (requires parent initialization)
+  Speed homing_speed;                                               ///< Homing speed (initialized with parent)
   EndstopLimit endstop_limit{EndstopLimit::LIMIT_OFF};              ///< Endstop limit checking (default: disabled)
-  Position nolimit_reverse_angle_ticks{nullptr};                    ///< No-limit reverse angle as Position object
+  Position nolimit_reverse_angle_ticks;                             ///< No-limit reverse angle as Position object
   HomingLimitMode homing_limit_mode{HomingLimitMode::WITH_LIMIT};   ///< Homing with/without limit (default: with limit)
   uint16_t nolimit_current_ma{1000};                                ///< No-limit homing current in mA
   LimitPortMapping limit_port_mapping{LimitPortMapping::MAPPING_DEFAULT};  ///< Limit port mapping (default: default)
@@ -317,6 +326,15 @@ struct ConfigData {
   ZeroModeTask zero_task{ZeroModeTask::CLEAN};                             ///< Zero task
   ZeroingSpeed zero_speed{ZeroingSpeed::MEDIUM};                           ///< Zero speed
   Direction zero_direction{Direction::CW};
+
+  // Constructor - parent is REQUIRED (no default value)
+  explicit ConfigData(ServoXxd *parent_ptr) 
+    : parent(parent_ptr),
+      homing_speed(parent_ptr),
+      nolimit_reverse_angle_ticks(parent_ptr) {}
+
+  // Delete default constructor to enforce parent requirement
+  ConfigData() = delete; 
 
   /**
    * @brief Generate list of command types needed to update configuration
@@ -534,14 +552,14 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
    * Affects Speed class hardware compensation (rpm_for_hardware).
    * Critical setting - triggers motor restart if changed after setup.
    */
-  void set_microsteps(uint16_t microsteps);
+  void set_microsteps(uint8_t microsteps);
 
   /**
    * @brief Get current microstepping mode
    *
    * Used by Speed class for hardware compensation.
    */
-  virtual uint16_t get_microstepping() const { return config_.subdivision; }
+  virtual uint8_t get_microstepping() const { return config_.subdivision; }
 
   /**
    * @brief Get current operating mode

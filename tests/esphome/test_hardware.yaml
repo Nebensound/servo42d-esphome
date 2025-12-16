@@ -271,6 +271,7 @@ stepper:
     acceleration: 100 steps/s^2
     homing:
       mode: ENDSTOP
+      at_startup: false # Disable for setup testing
       direction: CCW # Change to CW if your endstop is in the other direction
       speed: 2 rpm
       endstop_trigger: LOW # Change to HIGH if your endstop triggers on HIGH

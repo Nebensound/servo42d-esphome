@@ -444,12 +444,12 @@ inline Command set_en_trigger_config(bool en_trigger_zero_enable = false, bool p
 
 /**
  * @brief Restart motor controller
- * @return Command object with encoded payload (1 byte)
+ * @return Command object with encoded payload (2 bytes)
  *
  * @details Performs a software reset of the motor controller.
- * Payload: 1 byte - [0x01]
+ * Payload: 2 bytes - [0x00][0x01] (value 0x0001 = 1 in big-endian)
  */
-inline Command restart() { return Command(Commandtype::RESTART, {0x01}); }
+inline Command restart() { return Command(Commandtype::RESTART, {0x00, 0x01}); }
 
 /**
  * @brief Calibrate encoder

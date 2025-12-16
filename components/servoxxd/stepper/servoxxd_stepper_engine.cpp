@@ -145,7 +145,7 @@ void StepperEngine::setup_motor() {
       }
 
       // Decode and log individual configuration values
-      auto config = CommandDecoder::read_all_config(cmd);
+      auto config = CommandDecoder::read_all_config(cmd, parent_);
 
       // Log control settings
       ESP_LOGD(TAG_ENGINE, "  Control mode: %s", control_mode_to_string(config.mode));
@@ -204,8 +204,9 @@ void StepperEngine::setup_motor() {
                                   ESP_LOGD(TAG_ENGINE, "✓ Control mode updated to %s",
                                            control_mode_to_string(desired_mode));
                                 } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update control mode");
+                                  ESP_LOGE(TAG_ENGINE, "✗ Failed to update control mode");
                                   transition_to(State::Error);
+                                  parent_->status_set_error("Failed to update control mode");
                                   parent_->mark_failed();
                                 }
                               });
@@ -225,8 +226,9 @@ void StepperEngine::setup_motor() {
                                   ESP_LOGD(TAG_ENGINE, "✓ Holding current updated to %s",
                                            holding_current_percent_to_string(desired_holding_current));
                                 } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update holding current");
+                                  ESP_LOGE(TAG_ENGINE, "✗ Failed to update holding current");
                                   transition_to(State::Error);
+                                  parent_->status_set_error("Failed to update holding current");
                                   parent_->mark_failed();
                                 }
                               });
@@ -244,8 +246,9 @@ void StepperEngine::setup_motor() {
                                 if (success) {
                                   ESP_LOGD(TAG_ENGINE, "✓ Working current updated to %u mA", desired_current_ma);
                                 } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update working current");
+                                  ESP_LOGE(TAG_ENGINE, "✗ Failed to update working current");
                                   transition_to(State::Error);
+                                  parent_->status_set_error("Failed to update working current");
                                   parent_->mark_failed();
                                 }
                               });
@@ -262,8 +265,9 @@ void StepperEngine::setup_motor() {
                                 if (success) {
                                   ESP_LOGD(TAG_ENGINE, "✓ Microstepping updated to %u", desired_microstepping);
                                 } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update microstepping");
+                                  ESP_LOGE(TAG_ENGINE, "✗ Failed to update microstepping");
                                   transition_to(State::Error);
+                                  parent_->status_set_error("Failed to update microstepping");
                                   parent_->mark_failed();
                                 }
                               });
@@ -281,8 +285,9 @@ void StepperEngine::setup_motor() {
                 if (success) {
                   ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", en_pin_active_to_string(desired_en_pin));
                 } else {
-                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update EN pin active level");
+                  ESP_LOGE(TAG_ENGINE, "✗ Failed to update EN pin active level");
                   transition_to(State::Error);
+                  parent_->status_set_error("Failed to update EN pin active level");
                   parent_->mark_failed();
                 }
               });
@@ -301,8 +306,9 @@ void StepperEngine::setup_motor() {
                                   ESP_LOGD(TAG_ENGINE, "✓ Direction updated to %s",
                                            direction_to_string(desired_direction));
                                 } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update direction");
+                                  ESP_LOGE(TAG_ENGINE, "✗ Failed to update direction");
                                   transition_to(State::Error);
+                                  parent_->status_set_error("Failed to update direction");
                                   parent_->mark_failed();
                                 }
                               });
@@ -321,8 +327,9 @@ void StepperEngine::setup_motor() {
                                   ESP_LOGD(TAG_ENGINE, "✓ Auto screen off updated to %s",
                                            screen_mode_to_string(desired_screen_mode));
                                 } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update auto screen off");
+                                  ESP_LOGE(TAG_ENGINE, "✗ Failed to update auto screen off");
                                   transition_to(State::Error);
+                                  parent_->status_set_error("Failed to update auto screen off");
                                   parent_->mark_failed();
                                 }
                               });
@@ -341,8 +348,9 @@ void StepperEngine::setup_motor() {
                                   ESP_LOGD(TAG_ENGINE, "✓ Protection mode updated to %s",
                                            protection_mode_to_string(desired_protection));
                                 } else {
-                                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update protection mode");
+                                  ESP_LOGE(TAG_ENGINE, "✗ Failed to update protection mode");
                                   transition_to(State::Error);
+                                  parent_->status_set_error("Failed to update protection mode");
                                   parent_->mark_failed();
                                 }
                               });
@@ -362,8 +370,9 @@ void StepperEngine::setup_motor() {
                 if (success) {
                   ESP_LOGD(TAG_ENGINE, "✓ Keys updated to %s", keypad_lock_to_string(desired_keypad_lock));
                 } else {
-                  ESP_LOGW(TAG_ENGINE, "✗ Failed to update key lock");
+                  ESP_LOGE(TAG_ENGINE, "✗ Failed to update key lock");
                   transition_to(State::Error);
+                  parent_->status_set_error("Failed to update key lock");
                   parent_->mark_failed();
                 }
               });
@@ -408,8 +417,9 @@ void StepperEngine::setup_motor() {
                 if (success) {
                   ESP_LOGD(TAG_ENGINE, "✓ EN trigger config set to safe defaults");
                 } else {
-                  ESP_LOGW(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
+                  ESP_LOGE(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
                   transition_to(State::Error);
+                  parent_->status_set_error("Failed to set EN trigger configuration");
                   parent_->mark_failed();
                 }
               });
@@ -426,7 +436,8 @@ void StepperEngine::setup_motor() {
     } else {
       ESP_LOGE(TAG_ENGINE, "✗ Failed to read motor configuration - aborting setup!");
       transition_to(State::Error);
-      parent_->mark_failed();  // Signal ESPHome that component setup failed
+      parent_->status_set_error("Failed to read motor configuration");
+      parent_->mark_failed();
       // Clear all pending commands to abort setup sequence
       if (queue_) {
         queue_->clear();
@@ -602,7 +613,8 @@ void StepperEngine::setup_motor() {
           ESP_LOGE(TAG_ENGINE, "✗ Motor setup failed - final status check unsuccessful");
           transition_to(State::Error);
           parent_->setup_state_ = SetupState::FAILED;
-          parent_->mark_failed();  // Signal ESPHome that component setup failed
+          parent_->status_set_error("Motor setup failed");
+          parent_->mark_failed();
         }
       },
       Priority::NORMAL);
@@ -814,6 +826,9 @@ void StepperEngine::home() {
       // ENDSTOP homing: Trigger homing sequence (parameters already set in setup)
       ESP_LOGD(TAG_ENGINE, "ENDSTOP homing: Starting sequence (speed=%.1f RPM)", homing.speed.rpm());
 
+      // TODO: Temporarily disabled for setup testing - GO_HOME command fails with 0xFFFF
+      ESP_LOGW(TAG_ENGINE, "GO_HOME temporarily disabled for setup testing");
+      /*
       queue_->enqueue(CommandFactory::go_home(), [this](bool success, const Command &) {
         if (success) {
           ESP_LOGD(TAG_ENGINE, "✓ ENDSTOP homing started");
@@ -822,6 +837,7 @@ void StepperEngine::home() {
           ESP_LOGW(TAG_ENGINE, "✗ Failed to start ENDSTOP homing");
         }
       });
+      */
       break;
     }
 
@@ -1310,7 +1326,8 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
     case CommandDecoder::MotorStatus::HOMING:
       // Hardware reports homing - validate against Engine expectations
       // If Engine is NOT in Homing state → Someone else started homing (physical buttons?)
-      if (state_ != State::Homing) {
+      // CRITICAL: Ignore hardware status sync during SettingUp to prevent state overwrites
+      if (state_ != State::Homing && state_ != State::SettingUp) {
         ESP_LOGW(TAG_ENGINE, "Unexpected homing: Hardware homing but engine state is %s", state_to_string(state_));
         ESP_LOGW(TAG_ENGINE, "  Possible cause: Manual homing via physical buttons");
         // Sync engine state to hardware reality
@@ -1321,7 +1338,8 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
     case CommandDecoder::MotorStatus::CALIBRATING:
       // Hardware reports calibration - validate against Engine expectations
       // If Engine is NOT in Calibrating state → Manual calibration started
-      if (state_ != State::Calibrating) {
+      // CRITICAL: Ignore hardware status sync during SettingUp to prevent state overwrites
+      if (state_ != State::Calibrating && state_ != State::SettingUp) {
         ESP_LOGW(TAG_ENGINE, "Unexpected calibration: Hardware calibrating but engine state is %s",
                  state_to_string(state_));
         // Sync engine state to hardware reality
