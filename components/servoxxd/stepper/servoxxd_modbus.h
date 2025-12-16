@@ -35,9 +35,8 @@ namespace esphome
        * @brief Construct a new Modbus Transport object
        *
        * @param device ESPHome Modbus device instance
-       * @param slave_address Modbus slave address (1-247)
        */
-      ModbusTransport(modbus::ModbusDevice *device, uint8_t slave_address);
+      ModbusTransport(modbus::ModbusDevice *device);
 
       // ITransport interface implementation
       Result execute_command(const Command &cmd) override;

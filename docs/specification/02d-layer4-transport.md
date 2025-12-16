@@ -188,7 +188,7 @@ struct ProtectionStatus { bool protected_state; };
 ```cpp
 class ModbusTransport : public ITransport {
  public:
-  ModbusTransport(modbus::ModbusDevice* device, uint8_t slave_address);
+  ModbusTransport(modbus::ModbusDevice* device);
   
   Result execute_command(Command cmd, const std::vector<uint8_t>& data) override;
   Result read_command(Command cmd, std::vector<uint8_t>& response) override;

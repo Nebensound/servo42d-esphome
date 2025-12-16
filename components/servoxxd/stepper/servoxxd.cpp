@@ -317,7 +317,7 @@ namespace esphome
       }
 
       // Create Layer 4: ModbusTransport
-      this->transport_ = new ModbusTransport(this, this->address_);
+      this->transport_ = new ModbusTransport(this);
       if (this->transport_ == nullptr)
       {
         ESP_LOGE(TAG, "Failed to allocate ModbusTransport");
@@ -413,7 +413,7 @@ namespace esphome
       }
 
       // Motor behavior
-      ESP_LOGCONFIG(TAG, "  Shaft Direction: %s", this->shaft_reversed_ ? "Reversed" : "Normal");
+      ESP_LOGCONFIG(TAG, "  Shaft Direction: %s", this->config_.shaft_reversed ? "Reversed" : "Normal");
       [[maybe_unused]] const char *en_modes[] = {"LOW", "HIGH", "ALWAYS"};
       ESP_LOGCONFIG(TAG, "  EN Pin Active: %s", en_modes[static_cast<uint8_t>(this->config_.en_pin_active)]);
       ESP_LOGCONFIG(TAG, "  Auto Screen Off: %s", this->config_.auto_screen_off ? "enabled" : "disabled");
