@@ -1261,7 +1261,8 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
       if (state_ == State::Homing) {
         // Motor stays in HOMING status until manually stopped or endstop reached
         // Check if position is at zero (homing completed)
-        ESP_LOGD(TAG_ENGINE, "HOMING status: current_position=%d, checking for completion...", parent_->current_position);
+        ESP_LOGD(TAG_ENGINE, "HOMING status: current_position=%d, checking for completion...",
+                 parent_->current_position);
         if (parent_->current_position == 0) {
           ESP_LOGI(TAG_ENGINE, "✓ Homing completed successfully (position reached zero)");
           transition_to(State::Idle);
