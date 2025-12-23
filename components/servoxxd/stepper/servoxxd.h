@@ -578,7 +578,21 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
    *
    * @return float Current position in steps (with fractional part)
    */
-  float get_current_position_steps() const { return static_cast<float>(current_pos_.get_double_unit(PositionUnit::STEPS)); }
+  float get_current_position_steps() const {
+    return static_cast<float>(current_pos_.get_double_unit(PositionUnit::STEPS));
+  }
+
+  /**
+   * @brief Get current position as float (precise value with microsteps)
+   *
+   * Returns the precise position from internal Position object.
+   * Unlike current_position (int32_t), this preserves fractional steps.
+   *
+   * @return float Current position in steps (with fractional part)
+   */
+  float get_current_position_revolutions() const {
+    return static_cast<float>(current_pos_.get_double_unit(PositionUnit::REVOLUTIONS));
+  }
 
   /**
    * @brief Get target position as float (precise value with microsteps)
@@ -588,7 +602,9 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
    *
    * @return float Target position in steps (with fractional part)
    */
-  float get_target_position_steps() const { return static_cast<float>(target_pos_.get_double_unit(PositionUnit::STEPS)); }
+  float get_target_position_steps() const {
+    return static_cast<float>(target_pos_.get_double_unit(PositionUnit::STEPS));
+  }
 
   /**
    * @brief Get current operating mode
