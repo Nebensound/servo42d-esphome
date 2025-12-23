@@ -31,9 +31,6 @@ StepperEngine::StepperEngine(ServoXxd *parent, ITransport *transport, uint32_t c
   // Create CommandQueue (Layer 3) if transport provided
   if (transport != nullptr) {
     queue_ = new CommandQueue(transport, command_timeout_ms);
-    ESP_LOGD(TAG_ENGINE, "StepperEngine initialized with transport: timeout=%ums", command_timeout_ms);
-  } else {
-    ESP_LOGD(TAG_ENGINE, "StepperEngine initialized WITHOUT transport (stub mode)");
   }
 }
 
@@ -109,17 +106,13 @@ void StepperEngine::setup_motor() {
     return;
   }
 
-  ESP_LOGCONFIG(TAG_ENGINE, "Enqueuing motor initialization sequence...");
-
   // 0. Restart motor to ensure clean state (Commandtype 0x41 RESTART)
   // Motor needs ~3-4s to reboot before accepting configuration commands
   queue_->enqueue(
       CommandFactory::restart(),
       [](bool success, const Command &) {
-        if (success) {
-          ESP_LOGD(TAG_ENGINE, "✓ Motor restart initiated, waiting 4000ms...");
-        } else {
-          ESP_LOGW(TAG_ENGINE, "✗ Failed to restart motor");
+        if (!success) {
+          ESP_LOGW(TAG_ENGINE, "Failed to restart motor");
         }
       },
       Priority::NORMAL,
@@ -140,59 +133,21 @@ void StepperEngine::setup_motor() {
       return;
     }
 
-    ESP_LOGD(TAG_ENGINE, "✓ Current motor configuration read (%zu bytes)", cmd.response.size());
-
-    // DEBUG: Output raw response bytes as hex dump
-    if (!cmd.response.empty()) {
-      std::string hex_dump;
-      for (size_t i = 0; i < cmd.response.size(); ++i) {
-        char buf[4];
-        snprintf(buf, sizeof(buf), "%02X ", cmd.response[i]);
-        hex_dump += buf;
-        if ((i + 1) % 16 == 0 && i + 1 < cmd.response.size()) {
-          hex_dump += "\n                                ";
-        }
-      }
-      ESP_LOGD(TAG_ENGINE, "  Raw config bytes: %s", hex_dump.c_str());
-    }
-
-    // Decode and log individual configuration values
+    // Decode configuration values
     auto config = CommandDecoder::read_all_config(cmd, parent_);
 
-    // Log control settings
-    ESP_LOGD(TAG_ENGINE, "  Control mode: %s", control_mode_to_string(config.mode));
-    ESP_LOGD(TAG_ENGINE, "  Working current: %u mA", config.working_current_ma);
-    ESP_LOGD(TAG_ENGINE, "  Holding current: %s", holding_current_percent_to_string(config.holding_current_percent));
-    ESP_LOGD(TAG_ENGINE, "  Microstepping: 1/%u", config.subdivision);
-
-    // Log pin settings
-    ESP_LOGD(TAG_ENGINE, "  EN pin active: %s", en_pin_active_to_string(config.en_pin_active));
-    ESP_LOGD(TAG_ENGINE, "  Shaft direction: %s", direction_to_string(config.direction));
-
-    // Log display and protection
-    ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s", screen_mode_to_string(config.screen_mode));
-    ESP_LOGD(TAG_ENGINE, "  Protection: %s", protection_mode_to_string(config.protection));
-    ESP_LOGD(TAG_ENGINE, "  Keys: %s", keypad_lock_to_string(config.keypad_lock));
-
     // Generate list of command types needed to update configuration
-    ESP_LOGCONFIG(TAG_ENGINE, "Checking which configuration values need updates...");
     // Get desired config from parent
     ConfigData desired_config = parent_->config_;
     // Get list of commands that need to be executed
     std::vector<Commandtype> update_commands = config.get_update_command_types(desired_config);
 
-    if (update_commands.empty()) {
-      ESP_LOGD(TAG_ENGINE, "  No configuration updates needed - all values match");
-    } else {
-      ESP_LOGD(TAG_ENGINE, "  %zu configuration value(s) need updating", update_commands.size());
+    if (!update_commands.empty()) {
 
       // Process each command type in the optimal order (already sorted by get_update_command_types)
       for (const auto &cmd_type : update_commands) {
         switch (cmd_type) {
           case Commandtype::SET_WORK_MODE: {
-            ESP_LOGD(TAG_ENGINE, "  Control mode: %s → %s", control_mode_to_string(config.mode),
-                     control_mode_to_string(desired_config.mode));
-
             ControlMode desired_mode = desired_config.mode;
 
             queue_->enqueue(CommandFactory::set_control_mode(desired_config.mode), [this, desired_mode](
@@ -200,10 +155,8 @@ void StepperEngine::setup_motor() {
               if (state_ == State::Error) {
                 return;  // Setup already aborted
               }
-              if (success) {
-                ESP_LOGD(TAG_ENGINE, "✓ Control mode updated to %s", control_mode_to_string(desired_mode));
-              } else {
-                ESP_LOGE(TAG_ENGINE, "✗ Failed to update control mode");
+              if (!success) {
+                ESP_LOGE(TAG_ENGINE, "Failed to update control mode");
                 transition_to(State::Error);
                 parent_->status_set_error("Failed to update control mode");
                 parent_->mark_failed();
@@ -216,10 +169,6 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_HOLDING_CURRENT_PERCENT: {
-            ESP_LOGD(TAG_ENGINE, "  Holding current: %s → %s",
-                     holding_current_percent_to_string(config.holding_current_percent),
-                     holding_current_percent_to_string(desired_config.holding_current_percent));
-
             HoldingCurrentPercent desired_holding_current = desired_config.holding_current_percent;
 
             queue_->enqueue(CommandFactory::set_holding_current_percent(desired_holding_current),
@@ -227,11 +176,8 @@ void StepperEngine::setup_motor() {
                               if (state_ == State::Error) {
                                 return;  // Setup already aborted
                               }
-                              if (success) {
-                                ESP_LOGD(TAG_ENGINE, "✓ Holding current updated to %s",
-                                         holding_current_percent_to_string(desired_holding_current));
-                              } else {
-                                ESP_LOGE(TAG_ENGINE, "✗ Failed to update holding current");
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to update holding current");
                                 transition_to(State::Error);
                                 parent_->status_set_error("Failed to update holding current");
                                 parent_->mark_failed();
@@ -244,9 +190,6 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_WORKING_CURRENT_RUNTIME: {
-            ESP_LOGD(TAG_ENGINE, "  Working current: %u mA → %u mA", config.working_current_ma,
-                     desired_config.working_current_ma);
-
             uint16_t desired_current_ma = desired_config.working_current_ma;
 
             queue_->enqueue(CommandFactory::set_working_current(desired_current_ma),
@@ -254,10 +197,8 @@ void StepperEngine::setup_motor() {
                               if (state_ == State::Error) {
                                 return;  // Setup already aborted
                               }
-                              if (success) {
-                                ESP_LOGD(TAG_ENGINE, "✓ Working current updated to %u mA", desired_current_ma);
-                              } else {
-                                ESP_LOGE(TAG_ENGINE, "✗ Failed to update working current");
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to update working current");
                                 transition_to(State::Error);
                                 parent_->status_set_error("Failed to update working current");
                                 parent_->mark_failed();
@@ -270,8 +211,6 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_SUBDIVISION: {
-            ESP_LOGD(TAG_ENGINE, "  Microstepping: %u → %u", config.subdivision, desired_config.subdivision);
-
             uint8_t desired_microstepping = desired_config.subdivision;
 
             queue_->enqueue(CommandFactory::set_subdivision(desired_microstepping), [this, desired_microstepping](
@@ -279,16 +218,11 @@ void StepperEngine::setup_motor() {
               if (state_ == State::Error) {
                 return;  // Setup already aborted
               }
-              if (success) {
-                ESP_LOGD(TAG_ENGINE, "✓ Microstepping updated to %u", desired_microstepping);
-              } else {
+              if (!success) {
                 // Motor rejected SET_SUBDIVISION command
                 // This is expected in vFOC modes (hardware limitation per manual)
-                ESP_LOGE(TAG_ENGINE, "✗ Failed to update microstepping to %u - Hardware rejected command",
+                ESP_LOGE(TAG_ENGINE, "Failed to update microstepping to %u - Motor in vFOC mode?",
                          desired_microstepping);
-                ESP_LOGE(TAG_ENGINE, "  Possible causes: Motor in vFOC mode (SET_SUBDIVISION only valid for "
-                                     "OPEN/CLOSE modes)");
-                ESP_LOGE(TAG_ENGINE, "  This should have been caught by YAML validation - please report this bug!");
                 transition_to(State::Error);
                 parent_->status_set_error("Failed to update microstepping");
                 parent_->mark_failed();
@@ -301,9 +235,6 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_EN_PIN_ACTIVE: {
-            ESP_LOGD(TAG_ENGINE, "  EN pin active: %s → %s", en_pin_active_to_string(config.en_pin_active),
-                     en_pin_active_to_string(desired_config.en_pin_active));
-
             EnPinActive desired_en_pin = desired_config.en_pin_active;
 
             queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin), [this, desired_en_pin](bool success,
@@ -311,10 +242,8 @@ void StepperEngine::setup_motor() {
               if (state_ == State::Error) {
                 return;  // Setup already aborted
               }
-              if (success) {
-                ESP_LOGD(TAG_ENGINE, "✓ EN pin active updated to %s", en_pin_active_to_string(desired_en_pin));
-              } else {
-                ESP_LOGE(TAG_ENGINE, "✗ Failed to update EN pin active level");
+              if (!success) {
+                ESP_LOGE(TAG_ENGINE, "Failed to update EN pin active level");
                 transition_to(State::Error);
                 parent_->status_set_error("Failed to update EN pin active level");
                 parent_->mark_failed();
@@ -327,9 +256,6 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_DIR_MOTOR_ROTATION: {
-            ESP_LOGD(TAG_ENGINE, "  Direction: %s → %s", direction_to_string(config.direction),
-                     direction_to_string(desired_config.direction));
-
             Direction desired_direction = desired_config.direction;
 
             queue_->enqueue(CommandFactory::set_dir_motor_rotation(desired_direction),
@@ -337,11 +263,8 @@ void StepperEngine::setup_motor() {
                               if (state_ == State::Error) {
                                 return;  // Setup already aborted
                               }
-                              if (success) {
-                                ESP_LOGD(TAG_ENGINE, "✓ Direction updated to %s",
-                                         direction_to_string(desired_direction));
-                              } else {
-                                ESP_LOGE(TAG_ENGINE, "✗ Failed to update direction");
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to update direction");
                                 transition_to(State::Error);
                                 parent_->status_set_error("Failed to update direction");
                                 parent_->mark_failed();
@@ -354,9 +277,6 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_AUTO_SCREEN_OFF: {
-            ESP_LOGD(TAG_ENGINE, "  Auto screen off: %s → %s", screen_mode_to_string(config.screen_mode),
-                     screen_mode_to_string(desired_config.screen_mode));
-
             ScreenMode desired_screen_mode = desired_config.screen_mode;
 
             queue_->enqueue(CommandFactory::set_auto_screen_off(desired_screen_mode),
@@ -364,11 +284,8 @@ void StepperEngine::setup_motor() {
                               if (state_ == State::Error) {
                                 return;  // Setup already aborted
                               }
-                              if (success) {
-                                ESP_LOGD(TAG_ENGINE, "✓ Auto screen off updated to %s",
-                                         screen_mode_to_string(desired_screen_mode));
-                              } else {
-                                ESP_LOGE(TAG_ENGINE, "✗ Failed to update auto screen off");
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to update auto screen off");
                                 transition_to(State::Error);
                                 parent_->status_set_error("Failed to update auto screen off");
                                 parent_->mark_failed();
@@ -381,9 +298,6 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_PROTECT_ENABLE: {
-            ESP_LOGD(TAG_ENGINE, "  Protection mode: %s → %s", protection_mode_to_string(config.protection),
-                     protection_mode_to_string(desired_config.protection));
-
             ProtectionMode desired_protection = desired_config.protection;
 
             queue_->enqueue(CommandFactory::set_protect_enable(protection_mode_to_bool(desired_protection)),
@@ -391,11 +305,8 @@ void StepperEngine::setup_motor() {
                               if (state_ == State::Error) {
                                 return;  // Setup already aborted
                               }
-                              if (success) {
-                                ESP_LOGD(TAG_ENGINE, "✓ Protection mode updated to %s",
-                                         protection_mode_to_string(desired_protection));
-                              } else {
-                                ESP_LOGE(TAG_ENGINE, "✗ Failed to update protection mode");
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to update protection mode");
                                 transition_to(State::Error);
                                 parent_->status_set_error("Failed to update protection mode");
                                 parent_->mark_failed();
@@ -408,9 +319,6 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_LOCK_KEYS: {
-            ESP_LOGD(TAG_ENGINE, "  Key lock: %s → %s", keypad_lock_to_string(config.keypad_lock),
-                     keypad_lock_to_string(desired_config.keypad_lock));
-
             KeypadLock desired_keypad_lock = desired_config.keypad_lock;
 
             queue_->enqueue(CommandFactory::set_lock_keys(desired_keypad_lock), [this, desired_keypad_lock](
@@ -418,10 +326,8 @@ void StepperEngine::setup_motor() {
               if (state_ == State::Error) {
                 return;  // Setup already aborted
               }
-              if (success) {
-                ESP_LOGD(TAG_ENGINE, "✓ Keys updated to %s", keypad_lock_to_string(desired_keypad_lock));
-              } else {
-                ESP_LOGE(TAG_ENGINE, "✗ Failed to update key lock");
+              if (!success) {
+                ESP_LOGE(TAG_ENGINE, "Failed to update key lock");
                 transition_to(State::Error);
                 parent_->status_set_error("Failed to update key lock");
                 parent_->mark_failed();
@@ -434,16 +340,12 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_EN_TRIGGER_CONFIG: {
-            ESP_LOGD(TAG_ENGINE, "  Setting EN trigger config to safe defaults (always set)");
-
             queue_->enqueue(CommandFactory::set_en_trigger_config(), [this](bool success, const Command &) {
               if (state_ == State::Error) {
                 return;  // Setup already aborted
               }
-              if (success) {
-                ESP_LOGD(TAG_ENGINE, "✓ EN trigger config set to safe defaults");
-              } else {
-                ESP_LOGE(TAG_ENGINE, "✗ Failed to set EN trigger configuration");
+              if (!success) {
+                ESP_LOGE(TAG_ENGINE, "Failed to set EN trigger configuration");
                 transition_to(State::Error);
                 parent_->status_set_error("Failed to set EN trigger configuration");
                 parent_->mark_failed();
@@ -462,10 +364,6 @@ void StepperEngine::setup_motor() {
               break;  // Skip if not ENDSTOP mode
             }
 
-            ESP_LOGD(TAG_ENGINE, "  Homing parameters: mode=ENDSTOP, trigger=%s, dir=%s, speed=%.1f RPM",
-                     homing.endstop_trigger == EndstopTrigger::TRIGGER_LOW ? "LOW" : "HIGH",
-                     homing.direction == HomingDirection::CW ? "CW" : "CCW", homing.speed.rpm());
-
             // Convert HomingDirection to Direction
             Direction dir = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
 
@@ -475,10 +373,8 @@ void StepperEngine::setup_motor() {
                               if (state_ == State::Error) {
                                 return;  // Setup already aborted
                               }
-                              if (success) {
-                                ESP_LOGD(TAG_ENGINE, "✓ Homing parameters configured (EndLimit enabled)");
-                              } else {
-                                ESP_LOGE(TAG_ENGINE, "✗ Failed to configure homing parameters");
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to configure homing parameters");
                                 transition_to(State::Error);
                                 parent_->status_set_error("Failed to configure homing parameters");
                                 parent_->mark_failed();
@@ -541,7 +437,6 @@ void StepperEngine::setup_motor() {
             }
           });
 
-          ESP_LOGD(TAG_ENGINE, "  Hardware polling started (200ms interval)");
           ESP_LOGCONFIG("servoxxd", "ServoXxd Modbus setup complete");
 
           // Transition to Idle (ready for commands)
@@ -610,8 +505,6 @@ void StepperEngine::move_to(const Position &target, std::optional<Speed> speed, 
   if (!validate_command(__func__, {State::Idle, State::Moving, State::Stopping})) {
     return;
   }
-  ESP_LOGD(TAG_ENGINE, "move_to(): target=%lld steps, speed=%.2f RPM, accel=%.2f RPM/s",
-           static_cast<long long>(target.get_steps()), speed_units.rpm(), accel_units.get_rpm_per_sec());
 
   // Update target position for target-reached detection
   parent_->set_target_pos(target);
@@ -637,7 +530,6 @@ void StepperEngine::move_to(const Position &target, std::optional<Speed> speed, 
 void StepperEngine::stop(std::optional<Acceleration> decel) {
   // Validation: allowed in Moving, Running, Homing, Calibrating, Stopping states
   if (state_ == State::Idle) {
-    ESP_LOGD(TAG_ENGINE, "stop(): Already stopped, no-op");
     return;
   }
 
@@ -646,7 +538,6 @@ void StepperEngine::stop(std::optional<Acceleration> decel) {
     return;
   }
 
-  ESP_LOGD(TAG_ENGINE, "stop(): decel=%.2f RPM/s", decel.has_value() ? decel->get_rpm_per_sec() : 0.0f);
 
   // Send stop command via queue (Commandtype 0xFE STOP_POSITION_MODE_2)
   Acceleration decel_units = decel.has_value() ? decel.value() : parent_->get_default_acceleration();
@@ -681,7 +572,6 @@ void StepperEngine::home() {
     return;
   }
 
-  ESP_LOGD(TAG_ENGINE, "home(): Starting homing sequence (mode=%d)", static_cast<int>(homing.mode));
 
   // Note: Homing parameters are already configured in setup_motor()
   // This method only triggers the homing sequence
@@ -693,7 +583,6 @@ void StepperEngine::home() {
       /*
       // Virtual homing: Move to position 0 using normal positioning
       // Movement limited to ±180° (one revolution max)
-      ESP_LOGD(TAG_ENGINE, "  VIRTUAL homing: Moving to position 0");
 
       Position target = Position::from_steps(0, parent_);
 
@@ -769,19 +658,15 @@ void StepperEngine::home() {
       // Move to position 0
       move_to(target, speed, parent_->get_default_acceleration());
 
-      ESP_LOGD(TAG_ENGINE, "✓ VIRTUAL homing: Moving %.1f steps (%.1f°) to position 0",
-               delta, delta / steps_per_rev * 360.0f);
       */
       break;
     }
 
     case HomingMode::ENDSTOP: {
       // ENDSTOP homing: Trigger homing sequence (parameters already set in setup)
-      ESP_LOGD(TAG_ENGINE, "ENDSTOP homing: Starting sequence (speed=%.1f RPM)", homing.speed.rpm());
 
       queue_->enqueue(CommandFactory::go_home(), [this](bool success, const Command &) {
         if (success) {
-          ESP_LOGD(TAG_ENGINE, "✓ ENDSTOP homing command sent");
           // Transition to Homing state - poll_homing_status() will monitor completion
           transition_to(State::Homing);
         } else {
@@ -797,8 +682,6 @@ void StepperEngine::home() {
       ESP_LOGW(TAG_ENGINE, "SENSORLESS homing not yet implemented");
       /*
       // SENSORLESS homing: Start movement (stall detection parameters already set)
-      ESP_LOGD(TAG_ENGINE, "  SENSORLESS homing: Starting movement (current=%umA, speed=%.1f RPM)",
-               homing.current_ma, homing.speed.rpm());
 
       // Move in homing direction until stall detected
       int32_t large_target = (homing.direction == HomingDirection::CW) ? 1000000 : -1000000;
@@ -812,7 +695,6 @@ void StepperEngine::home() {
                       {
                         if (success)
                         {
-                          ESP_LOGD(TAG_ENGINE, "✓ SENSORLESS homing movement started");
                         }
                         else
                         {
@@ -843,8 +725,6 @@ void StepperEngine::run_continuous(std::optional<Speed> speed, std::optional<Acc
   Speed speed_obj = speed.has_value() ? speed.value() : parent_->get_default_speed();
   Acceleration accel_obj = accel.has_value() ? accel.value() : parent_->get_default_acceleration();
 
-  ESP_LOGD(TAG_ENGINE, "run_continuous(): speed=%.2f RPM, accel=%.2f RPM/s", speed_obj.rpm(),
-           accel_obj.get_rpm_per_sec());
 
   // Send speed command via queue (Commandtype 0xF6 MOVE_SPEED_MODE)
   queue_->enqueue(CommandFactory::move_speed_mode(speed_obj, accel_obj), nullptr);
@@ -864,11 +744,9 @@ void StepperEngine::enable() {
 
   // If already in Idle state, motor is already enabled
   if (state_ == State::Idle) {
-    ESP_LOGD(TAG_ENGINE, "enable(): Motor already enabled (state=Idle)");
     return;
   }
 
-  ESP_LOGD(TAG_ENGINE, "enable(): Enabling motor");
 
   // Send enable command via queue (Commandtype 0xF3 ENABLE_MOTOR)
   queue_->enqueue(CommandFactory::enable_motor(true), nullptr);
@@ -893,11 +771,9 @@ void StepperEngine::disable() {
 
   // Already disabled - no-op
   if (state_ == State::Disabled) {
-    ESP_LOGD(TAG_ENGINE, "disable(): Motor already disabled");
     return;
   }
 
-  ESP_LOGD(TAG_ENGINE, "disable(): Disabling motor");
 
   // Send disable command via queue (Commandtype 0xF3 ENABLE_MOTOR with false)
   queue_->enqueue(CommandFactory::enable_motor(false), nullptr);
@@ -910,7 +786,6 @@ void StepperEngine::release_protection() {
     return;
   }
 
-  ESP_LOGD(TAG_ENGINE, "release_protection(): Attempting to clear error state");
 
   // Always clear internal flags
   protection_triggered_ = false;
@@ -919,7 +794,6 @@ void StepperEngine::release_protection() {
   // Send release protection command via queue (Commandtype 0x3D RELEASE_PROTECTION)
   queue_->enqueue(CommandFactory::release_protection(), [](bool success, const Command &) {
     if (success) {
-      ESP_LOGD(TAG_ENGINE, "✓ Release protection command sent");
     } else {
       ESP_LOGW(TAG_ENGINE, "✗ Failed to send release protection");
     }
@@ -927,13 +801,11 @@ void StepperEngine::release_protection() {
 
   // Transition from Error to Idle to allow re-enabling
   if (state_ == State::Error) {
-    ESP_LOGD(TAG_ENGINE, "  Transitioning from Error to Idle");
     transition_to(State::Idle);
   }
 }
 
 void StepperEngine::restart() {
-  ESP_LOGD(TAG_ENGINE, "restart(): Full motor restart");
 
   // Clear all errors
   protection_triggered_ = false;
@@ -948,7 +820,6 @@ void StepperEngine::restart() {
   // Motor needs 3-4 seconds to fully restart - use queue delay mechanism
   queue_->enqueue(CommandFactory::restart(), nullptr, Priority::NORMAL, 4000);
 
-  ESP_LOGD(TAG_ENGINE, "  Motor will restart, next command delayed 4000ms");
 
   transition_to(State::Idle);
 }
@@ -958,12 +829,10 @@ void StepperEngine::calibrate() {
     return;
   }
 
-  ESP_LOGD(TAG_ENGINE, "calibrate(): Starting encoder calibration");
 
   // Send calibrate encoder command via queue (Commandtype 0x80 CALIBRATE_ENCODER)
   queue_->enqueue(CommandFactory::calibrate_encoder(), [this](bool success, const Command &) {
     if (success) {
-      ESP_LOGD(TAG_ENGINE, "✓ Calibration command sent");
     } else {
       ESP_LOGW(TAG_ENGINE, "✗ Failed to start calibration");
       transition_to(State::Error);
@@ -974,14 +843,12 @@ void StepperEngine::calibrate() {
 }
 
 void StepperEngine::key_lock() {
-  ESP_LOGD(TAG_ENGINE, "key_lock(): Locking physical keys");
 
   // Send key lock command via queue (Commandtype 0x8F SET_LOCK_KEYS)
   queue_->enqueue(CommandFactory::set_lock_keys(KeypadLock::LOCKED), nullptr);
 }
 
 void StepperEngine::key_unlock() {
-  ESP_LOGD(TAG_ENGINE, "key_unlock(): Unlocking physical keys");
 
   // Send key unlock command via queue (Commandtype 0x8F SET_LOCK_KEYS)
   queue_->enqueue(CommandFactory::set_lock_keys(KeypadLock::UNLOCKED), nullptr);
@@ -992,7 +859,6 @@ void StepperEngine::set_zero() {
     return;
   }
 
-  ESP_LOGD(TAG_ENGINE, "set_zero(): Sending SET_ZERO command to hardware");
 
   // Update position tracking only after hardware confirms
   queue_->enqueue(CommandFactory::set_zero(), [this](bool success, const Command &) {
@@ -1062,7 +928,6 @@ void StepperEngine::transition_to(State new_state) {
   state_ = new_state;
   state_enter_time_ = millis();  // Track state entry time for timeout monitoring
 
-  ESP_LOGD(TAG_ENGINE, "State transition: %s → %s", state_to_string(old_state), state_to_string(new_state));
 
   // State-specific initialization
   switch (new_state) {
@@ -1183,7 +1048,6 @@ void StepperEngine::process_encoder_update(const Position &position) {
 
   // Check if target reached (in Moving state)
   if (state_ == State::Moving && is_target_reached()) {
-    ESP_LOGD(TAG_ENGINE, "Target position reached");
     transition_to(State::Idle);
   }
 
@@ -1200,7 +1064,6 @@ void StepperEngine::process_speed_update(const Speed &speed) {
 
   // Check if standstill reached (in Stopping state)
   if (state_ == State::Stopping && speed.rpm() == 0) {
-    ESP_LOGV(TAG_ENGINE, "Standstill reached (speed=0), transitioning to Idle");
     transition_to(State::Idle);
   }
 }
@@ -1212,8 +1075,6 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
     case CommandDecoder::MotorStatus::FAIL:
       // Hardware docs: FAIL (status=0) means "read fail" - no valid status available
       // This is NORMAL when motor is idle/disabled, not an error condition
-      // Only log at VERBOSE level to avoid spam
-      ESP_LOGVV(TAG_ENGINE, "Motor status: FAIL (no valid status available - motor idle/disabled)");
       break;
 
     case CommandDecoder::MotorStatus::STOP:
@@ -1225,7 +1086,6 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
       }
       // If Engine is Stopping and hardware confirms → Idle
       else if (state_ == State::Stopping) {
-        ESP_LOGV(TAG_ENGINE, "Motor status: STOP confirmed, transitioning to Idle");
         transition_to(State::Idle);
       }
       // If Engine is Homing and hardware stopped → Homing completed successfully
@@ -1261,13 +1121,10 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
       if (state_ == State::Homing) {
         // Motor stays in HOMING status until manually stopped or endstop reached
         // Check if position is at zero (homing completed)
-        ESP_LOGD(TAG_ENGINE, "HOMING status: current_position=%d, checking for completion...",
-                 parent_->current_position);
         if (parent_->current_position == 0) {
           ESP_LOGI(TAG_ENGINE, "✓ Homing completed successfully (position reached zero)");
           transition_to(State::Idle);
         } else {
-          ESP_LOGV(TAG_ENGINE, "Homing still in progress (position=%d)", parent_->current_position);
         }
       }
       // If Engine is NOT in Homing state → Someone else started homing (physical buttons?)

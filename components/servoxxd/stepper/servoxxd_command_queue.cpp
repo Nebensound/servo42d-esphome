@@ -29,7 +29,6 @@ namespace esphome
               this->on_error(cmd, error);
             });
 
-        ESP_LOGD(TAG, "Registered callbacks with transport layer");
       }
     }
 
@@ -67,8 +66,6 @@ namespace esphome
 
       QueuedCommand queued_cmd(cmd, callback, priority, delay_before_next_ms, millis());
 
-      ESP_LOGD(TAG, "Enqueuing command 0x%04X (prio=%d, queue size: %zu)",
-               cmd.register_address(), static_cast<uint8_t>(priority), queue_.size());
       queue_.push_back(queued_cmd);
 
       // Try to execute immediately if idle
@@ -92,14 +89,11 @@ namespace esphome
         return;
       }
 
-      ESP_LOGD(TAG, "Command 0x%04X completed (%zu bytes)",
-               response_cmd.register_address(), response_cmd.response.size());
 
       // Set delay for next command if specified
       if (current_cmd.delay_before_next_ms > 0)
       {
         delay_until_ms_ = millis() + current_cmd.delay_before_next_ms;
-        ESP_LOGD(TAG, "  Waiting %ums before invoking callback and executing next command", current_cmd.delay_before_next_ms);
         
         // Store callback to invoke after delay
         pending_callback_ = [callback = current_cmd.callback, response_cmd]() {
@@ -166,7 +160,6 @@ namespace esphome
       if (has_delay)
       {
         delay_until_ms_ = millis() + delay_ms;
-        ESP_LOGD(TAG, "  Command failed, but waiting %ums before next command (as specified)", delay_ms);
         // execute_next() will be called by update() after delay
       }
       else
@@ -253,9 +246,6 @@ namespace esphome
       // Send via transport - execute_command handles both read (0x04) and write (0x06/0x10)
       transport_->execute_command(cmd.command);
 
-      ESP_LOGD(TAG, "Executing command 0x%04X (prio=%d, age=%ums, queue depth: %zu)",
-               cmd.command.register_address(), static_cast<uint8_t>(cmd.priority),
-               millis() - cmd.enqueued_time, queue_.size());
     }
 
     void CommandQueue::prepare_next_command()
@@ -304,10 +294,6 @@ namespace esphome
         }
         else if (queue_[0].priority == Priority::BACKGROUND)
         {
-          ESP_LOGD(TAG, "Prioritizing BACKGROUND command 0x%04X (age=%ums, effective=%u)",
-                   queue_[0].command.register_address(),
-                   now - queue_[0].enqueued_time,
-                   best_effective_time);
         }
       }
     }

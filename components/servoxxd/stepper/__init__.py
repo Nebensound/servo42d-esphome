@@ -1040,7 +1040,7 @@ async def stepper_set_target_to_code(config, action_id, template_arg, args):
     if isinstance(pos_config, dict):
         # Value with unit - pass both to C++ for runtime conversion
         template_ = await cg.templatable(pos_config["value"], args, cg.float_)
-        cg.add(var.set_target(template_))
+        cg.add(var.set_value(template_))
         cg.add(var.set_unit(POSITION_UNITS[pos_config["unit"]]))
     else:
         # Plain value in steps

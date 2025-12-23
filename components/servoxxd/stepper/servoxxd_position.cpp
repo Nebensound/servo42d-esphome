@@ -36,9 +36,6 @@ static const char *unit_to_string(PositionUnit unit) {
 // ============================================================================
 
 Position::Position(double value, PositionUnit unit, const ServoXxd *parent) : parent_(parent) {
-  ESP_LOGV(TAG, "Creating Position: value=%.3f %s, parent=%p", value, unit_to_string(unit),
-           static_cast<const void *>(parent_));
-
   // Use factory methods for conversion
   Position temp;
 
@@ -75,9 +72,6 @@ Position::Position(double value, PositionUnit unit, const ServoXxd *parent) : pa
   revs_ = temp.revs_;
   angle_ticks_ = temp.angle_ticks_;
   // Note: parent_ pointer is preserved from constructor parameter, not from temp
-
-  ESP_LOGV(TAG, "Position created: value=%.3f %s → revs=%d, angle_ticks=%u, parent=%p", value, unit_to_string(unit),
-           revs_, angle_ticks_, static_cast<const void *>(parent_));
 }
 
 Position::Position(float value, PositionUnit unit, const ServoXxd *parent)
@@ -85,10 +79,7 @@ Position::Position(float value, PositionUnit unit, const ServoXxd *parent)
 
 // Copy constructor
 Position::Position(const Position &other)
-    : revs_(other.revs_), angle_ticks_(other.angle_ticks_), parent_(other.parent_) {
-  ESP_LOGV(TAG, "Copy constructor: revs=%d, angle_ticks=%u, parent=%p (from %p)", revs_, angle_ticks_,
-           static_cast<const void *>(parent_), static_cast<const void *>(other.parent_));
-}
+    : revs_(other.revs_), angle_ticks_(other.angle_ticks_), parent_(other.parent_) {}
 
 // Copy assignment operator
 Position &Position::operator=(const Position &other) {
@@ -96,8 +87,6 @@ Position &Position::operator=(const Position &other) {
     revs_ = other.revs_;
     angle_ticks_ = other.angle_ticks_;
     parent_ = other.parent_;
-    ESP_LOGV(TAG, "Copy assignment: revs=%d, angle_ticks=%u, parent=%p (from %p)", revs_, angle_ticks_,
-             static_cast<const void *>(parent_), static_cast<const void *>(other.parent_));
   }
   return *this;
 }
@@ -127,8 +116,6 @@ Position Position::from_ticks(int64_t total_ticks, const ServoXxd *parent) {
 
   pos.angle_ticks_ = static_cast<uint16_t>(remainder);
   pos.parent_ = parent;
-
-  ESP_LOGV(TAG, "from_ticks(%lld) → revs=%d, angle_ticks=%u", total_ticks, pos.revs_, pos.angle_ticks_);
 
   return pos;
 }

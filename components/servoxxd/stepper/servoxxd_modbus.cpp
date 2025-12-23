@@ -31,8 +31,6 @@ Result ModbusTransport::execute_command(const Command &cmd) {
       pending_command_.emplace(cmd);
       timeout_start_ms_ = millis();
 
-      ESP_LOGD(TAG, "Read command 0x%02X, register 0x%04X, expecting %d bytes payload",
-               static_cast<uint8_t>(cmd.command_type), register_address, expected_payload_length);
       break;
     }
 
@@ -69,7 +67,6 @@ Result ModbusTransport::execute_command(const Command &cmd) {
       pending_command_.emplace(cmd);
       timeout_start_ms_ = millis();
 
-      ESP_LOGD(TAG, "Write command 0x%02X, register 0x%04X", static_cast<uint8_t>(cmd.command_type), register_address);
       break;
     }
 
@@ -164,8 +161,6 @@ void ModbusTransport::handle_response(const std::vector<uint8_t> &data) {
     if (response_callback_) {
       response_callback_(cmd_with_response);
     }
-    ESP_LOGD(TAG, "Read response validated for command 0x%02X: %d bytes",
-             static_cast<uint8_t>(cmd_with_response.command_type), data.size());
   } else if (function_code == 0x06 || function_code == 0x10) {
     // Write Single Register (0x06) or Write Multiple Registers (0x10)
     // Payload format: [addr_hi][addr_lo][value/count_hi][value/count_lo]
@@ -233,7 +228,6 @@ void ModbusTransport::handle_response(const std::vector<uint8_t> &data) {
       case 0x10: {
         // Response contains register count
         uint16_t response_count = (static_cast<uint16_t>(data[2]) << 8) | data[3];
-        ESP_LOGV(TAG, "Function 0x10 validated: register 0x%04X, count %d", response_register, response_count);
         break;
       }
       default:
@@ -248,8 +242,6 @@ void ModbusTransport::handle_response(const std::vector<uint8_t> &data) {
     if (response_callback_) {
       response_callback_(cmd_with_response);
     }
-    ESP_LOGD(TAG, "Write response validated for command 0x%02X (function 0x%02X)",
-             static_cast<uint8_t>(cmd_with_response.command_type), function_code);
   } else {
     ESP_LOGW(TAG, "Unexpected function code 0x%02X in handle_response", function_code);
     state_ = State::IDLE;

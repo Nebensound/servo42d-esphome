@@ -93,7 +93,6 @@ void ServoXxd::set_acceleration(float accel) {
 
 void ServoXxd::set_speed(const Speed &speed) {
   this->default_speed_ = speed;
-  ESP_LOGD(TAG, "set_speed: %.2f RPM", speed.rpm());
 }
 
 void ServoXxd::set_microsteps(uint8_t microsteps) {
@@ -104,7 +103,6 @@ void ServoXxd::set_microsteps(uint8_t microsteps) {
   }
 
   if (this->config_.subdivision == microsteps) {
-    ESP_LOGD(TAG, "set_microsteps: No change (already %u)", microsteps);
     return;
   }
 
@@ -123,7 +121,6 @@ void ServoXxd::set_microsteps(uint8_t microsteps) {
 
 void ServoXxd::set_acceleration(const Acceleration &accel) {
   this->default_acceleration_ = accel;
-  ESP_LOGD(TAG, "set_acceleration: %.2f RPM/s", accel.get_rpm_per_sec());
 }
 
 void ServoXxd::set_zero() {
@@ -134,7 +131,6 @@ void ServoXxd::set_zero() {
     return;
   }
 
-  ESP_LOGD(TAG, "set_zero: Sending command to hardware...");
 
   // Delegate to StepperEngine - position will be updated via callback after confirmation
   this->engine_->set_zero();

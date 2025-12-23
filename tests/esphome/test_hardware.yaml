@@ -75,7 +75,10 @@ script:
           ESP_LOGI("test", "  -> Start position: %d steps", start_pos);
       - stepper.set_target:
           id: test_motor
-          target: 0.25 revolutions
+          target:
+            value: !lambda |-
+              return 0.25;
+            unit: REVOLUTIONS
 
       - wait_until:
           condition:
