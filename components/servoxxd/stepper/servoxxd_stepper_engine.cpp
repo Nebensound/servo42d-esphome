@@ -143,28 +143,27 @@ void StepperEngine::setup_motor() {
     std::vector<Commandtype> update_commands = config.get_update_command_types(desired_config);
 
     if (!update_commands.empty()) {
-
       // Process each command type in the optimal order (already sorted by get_update_command_types)
       for (const auto &cmd_type : update_commands) {
         switch (cmd_type) {
           case Commandtype::SET_WORK_MODE: {
             ControlMode desired_mode = desired_config.mode;
 
-            queue_->enqueue(CommandFactory::set_control_mode(desired_config.mode), [this, desired_mode](
-                                                                                       bool success, const Command &) {
-              if (state_ == State::Error) {
-                return;  // Setup already aborted
-              }
-              if (!success) {
-                ESP_LOGE(TAG_ENGINE, "Failed to update control mode");
-                transition_to(State::Error);
-                parent_->status_set_error("Failed to update control mode");
-                parent_->mark_failed();
-                if (queue_) {
-                  queue_->clear();
-                }
-              }
-            });
+            queue_->enqueue(CommandFactory::set_control_mode(desired_config.mode),
+                            [this, desired_mode](bool success, const Command &) {
+                              if (state_ == State::Error) {
+                                return;  // Setup already aborted
+                              }
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to update control mode");
+                                transition_to(State::Error);
+                                parent_->status_set_error("Failed to update control mode");
+                                parent_->mark_failed();
+                                if (queue_) {
+                                  queue_->clear();
+                                }
+                              }
+                            });
             break;
           }
 
@@ -213,45 +212,45 @@ void StepperEngine::setup_motor() {
           case Commandtype::SET_SUBDIVISION: {
             uint8_t desired_microstepping = desired_config.subdivision;
 
-            queue_->enqueue(CommandFactory::set_subdivision(desired_microstepping), [this, desired_microstepping](
-                                                                                        bool success, const Command &) {
-              if (state_ == State::Error) {
-                return;  // Setup already aborted
-              }
-              if (!success) {
-                // Motor rejected SET_SUBDIVISION command
-                // This is expected in vFOC modes (hardware limitation per manual)
-                ESP_LOGE(TAG_ENGINE, "Failed to update microstepping to %u - Motor in vFOC mode?",
-                         desired_microstepping);
-                transition_to(State::Error);
-                parent_->status_set_error("Failed to update microstepping");
-                parent_->mark_failed();
-                if (queue_) {
-                  queue_->clear();
-                }
-              }
-            });
+            queue_->enqueue(CommandFactory::set_subdivision(desired_microstepping),
+                            [this, desired_microstepping](bool success, const Command &) {
+                              if (state_ == State::Error) {
+                                return;  // Setup already aborted
+                              }
+                              if (!success) {
+                                // Motor rejected SET_SUBDIVISION command
+                                // This is expected in vFOC modes (hardware limitation per manual)
+                                ESP_LOGE(TAG_ENGINE, "Failed to update microstepping to %u - Motor in vFOC mode?",
+                                         desired_microstepping);
+                                transition_to(State::Error);
+                                parent_->status_set_error("Failed to update microstepping");
+                                parent_->mark_failed();
+                                if (queue_) {
+                                  queue_->clear();
+                                }
+                              }
+                            });
             break;
           }
 
           case Commandtype::SET_EN_PIN_ACTIVE: {
             EnPinActive desired_en_pin = desired_config.en_pin_active;
 
-            queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin), [this, desired_en_pin](bool success,
-                                                                                                      const Command &) {
-              if (state_ == State::Error) {
-                return;  // Setup already aborted
-              }
-              if (!success) {
-                ESP_LOGE(TAG_ENGINE, "Failed to update EN pin active level");
-                transition_to(State::Error);
-                parent_->status_set_error("Failed to update EN pin active level");
-                parent_->mark_failed();
-                if (queue_) {
-                  queue_->clear();
-                }
-              }
-            });
+            queue_->enqueue(CommandFactory::set_en_pin_active(desired_en_pin),
+                            [this, desired_en_pin](bool success, const Command &) {
+                              if (state_ == State::Error) {
+                                return;  // Setup already aborted
+                              }
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to update EN pin active level");
+                                transition_to(State::Error);
+                                parent_->status_set_error("Failed to update EN pin active level");
+                                parent_->mark_failed();
+                                if (queue_) {
+                                  queue_->clear();
+                                }
+                              }
+                            });
             break;
           }
 
@@ -321,21 +320,21 @@ void StepperEngine::setup_motor() {
           case Commandtype::SET_LOCK_KEYS: {
             KeypadLock desired_keypad_lock = desired_config.keypad_lock;
 
-            queue_->enqueue(CommandFactory::set_lock_keys(desired_keypad_lock), [this, desired_keypad_lock](
-                                                                                    bool success, const Command &) {
-              if (state_ == State::Error) {
-                return;  // Setup already aborted
-              }
-              if (!success) {
-                ESP_LOGE(TAG_ENGINE, "Failed to update key lock");
-                transition_to(State::Error);
-                parent_->status_set_error("Failed to update key lock");
-                parent_->mark_failed();
-                if (queue_) {
-                  queue_->clear();
-                }
-              }
-            });
+            queue_->enqueue(CommandFactory::set_lock_keys(desired_keypad_lock),
+                            [this, desired_keypad_lock](bool success, const Command &) {
+                              if (state_ == State::Error) {
+                                return;  // Setup already aborted
+                              }
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to update key lock");
+                                transition_to(State::Error);
+                                parent_->status_set_error("Failed to update key lock");
+                                parent_->mark_failed();
+                                if (queue_) {
+                                  queue_->clear();
+                                }
+                              }
+                            });
             break;
           }
 
@@ -538,7 +537,6 @@ void StepperEngine::stop(std::optional<Acceleration> decel) {
     return;
   }
 
-
   // Send stop command via queue (Commandtype 0xFE STOP_POSITION_MODE_2)
   Acceleration decel_units = decel.has_value() ? decel.value() : parent_->get_default_acceleration();
   queue_->enqueue(CommandFactory::stop_position_mode_2(decel_units), nullptr);
@@ -571,7 +569,6 @@ void StepperEngine::home() {
     ESP_LOGW(TAG_ENGINE, "home(): No homing configured - action ignored");
     return;
   }
-
 
   // Note: Homing parameters are already configured in setup_motor()
   // This method only triggers the homing sequence
@@ -725,7 +722,6 @@ void StepperEngine::run_continuous(std::optional<Speed> speed, std::optional<Acc
   Speed speed_obj = speed.has_value() ? speed.value() : parent_->get_default_speed();
   Acceleration accel_obj = accel.has_value() ? accel.value() : parent_->get_default_acceleration();
 
-
   // Send speed command via queue (Commandtype 0xF6 MOVE_SPEED_MODE)
   queue_->enqueue(CommandFactory::move_speed_mode(speed_obj, accel_obj), nullptr);
 
@@ -746,7 +742,6 @@ void StepperEngine::enable() {
   if (state_ == State::Idle) {
     return;
   }
-
 
   // Send enable command via queue (Commandtype 0xF3 ENABLE_MOTOR)
   queue_->enqueue(CommandFactory::enable_motor(true), nullptr);
@@ -774,7 +769,6 @@ void StepperEngine::disable() {
     return;
   }
 
-
   // Send disable command via queue (Commandtype 0xF3 ENABLE_MOTOR with false)
   queue_->enqueue(CommandFactory::enable_motor(false), nullptr);
 
@@ -785,7 +779,6 @@ void StepperEngine::release_protection() {
   if (!validate_command(__func__, {State::Error, State::Idle, State::Disabled})) {
     return;
   }
-
 
   // Always clear internal flags
   protection_triggered_ = false;
@@ -806,7 +799,6 @@ void StepperEngine::release_protection() {
 }
 
 void StepperEngine::restart() {
-
   // Clear all errors
   protection_triggered_ = false;
   emergency_flag_ = false;
@@ -820,7 +812,6 @@ void StepperEngine::restart() {
   // Motor needs 3-4 seconds to fully restart - use queue delay mechanism
   queue_->enqueue(CommandFactory::restart(), nullptr, Priority::NORMAL, 4000);
 
-
   transition_to(State::Idle);
 }
 
@@ -828,7 +819,6 @@ void StepperEngine::calibrate() {
   if (!validate_command(__func__, {State::Idle, State::Disabled})) {
     return;
   }
-
 
   // Send calibrate encoder command via queue (Commandtype 0x80 CALIBRATE_ENCODER)
   queue_->enqueue(CommandFactory::calibrate_encoder(), [this](bool success, const Command &) {
@@ -843,13 +833,11 @@ void StepperEngine::calibrate() {
 }
 
 void StepperEngine::key_lock() {
-
   // Send key lock command via queue (Commandtype 0x8F SET_LOCK_KEYS)
   queue_->enqueue(CommandFactory::set_lock_keys(KeypadLock::LOCKED), nullptr);
 }
 
 void StepperEngine::key_unlock() {
-
   // Send key unlock command via queue (Commandtype 0x8F SET_LOCK_KEYS)
   queue_->enqueue(CommandFactory::set_lock_keys(KeypadLock::UNLOCKED), nullptr);
 }
@@ -858,7 +846,6 @@ void StepperEngine::set_zero() {
   if (!validate_command(__func__, {State::Idle})) {
     return;
   }
-
 
   // Update position tracking only after hardware confirms
   queue_->enqueue(CommandFactory::set_zero(), [this](bool success, const Command &) {
@@ -927,7 +914,6 @@ void StepperEngine::transition_to(State new_state) {
   [[maybe_unused]] State old_state = state_;
   state_ = new_state;
   state_enter_time_ = millis();  // Track state entry time for timeout monitoring
-
 
   // State-specific initialization
   switch (new_state) {
