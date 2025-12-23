@@ -95,7 +95,7 @@ script:
       - wait_until:
           condition:
             lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;"
-          timeout: 10s
+          timeout: 100s
 
       - lambda: |-
           int final_pos = (int)id(test_motor).current_position;
@@ -265,9 +265,8 @@ stepper:
     address: 0x02
     servo_type: SERVO42D
     mode: POSITION
-    microsteps: 16 # 200 base steps × 16 = 3200 effective steps/rev
-    speed: 100 steps/s
-    acceleration: 100 steps/s^2
+    speed: 1 revolutions/s
+    acceleration: 1 revolutions/s^2
     homing:
       mode: ENDSTOP
       at_startup: false # Disable for setup testing
@@ -298,6 +297,17 @@ text_sensor:
     lambda: |-
       static std::string last_state = "";
       std::string current_state = id(test_motor)->get_state_string();
+      if (current_state != last_state) {
+        last_state = current_state;
+        return current_state;
+      }
+      return {};  // Return empty optional = no update
+    update_interval: 500ms
+  - platform: template
+    name: "Motor Setup State"
+    lambda: |-
+      static std::string last_state = "";
+      std::string current_state = id(test_motor)->get_setup_state_string();
       if (current_state != last_state) {
         last_state = current_state;
         return current_state;

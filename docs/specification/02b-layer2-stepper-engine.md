@@ -94,6 +94,66 @@ enum class State {
 };
 ```
 
+### State Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> Disabled: Initial State
+    
+    Disabled --> Idle: enable()
+    
+    Idle --> Disabled: disable()
+    Idle --> Moving: move_to() [Position Mode]
+    Idle --> Running: run_continuous() [Speed Mode]
+    Idle --> Homing: home() [Position Mode]
+    
+    Moving --> Idle: Target reached (encoder = target)
+    Moving --> Stopping: stop()
+    Moving --> Error: Protection / Timeout
+    
+    Running --> Stopping: stop()
+    Running --> Error: Protection / Timeout
+    
+    Homing --> Idle: Homing completed successfully
+    Homing --> Error: Homing failed / Timeout
+    
+    Stopping --> Idle: Standstill (speed = 0)
+    Stopping --> Error: Timeout
+    
+    Error --> Idle: release_protection()
+    Error --> Disabled: disable()
+    
+    note right of Disabled
+        Motor disabled
+        No motion possible
+    end note
+    
+    note right of Idle
+        Motor ready
+        Waiting for commands
+    end note
+    
+    note right of Moving
+        Position Mode only
+        Target position set
+    end note
+    
+    note right of Running
+        Speed Mode only
+        Continuous rotation
+    end note
+    
+    note right of Error
+        Protection active
+        Transport error
+        Timeout occurred
+    end note
+```
+
+**Special Transitions:**
+- `emergency_stop()`: Can be called from **any state** → immediately transitions to `Error` state, bypasses CommandQueue, halts motor
+- State transitions are validated before execution (see Command Validation Matrix below)
+
 ### State Transitions
 
 | From → To | Trigger | Condition | Action |

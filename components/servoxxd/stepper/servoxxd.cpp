@@ -230,6 +230,21 @@ std::string ServoXxd::get_state_string() const {
   return this->engine_->get_state_string();
 }
 
+std::string ServoXxd::get_setup_state_string() const {
+  switch (this->setup_state_) {
+    case SetupState::NOT_STARTED:
+      return "NOT_STARTED";
+    case SetupState::IN_PROGRESS:
+      return "IN_PROGRESS";
+    case SetupState::COMPLETED:
+      return "COMPLETED";
+    case SetupState::FAILED:
+      return "FAILED";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 void ServoXxd::stop(std::optional<Acceleration> decel) {
   if (this->engine_ == nullptr)
     return;

@@ -639,6 +639,14 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
   std::string get_state_string() const;
 
   /**
+   * @brief Get current setup state as string
+   *
+   * Returns the current setup state:
+   * "NOT_STARTED", "IN_PROGRESS", "COMPLETED", "FAILED"
+   */
+  std::string get_setup_state_string() const;
+
+  /**
    * @brief Set homing mode (ENDSTOP, SENSORLESS, VIRTUAL)
    *
    * Called from Python/YAML. Destroys old union member and constructs new one.

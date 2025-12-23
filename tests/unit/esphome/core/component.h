@@ -20,6 +20,7 @@ class Component {
   // Mock methods for testing
   void mark_failed() { failed_ = true; }
   bool is_failed() const { return failed_; }
+  void status_set_error(const char* /*message*/ = nullptr) { mark_failed(); }  // Mock ESPHome error status
 
   // Mock interval functionality
   template<typename F> void set_interval(const char *name, uint32_t interval, F &&f) {
