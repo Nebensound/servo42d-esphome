@@ -520,92 +520,75 @@ class CommandDecoder {
       return ConfigData(parent);
 
     const auto &data = cmd.response;
-    if (data.size() < 38) {
+    // Datasheet: READ_ALL_CONFIG returns 19 registers = 38 data bytes
+    // (byte_count = 0x26). Each register carries two 1-byte parameters.
+    if (data.size() != 38) {
       ESP_LOGW(TAG, "Invalid READ_ALL_CONFIG response size: %zu bytes (expected 38)", data.size());
       return ConfigData(parent);
     }
 
     // Create ConfigData with required parent pointer
     ConfigData config(parent);
-    size_t idx = 0;
-
-    // REG1: Mode (2 bytes)
-    config.mode = static_cast<ControlMode>(data[idx++]);
-    idx++;  // Reserved
-
-    // REG2: Hold current (2 bytes)
-    uint8_t hw_hold = data[idx++];
-    // Clamp to valid range 0-8, then convert to enum
-    if (hw_hold > 8)
-      hw_hold = 8;
+    // REG1: Mode + Hold current (%)
+    config.mode = static_cast<ControlMode>(data[0]);
+    uint8_t hw_hold = data[1];
+    hw_hold = hw_hold > 8 ? 8 : hw_hold;  // clamp to valid range
     config.holding_current_percent = static_cast<HoldingCurrentPercent>(hw_hold);
-    idx++;  // Reserved
 
-    // REG3: Work current (2 bytes)
-    config.working_current_ma = (static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1];
-    idx += 2;
+    // REG2: Working current (mA, big-endian)
+    config.working_current_ma = (static_cast<uint16_t>(data[2]) << 8) | data[3];
 
-    // REG4: Subdivision (2 bytes)
-    config.subdivision = data[idx++];
-    idx++;  // Reserved
+    // REG3: Subdivision + EN pin active level
+    config.subdivision = data[4] == 0 ? 1 : data[4];  // avoid 0 → divide-by-zero later
+    config.en_pin_active = static_cast<EnPinActive>(data[5]);
 
-    // REG5: En + Dir (2 bytes)
-    config.en_pin_active = static_cast<EnPinActive>(data[idx++]);
-    config.direction = static_cast<Direction>(data[idx++]);
+    // REG4: Direction + Auto screen off
+    config.direction = static_cast<Direction>(data[6]);
+    config.screen_mode = screen_mode_from_bool(data[7] != 0);
 
-    // REG6: AutoSDD + Protect (2 bytes)
-    config.screen_mode = screen_mode_from_bool(data[idx++] != 0);
-    config.protection = protection_mode_from_bool(data[idx++] != 0);
+    // REG5: Protection + Interpolation
+    config.protection = protection_mode_from_bool(data[8] != 0);
+    config.interpolation = interpolation_mode_from_bool(data[9] != 0);
 
-    // REG7: Mplyer + NULL (2 bytes)
-    config.interpolation = interpolation_mode_from_bool(data[idx++] != 0);
-    idx++;  // Reserved
+    // REG6: NULL + Baud rate (transport only) -> skip
+    // data[10] reserved, data[11] baud rate
 
-    // REG8: Baud rate + Slave address (2 bytes)
-    // Note: These are transport-layer parameters, not part of motor configuration
-    // Caller should extract these separately using read_transport_params()
-    idx += 2;  // Skip baud_rate and slave_address
+    // REG7: Slave address + Group address (transport) -> skip
 
-    // REG9: Group address + Respond/Active (2 bytes)
-    // Note: group_address, respond_enable, active_enable are transport-layer parameters
-    // Not stored in ConfigData - skip these bytes
-    idx += 2;  // Skip group_address and respond_active
+    // REG8: Respond/Active flags (transport) -> skip
 
-    // REG10: MODBUS + Key lock (2 bytes)
-    // Note: modbus_enable is transport-layer parameter - skip
-    idx++;  // Skip modbus_enable
-    config.keypad_lock = keypad_lock_from_bool(data[idx++] != 0);
+    // REG9: MODBUS enable (transport) + Key lock
+    config.keypad_lock = keypad_lock_from_bool(data[17] != 0);
 
-    // REG11-13: Homing parameters (6 bytes)
-    config.homing_trigger = static_cast<EndstopTrigger>(data[idx++]);
-    config.homing_direction = static_cast<Direction>(data[idx++]);
-    uint16_t homing_speed_rpm = (static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1];
+    // REG10: Homing trigger + Homing direction
+    config.homing_trigger = static_cast<EndstopTrigger>(data[18]);
+    config.homing_direction = static_cast<Direction>(data[19]);
+
+    // REG11: Homing speed (RPM, big-endian)
+    uint16_t homing_speed_rpm = (static_cast<uint16_t>(data[20]) << 8) | data[21];
     config.homing_speed = Speed::from_rpm(static_cast<float>(homing_speed_rpm), config.parent);
-    idx += 2;
-    idx++;  // NULL
-    config.endstop_limit = endstop_limit_from_bool(data[idx++] != 0);
 
-    // REG14-16: No-limit homing (8 bytes total: 4 for reverse_angle + 2 for mode + 2 for current_ma)
-    uint32_t reverse_angle_ticks = (static_cast<uint32_t>(data[idx]) << 24) |
-                                   (static_cast<uint32_t>(data[idx + 1]) << 16) |
-                                   (static_cast<uint32_t>(data[idx + 2]) << 8) | static_cast<uint32_t>(data[idx + 3]);
-    config.nolimit_reverse_angle_ticks.set_ticks(static_cast<int32_t>(reverse_angle_ticks));
-    idx += 4;  // Advance 4 bytes for reverse_angle
-    config.homing_limit_mode =
-        homing_limit_mode_from_bool(((static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1]) != 0);
-    idx += 2;  // Advance 2 bytes for mode
-    config.nolimit_current_ma = (static_cast<uint16_t>(data[idx]) << 8) | data[idx + 1];
-    idx += 2;  // Advance 2 bytes for current_ma
+    // REG12: NULL + EndLimit enable
+    config.endstop_limit = endstop_limit_from_bool(data[23] != 0);
 
-    // REG17: Remap + NULL (2 bytes)
-    idx++;  // NULL
-    config.limit_port_mapping = limit_port_mapping_from_bool(data[idx++] != 0);
+    // REG13: Reserved (0x0000) -> ignore
 
-    // REG18-19: 0_Mode parameters (4 bytes)
-    config.zero_mode = static_cast<ZeroModeMode>(data[idx++]);
-    config.zero_task = static_cast<ZeroModeTask>(data[idx++]);
-    config.zero_speed = static_cast<ZeroingSpeed>(data[idx++]);
-    config.zero_direction = static_cast<Direction>(data[idx++]);
+    // REG14-16: Sensorless homing / protection parameters (best-effort mapping)
+    // REG14: reverse angle (ticks, 16-bit)
+    config.nolimit_reverse_angle_ticks.set_ticks(static_cast<int32_t>((data[26] << 8) | data[27]));
+    // REG15: homing limit mode flag (non-zero => no-limit)
+    config.homing_limit_mode = homing_limit_mode_from_bool(data[28] != 0);
+    // REG16: sensorless homing current (mA, big-endian)
+    config.nolimit_current_ma = (static_cast<uint16_t>(data[30]) << 8) | data[31];
+
+    // REG17: limit port remap flag (byte 33)
+    config.limit_port_mapping = limit_port_mapping_from_bool(data[33] != 0);
+
+    // REG18-19: 0_Mode configuration
+    config.zero_mode = static_cast<ZeroModeMode>(data[34]);
+    config.zero_task = ZeroModeTask::CLEAN;  // Not encoded in READ_ALL_CONFIG; use safe default
+    config.zero_speed = static_cast<ZeroingSpeed>(data[36]);
+    config.zero_direction = static_cast<Direction>(data[37]);
 
     return config;
   }

@@ -25,15 +25,15 @@ bool float_eq(float a, float b) { return std::abs(a - b) < EPSILON; }
 // Mock ServoXxd for testing
 class MockServoXxd : public ServoXxd {
  public:
-  MockServoXxd(float steps_per_rev, uint16_t microsteps = 16)
-      : steps_per_rev_(steps_per_rev), microsteps_(microsteps) {}
+  MockServoXxd(uint8_t microsteps = 16)
+      : microsteps_(microsteps) {}
 
-  float get_steps_per_revolution() const override { return steps_per_rev_; }
-  uint16_t get_microstepping() const override { return microsteps_; }
+  float get_steps_per_revolution() const override { return 200.0f * microsteps_; }
+  uint8_t get_microstepping() const override { return microsteps_; }
+  void status_set_error(const char*) {} // Mock ESPHome method
 
  private:
-  float steps_per_rev_;
-  uint16_t microsteps_;
+  uint8_t microsteps_;
 };
 
 void test_speed_steps_per_sec() {

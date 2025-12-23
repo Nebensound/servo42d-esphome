@@ -44,6 +44,9 @@ enum class ServoType : uint8_t {
 };
 
 enum class ControlMode : uint8_t {
+  CR_OPEN = 0,   // CR open loop mode (pulse interface)
+  CR_CLOSE = 1,  // CR closed loop mode (pulse interface)
+  CR_VFOC = 2,   // CR vector FOC mode (pulse interface)
   SR_OPEN = 3,   // SR open loop mode (serial interface)
   SR_CLOSE = 4,  // SR closed loop mode (serial interface)
   SR_VFOC = 5,   // SR vector FOC mode (serial interface)
@@ -295,7 +298,7 @@ class ServoXxd;
  */
 struct ConfigData {
   ServoXxd *parent;  ///< Parent pointer for Speed/Position object construction (REQUIRED - no default)
-  
+
   // TODO: Consider whether these fields should have defaults or be required constructor parameters:
   // - working_current_ma: Motor-specific, varies by model (28D/35D/42D/57D)
   // - subdivision: Application-specific, depends on required resolution
@@ -303,7 +306,7 @@ struct ConfigData {
   // - homing_direction: Mechanical setup specific
   // - homing_speed: Application-specific, depends on mechanical constraints
   // For now keeping defaults for backwards compatibility and convenience
-  
+
   ControlMode mode{ControlMode::SR_VFOC};  ///< Control mode (default: SR_VFOC)
   HoldingCurrentPercent holding_current_percent{HoldingCurrentPercent::PERCENT_50};  ///< Holding current (default: 50%)
   uint16_t working_current_ma{2000};                                ///< Working current in mA (default: 2000 mA)
@@ -328,13 +331,11 @@ struct ConfigData {
   Direction zero_direction{Direction::CW};
 
   // Constructor - parent is REQUIRED (no default value)
-  explicit ConfigData(ServoXxd *parent_ptr) 
-    : parent(parent_ptr),
-      homing_speed(parent_ptr),
-      nolimit_reverse_angle_ticks(parent_ptr) {}
+  explicit ConfigData(ServoXxd *parent_ptr)
+      : parent(parent_ptr), homing_speed(parent_ptr), nolimit_reverse_angle_ticks(parent_ptr) {}
 
   // Delete default constructor to enforce parent requirement
-  ConfigData() = delete; 
+  ConfigData() = delete;
 
   /**
    * @brief Generate list of command types needed to update configuration
@@ -511,25 +512,37 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
   // ============================================================================
 
   /**
-   * @brief Set steps per revolution
+   * @brief Get base steps per revolution (hardware constant)
    *
-   * This is the fundamental configuration that affects all unit conversions.
-   * Must be set before any movement commands.
+   * This is the motor's base step count without microstepping.
+   * Fixed at 200 for 1.8° motors (only supported type for ServoXXD).
+   * 
+   * @return Base steps per revolution (always 200.0f)
    */
-  void set_steps_per_revolution(float steps) {
-    if (steps <= 0.0f) {
-      ESP_LOGE("servoxxd_modbus", "Invalid steps_per_revolution: %.1f (must be > 0)", steps);
-      return;
-    }
-    steps_per_revolution_ = steps;
+  static constexpr float get_base_steps_per_revolution() { return BASE_STEPS_PER_REVOLUTION; }
+
+  /**
+   * @brief Get effective steps per revolution (base steps × microsteps)
+   *
+   * This is the actual resolution used for all position calculations.
+   * Example: 200 base steps × 16 microsteps = 3200 effective steps
+   * 
+   * @return Effective steps per revolution
+   */
+  float get_effective_steps_per_revolution() const { 
+    return BASE_STEPS_PER_REVOLUTION * config_.subdivision; 
   }
 
   /**
-   * @brief Get steps per revolution
-   *
-   * Used by Speed, Acceleration, Position classes for unit conversions.
+   * @brief Get steps per revolution (deprecated, use get_effective_steps_per_revolution)
+   * 
+   * For backward compatibility with Speed/Acceleration/Position classes.
+   * 
+   * @return Effective steps per revolution
    */
-  virtual float get_steps_per_revolution() const { return steps_per_revolution_; }
+  virtual float get_steps_per_revolution() const { 
+    return get_effective_steps_per_revolution(); 
+  }
 
   /**
    * @brief Get State
@@ -846,7 +859,10 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
 
   // Motor configuration (single source of truth)
   ConfigData config_;                   ///< All motor configuration parameters
-  float steps_per_revolution_{200.0f};  ///< Steps per revolution (typically 200 for 1.8° motors)
+  
+  /// Hardware constant: Base steps per revolution for 1.8° motors (200 steps)
+  /// ServoXXD hardware only supports 200-step motors (confirmed by community reports)
+  static constexpr float BASE_STEPS_PER_REVOLUTION = 200.0f;
 
   // Homing configuration
   HomingConfig homing_;
@@ -862,9 +878,6 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
 
   // Operating mode
   OperatingMode operating_mode_{OperatingMode::POSITION};  ///< Current operating mode (POSITION or SPEED)
-
-  // Setup state
-  bool is_setup_{false};  ///< True after setup() completes, enables runtime hardware updates
 
   // Async setup state tracking
   SetupState setup_state_{SetupState::NOT_STARTED};

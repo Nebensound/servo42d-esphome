@@ -130,8 +130,8 @@ struct ConfigData
 ### Additional Configuration (not in ConfigData)
 
 ```cpp
-// Unit conversion
-float steps_per_revolution_;          // Required for Speed/Position/Acceleration conversions
+// Hardware constant (not in ConfigData, but fundamental for unit conversions)
+static constexpr float BASE_STEPS_PER_REVOLUTION = 200.0f;  // 1.8° motor (hardware limitation)
 
 // Homing configuration (HomingConfig struct)
 HomingMode homing_mode;               // ENDSTOP, SENSORLESS, VIRTUAL (YAML: homing.mode)

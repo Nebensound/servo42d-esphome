@@ -265,8 +265,7 @@ stepper:
     address: 0x02
     servo_type: SERVO42D
     mode: POSITION
-    steps_per_revolution: 3200
-    microsteps: 16
+    microsteps: 16 # 200 base steps × 16 = 3200 effective steps/rev
     speed: 100 steps/s
     acceleration: 100 steps/s^2
     homing:

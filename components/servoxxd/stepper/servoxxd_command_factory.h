@@ -210,7 +210,12 @@ inline Command set_working_current(uint16_t mA) {
  *
  * @details Payload: 1 byte - [microsteps]
  */
-inline Command set_subdivision(uint8_t microsteps) { return Command(Commandtype::SET_SUBDIVISION, {microsteps}); }
+inline Command set_subdivision(uint8_t microsteps) {
+  std::vector<uint8_t> data;
+  uint16_t steps = microsteps;
+  detail::encode_uint16_be(data, steps);
+  return Command(Commandtype::SET_SUBDIVISION, data);
+}
 
 /**
  * @brief Enable or disable motor

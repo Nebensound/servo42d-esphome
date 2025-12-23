@@ -123,6 +123,13 @@ void ModbusTransport::handle_response(const std::vector<uint8_t> &data) {
   ;
   uint8_t function_code = pending_command_->function_code();
   std::vector<uint8_t> send_payload = pending_command_->payload;
+  // Recreate the padded payload we actually transmitted so validation
+  // works for 1-byte values that were expanded to 2 bytes during send().
+  std::vector<uint8_t> expected_payload;
+  if ((function_code == 0x06 || function_code == 0x10) && (send_payload.size() % 2 != 0)) {
+    expected_payload.push_back(0x00);  // high byte placeholder
+  }
+  expected_payload.insert(expected_payload.end(), send_payload.begin(), send_payload.end());
 
   if (data.size() < 1) {
     ESP_LOGW(TAG, "Response too short: %d bytes", data.size());
@@ -202,8 +209,8 @@ void ModbusTransport::handle_response(const std::vector<uint8_t> &data) {
 
         // Validate value bytes only (data[2:3] should match send_payload)
         // Response format: [addr_hi][addr_lo][value_hi][value_lo]
-        if (send_payload.size() != 2) {
-          ESP_LOGW(TAG, "Invalid send_payload size for 0x06: %d bytes (expected 2)", send_payload.size());
+        if (expected_payload.size() != 2) {
+          ESP_LOGW(TAG, "Invalid payload size for 0x06: %d bytes (expected 2)", expected_payload.size());
           state_ = State::IDLE;
           if (error_callback_) {
             error_callback_(pending_command_.value(), ErrorCode::PROTOCOL_ERROR);
@@ -211,10 +218,10 @@ void ModbusTransport::handle_response(const std::vector<uint8_t> &data) {
           return;
         }
 
-        if (send_payload[0] != data[2] || send_payload[1] != data[3]) {
+        if (expected_payload[0] != data[2] || expected_payload[1] != data[3]) {
           ESP_LOGW(TAG, "Write response value mismatch for register 0x%04X", response_register);
-          ESP_LOGW(TAG, "  Sent value: [%02X %02X], Received value: [%02X %02X]", send_payload[0], send_payload[1],
-                   data[2], data[3]);
+          ESP_LOGW(TAG, "  Sent value: [%02X %02X], Received value: [%02X %02X]", expected_payload[0],
+                   expected_payload[1], data[2], data[3]);
           state_ = State::IDLE;
           if (error_callback_) {
             error_callback_(pending_command_.value(), ErrorCode::INVALID_RESPONSE);

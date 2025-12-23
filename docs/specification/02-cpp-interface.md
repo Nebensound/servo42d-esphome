@@ -192,7 +192,6 @@ ESPHome's generated `main.cpp` calls these setters during component initializati
 #### Basic configuration
 
 ```cpp
-void set_steps_per_revolution(float steps);  // YAML: steps_per_revolution
 void set_microsteps(uint16_t subdivision);  // 1–256, YAML: microsteps
 void set_speed(Speed speed);  // YAML: speed (alias: max_speed)
 void set_acceleration(Acceleration acceleration);  // YAML: acceleration (affects both accel and decel)
@@ -205,6 +204,9 @@ void set_en_pin_active(EnPinActive polarity);  // LOW, HIGH, ALWAYS, YAML: en_pi
 void set_auto_screen_off(bool enable);  // YAML: auto_screen_off
 void set_lock_keys_at_startup(bool lock);  // YAML: lock_keys_at_startup
 void set_mode(OperatingMode mode);  // POSITION, SPEED, YAML: mode
+
+// Hardware constant (not configurable via YAML)
+static constexpr float BASE_STEPS_PER_REVOLUTION = 200.0f;  // 1.8° motor (ServoXXD hardware limitation)
 ```
 
 [YAML reference](./01-yaml-api.md#basic-configuration)
@@ -326,7 +328,7 @@ class Speed {
   
  private:
   int16_t rpm_{0};                            // Hardware-native: RPM (signed, -3000 to +3000, calibrated for 16 microsteps)
-  const ServoXxd* parent_{nullptr};     // Parent component (for microstepping and steps_per_revolution)
+  const ServoXxd* parent_{nullptr};     // Parent component (for microsteps, BASE_STEPS_PER_REVOLUTION is static)
 };
 
 enum class SpeedUnit : uint8_t {
@@ -385,7 +387,7 @@ class Acceleration {
   
  private:
   uint8_t acc_{0};                            // Hardware-native: 0-255 (inverse time mapping)
-  const ServoXxd* parent_{nullptr};     // Parent component (for steps_per_revolution)
+  const ServoXxd* parent_{nullptr};     // Parent component (for microsteps, BASE_STEPS_PER_REVOLUTION is static)
 };
 
 enum class AccelerationUnit : uint8_t {
@@ -488,7 +490,7 @@ class Position {
   static constexpr uint32_t TICKS_PER_REV = 16384u;
   int32_t revs_{0};                           // Full revolutions (signed)
   uint16_t angle_ticks_{0};                   // Angle within revolution (0-16383)
-  const ServoXxd* parent_{nullptr};     // Parent component (for steps_per_revolution)
+  const ServoXxd* parent_{nullptr};     // Parent component (for microsteps, BASE_STEPS_PER_REVOLUTION is static)
 };
 
 enum class PositionUnit : uint8_t {
@@ -545,11 +547,11 @@ enum class PositionUnit : uint8_t {
 >
 > - Encoder-native format (directly from hardware feedback)
 > - Arithmetic operates on `total_ticks`, then re-splits with carry/borrow handling
-> - Conversions to Steps require `steps_per_revolution` (via parent pointer)
+> - Conversions to Steps require `BASE_STEPS_PER_REVOLUTION` (static constant) and `microsteps` (via parent pointer)
 
 **Key Design Features:**
 
-1. **Friend classes**: Access to parent's `steps_per_revolution_` and `microsteps_` without storing pointers
+1. **Friend classes**: Access to parent's `microsteps_` without storing pointers (BASE_STEPS_PER_REVOLUTION is static)
 2. **Hardware-native storage**:
    - Speed: `int16_t rpm_` (2 bytes, -3000..3000, microstepping-calibrated)
    - Acceleration: `uint8_t acc_` (1 byte, 0-255, inverse time mapping, NOT microstepping-scaled)

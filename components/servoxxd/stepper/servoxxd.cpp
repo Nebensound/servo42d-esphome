@@ -35,7 +35,7 @@ void ServoXxd::set_control_mode(ControlMode mode) {
   this->config_.mode = mode;
 
   // Only send to hardware if setup is complete
-  if (!this->is_setup_ || this->engine_ == nullptr)
+  if (this->setup_state_ != SetupState::COMPLETED || this->engine_ == nullptr)
     return;
 
   // Critical setting - requires motor restart and full reconfiguration
@@ -96,15 +96,21 @@ void ServoXxd::set_microsteps(uint8_t microsteps) {
     return;
   }
 
-  // Always update member variable
+  if (this->config_.subdivision == microsteps) {
+    ESP_LOGD(TAG, "set_microsteps: No change (already %u)", microsteps);
+    return;
+  }
+
+  // Update config
   this->config_.subdivision = microsteps;
 
   // Only send to hardware if setup is complete
-  if (!this->is_setup_ || this->engine_ == nullptr)
+  if (this->setup_state_ != SetupState::COMPLETED || this->engine_ == nullptr)
     return;
 
   // Critical setting - requires motor restart and full reconfiguration
-  ESP_LOGW(TAG, "Microstepping changed - restarting motor...");
+  // Steps per revolution effectively changes, which affects all unit conversions
+  ESP_LOGW(TAG, "Microstepping changed to %u - restarting motor...", microsteps);
   this->engine_->setup_motor();
 }
 
@@ -159,10 +165,10 @@ void ServoXxd::set_target_pos(const Position &pos) {
 // Constructor / Destructor
 // ============================================================================
 
-ServoXxd::ServoXxd() 
-  : config_(this) {  // ConfigData REQUIRES parent pointer - no defaults allowed
+ServoXxd::ServoXxd() : config_(this) {  // ConfigData REQUIRES parent pointer - no defaults allowed
   // config_.parent is now set via constructor
-  // Speed/Position objects (homing_speed, nolimit_reverse_angle_ticks) are initialized with parent via ConfigData constructor
+  // Speed/Position objects (homing_speed, nolimit_reverse_angle_ticks) are initialized with parent via ConfigData
+  // constructor
 
   // Note: homing_ union will be initialized by Python setters from YAML configuration
   // Note: transport_ and engine_ are created in setup() after all setters have run
@@ -270,8 +276,8 @@ void ServoXxd::setup() {
   ESP_LOGCONFIG(TAG, "Setting up ServoXxd Modbus...");
 
   // Validate configuration
-  if (this->steps_per_revolution_ <= 0.0f) {
-    ESP_LOGE(TAG, "Invalid steps_per_revolution: %.1f (must be > 0)", this->steps_per_revolution_);
+  if (this->config_.subdivision < 1) {
+    ESP_LOGE(TAG, "Invalid microstepping: %u (must be >= 1)", this->config_.subdivision);
     this->mark_failed();
     return;
   }
@@ -316,7 +322,7 @@ void ServoXxd::loop() {
   if (this->engine_ != nullptr) {
     // State machine update (high frequency for smooth motion control)
     // Also processes CommandQueue and hardware polling (poll_interval_ms_)
-    this->engine_->update();
+      this->engine_->update();
   }
 
   // Only process user commands after setup is complete
@@ -359,8 +365,9 @@ void ServoXxd::dump_config() {
   ESP_LOGCONFIG(TAG, "  Control Mode: %s", ctrl_modes[static_cast<uint8_t>(this->config_.mode)]);
 
   // Motor configuration
-  ESP_LOGCONFIG(TAG, "  Steps per Revolution: %.1f", this->steps_per_revolution_);
+  ESP_LOGCONFIG(TAG, "  Base Steps per Revolution: %.0f (hardware constant)", BASE_STEPS_PER_REVOLUTION);
   ESP_LOGCONFIG(TAG, "  Microstepping: %u", this->config_.subdivision);
+  ESP_LOGCONFIG(TAG, "  Effective Steps per Revolution: %.0f", get_effective_steps_per_revolution());
 
   // Current settings (only effective in SR_OPEN and SR_CLOSE modes)
   if (this->config_.mode != ControlMode::SR_VFOC) {
@@ -430,7 +437,7 @@ void ServoXxd::dump_config() {
   ESP_LOGCONFIG(TAG, "  Position Offset: %.0f steps (%.2f rev)", this->position_offset_.get_steps(),
                 this->position_offset_.revolutions());
   ESP_LOGCONFIG(TAG, "  Current Speed: %.1f steps/s (%.1f RPM)", this->current_speed_,
-                this->current_speed_ * 60.0f / this->steps_per_revolution_);
+                this->current_speed_ * 60.0f / get_effective_steps_per_revolution());
 
   // Engine state
   if (this->engine_ != nullptr) {

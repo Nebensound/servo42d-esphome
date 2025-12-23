@@ -104,10 +104,10 @@ void test_configuration_commands() {
 
   // Test: Set Subdivision (Register 0x0084, Value = microsteps)
   // Example: 16 microsteps → 0x0010
-  assert_command(CommandFactory::set_subdivision(16), Commandtype::SET_SUBDIVISION, {16},
+  assert_command(CommandFactory::set_subdivision(16), Commandtype::SET_SUBDIVISION, {0x10, 0x00},
                  "set_subdivision(16) - Set 16 microsteps");
 
-  assert_command(CommandFactory::set_subdivision(32), Commandtype::SET_SUBDIVISION, {32},
+  assert_command(CommandFactory::set_subdivision(32), Commandtype::SET_SUBDIVISION, {0x20, 0x00},
                  "set_subdivision(32) - Set 32 microsteps");
 
   // Test: EN Pin Active (Register 0x0085, Value 0=LOW, 1=HIGH, 2=ALWAYS)

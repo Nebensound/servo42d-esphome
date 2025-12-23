@@ -723,8 +723,7 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(CONF_MODBUS_ID): cv.use_id(modbus.Modbus),
             # Basic configuration
             cv.Optional(CONF_ADDRESS, default=0x01): validate_modbus_address,
-            cv.Required(CONF_STEPS_PER_REVOLUTION): validate_steps_per_revolution,
-            cv.Optional(CONF_MICROSTEPS, default=16): validate_microsteps,
+            cv.Optional(CONF_MICROSTEPS, default=1): validate_microsteps,
             cv.Required(CONF_SERVO_TYPE): cv.enum(SERVO_TYPES, upper=True),
             cv.Optional(CONF_CONTROL_MODE, default="SR_VFOC"): cv.enum(
                 CONTROL_MODES, upper=True
@@ -767,6 +766,17 @@ def validate_config_cross_fields(config):
     """
     Validate cross-field dependencies and constraints.
     """
+    # Validate microsteps configuration in vFOC modes
+    control_mode = config.get(CONF_CONTROL_MODE, "SR_VFOC")
+    if control_mode in ("CR_VFOC", "SR_VFOC"):
+        # vFOC mode only supports microsteps: 1 (no microstepping)
+        if CONF_MICROSTEPS in config and config[CONF_MICROSTEPS] != 1:
+            raise cv.Invalid(
+                f"microsteps must be 1 in {control_mode} mode (hardware limitation). "
+                "vFOC mode does not support microstepping. "
+                "Either set 'microsteps: 1' or switch to OPEN/CLOSE control mode."
+            )
+    
     # Check for unsupported deceleration field (hardware limitation)
     if "deceleration" in config:
         raise cv.Invalid(
@@ -881,17 +891,16 @@ async def to_code(config):
 
     # Set basic configuration
     cg.add(var.set_address(config[CONF_ADDRESS]))
-    cg.add(var.set_steps_per_revolution(config[CONF_STEPS_PER_REVOLUTION]))
     cg.add(var.set_microsteps(config[CONF_MICROSTEPS]))
     cg.add(var.set_servo_type(config[CONF_SERVO_TYPE]))
     cg.add(var.set_control_mode(config[CONF_CONTROL_MODE]))
 
     # Set speed/acceleration (use max_speed as primary)
     speed_dict = config[CONF_MAX_SPEED]
-    await set_speed_from_dict(var, speed_dict, config[CONF_STEPS_PER_REVOLUTION])
+    await set_speed_from_dict(var, speed_dict, config[CONF_MICROSTEPS])
 
     accel_dict = config[CONF_ACCELERATION]
-    await set_acceleration_from_dict(var, accel_dict, config[CONF_STEPS_PER_REVOLUTION])
+    await set_acceleration_from_dict(var, accel_dict, config[CONF_MICROSTEPS])
 
     # Set motor configuration
     cg.add(var.set_working_current(config[CONF_WORKING_CURRENT]))
@@ -931,7 +940,7 @@ async def to_code(config):
                 await set_speed_from_dict(
                     var,
                     homing_speed,
-                    config[CONF_STEPS_PER_REVOLUTION],
+                    config[CONF_MICROSTEPS],
                     "set_homing_speed",
                 )
 
@@ -944,14 +953,14 @@ async def to_code(config):
             cg.add(var.set_homing_at_startup(homing[CONF_AT_STARTUP]))
 
 
-async def set_speed_from_dict(var, speed_dict, steps_per_rev, method_name="set_speed"):
+async def set_speed_from_dict(var, speed_dict, microsteps, method_name="set_speed"):
     """
     Create Speed object from dict and pass to C++ method.
 
     Args:
         var: Component variable
         speed_dict: {"value": float, "unit": "RPM"} dictionary
-        steps_per_rev: Steps per revolution (unused, kept for compatibility)
+        microsteps: Microstepping subdivisions (for documentation only, C++ handles conversion)
         method_name: Name of method to call (set_speed or set_homing_speed)
     """
     value = speed_dict["value"]
@@ -970,10 +979,15 @@ async def set_speed_from_dict(var, speed_dict, steps_per_rev, method_name="set_s
     cg.add(getattr(var, method_name)(speed_obj))
 
 
-async def set_acceleration_from_dict(var, accel_dict, steps_per_rev):
+async def set_acceleration_from_dict(var, accel_dict, microsteps):
     """
     Pass acceleration value and unit to C++ for runtime conversion.
-    C++ will handle the conversion based on steps_per_revolution.
+    C++ will handle the conversion based on BASE_STEPS_PER_REVOLUTION and microsteps.
+    
+    Args:
+        var: Component variable
+        accel_dict: {"value": float, "unit": "RPM_PER_S"} dictionary
+        microsteps: Microstepping subdivisions (for documentation only, C++ handles conversion)
     """
     value = accel_dict["value"]
     unit = accel_dict["unit"]
