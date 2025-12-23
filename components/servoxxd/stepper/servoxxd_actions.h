@@ -106,7 +106,7 @@ namespace esphome
       void set_unit(PositionUnit unit) { unit_ = unit; }
       void set_target(float target) { this->value_ = target; }
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         if (parent_->get_operating_mode() != OperatingMode::POSITION)
         {
@@ -142,7 +142,7 @@ namespace esphome
       void set_speed(float value) { this->value_ = value; }
       void set_speed_unit(SpeedUnit unit) { this->unit_ = unit; }
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         if (parent_->get_operating_mode() != OperatingMode::SPEED)
         {
@@ -172,7 +172,7 @@ namespace esphome
     public:
       explicit StopAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->stop();
       }
@@ -194,7 +194,7 @@ namespace esphome
     public:
       explicit EmergencyStopAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->emergency_stop();
       }
@@ -216,7 +216,7 @@ namespace esphome
     public:
       explicit HomeAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         if (parent_->get_operating_mode() != OperatingMode::POSITION)
         {
@@ -253,7 +253,7 @@ namespace esphome
 
       void set_position(float value) { this->value_ = value; }
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         if (parent_->get_operating_mode() != OperatingMode::POSITION)
         {
@@ -283,7 +283,7 @@ namespace esphome
     public:
       explicit SetZeroAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         if (parent_->get_operating_mode() != OperatingMode::POSITION)
         {
@@ -314,7 +314,7 @@ namespace esphome
     public:
       explicit EnableAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->enable();
       }
@@ -336,7 +336,7 @@ namespace esphome
     public:
       explicit DisableAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->disable();
       }
@@ -366,7 +366,7 @@ namespace esphome
 
       void set_unit(SpeedUnit unit) { unit_ = unit; }
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         float value = this->value_.value(x...);
         Speed speed(value, unit_, parent_);
@@ -395,7 +395,7 @@ namespace esphome
 
       void set_unit(AccelerationUnit unit) { unit_ = unit; }
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         float value = this->value_.value(x...);
         Acceleration acc(value, unit_, parent_);
@@ -426,7 +426,7 @@ namespace esphome
 
       void set_control_mode(ControlMode mode) { mode_ = mode; }
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->set_control_mode(mode_);
       }
@@ -451,7 +451,7 @@ namespace esphome
 
       TEMPLATABLE_VALUE(uint16_t, current)
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         uint16_t current = this->current_.value(x...);
         parent_->set_working_current(current);
@@ -476,7 +476,7 @@ namespace esphome
 
       TEMPLATABLE_VALUE(HoldingCurrentPercent, percent)
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         HoldingCurrentPercent percent = this->percent_.value(x...);
         parent_->set_holding_current_percent(percent);
@@ -501,7 +501,7 @@ namespace esphome
 
       TEMPLATABLE_VALUE(uint16_t, subdivision)
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->set_microsteps(this->subdivision_.value(x...));
       }
@@ -527,7 +527,7 @@ namespace esphome
     public:
       explicit ReleaseProtectionAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->release_protection();
       }
@@ -549,7 +549,7 @@ namespace esphome
     public:
       explicit RestartAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->restart();
       }
@@ -571,7 +571,7 @@ namespace esphome
     public:
       explicit CalibrateAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->calibrate();
       }
@@ -591,7 +591,7 @@ namespace esphome
     public:
       explicit KeyLockAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->key_lock();
       }
@@ -611,7 +611,7 @@ namespace esphome
     public:
       explicit KeyUnlockAction(ServoXxd *parent) : parent_(parent) {}
 
-      void play(Ts... x) override
+      void play(const Ts &...x) override
       {
         parent_->key_unlock();
       }
