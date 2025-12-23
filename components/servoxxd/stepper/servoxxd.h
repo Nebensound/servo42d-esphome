@@ -516,7 +516,7 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
    *
    * This is the motor's base step count without microstepping.
    * Fixed at 200 for 1.8° motors (only supported type for ServoXXD).
-   * 
+   *
    * @return Base steps per revolution (always 200.0f)
    */
   static constexpr float get_base_steps_per_revolution() { return BASE_STEPS_PER_REVOLUTION; }
@@ -526,23 +526,19 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
    *
    * This is the actual resolution used for all position calculations.
    * Example: 200 base steps × 16 microsteps = 3200 effective steps
-   * 
+   *
    * @return Effective steps per revolution
    */
-  float get_effective_steps_per_revolution() const { 
-    return BASE_STEPS_PER_REVOLUTION * config_.subdivision; 
-  }
+  float get_effective_steps_per_revolution() const { return BASE_STEPS_PER_REVOLUTION * config_.subdivision; }
 
   /**
    * @brief Get steps per revolution (deprecated, use get_effective_steps_per_revolution)
-   * 
+   *
    * For backward compatibility with Speed/Acceleration/Position classes.
-   * 
+   *
    * @return Effective steps per revolution
    */
-  virtual float get_steps_per_revolution() const { 
-    return get_effective_steps_per_revolution(); 
-  }
+  virtual float get_steps_per_revolution() const { return get_effective_steps_per_revolution(); }
 
   /**
    * @brief Get State
@@ -573,6 +569,26 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
    * Used by Speed class for hardware compensation.
    */
   virtual uint8_t get_microstepping() const { return config_.subdivision; }
+
+  /**
+   * @brief Get current position as float (precise value with microsteps)
+   *
+   * Returns the precise position from internal Position object.
+   * Unlike current_position (int32_t), this preserves fractional steps.
+   *
+   * @return float Current position in steps (with fractional part)
+   */
+  float get_current_position_steps() const { return static_cast<float>(current_pos_.get_double_unit(PositionUnit::STEPS)); }
+
+  /**
+   * @brief Get target position as float (precise value with microsteps)
+   *
+   * Returns the precise target position from internal Position object.
+   * Unlike target_position (int32_t), this preserves fractional steps.
+   *
+   * @return float Target position in steps (with fractional part)
+   */
+  float get_target_position_steps() const { return static_cast<float>(target_pos_.get_double_unit(PositionUnit::STEPS)); }
 
   /**
    * @brief Get current operating mode
@@ -866,8 +882,8 @@ class ServoXxd : virtual public Component, public stepper::Stepper, public modbu
   StepperEngine *engine_{nullptr};       // Layer 2: State machine & movement logic
 
   // Motor configuration (single source of truth)
-  ConfigData config_;                   ///< All motor configuration parameters
-  
+  ConfigData config_;  ///< All motor configuration parameters
+
   /// Hardware constant: Base steps per revolution for 1.8° motors (200 steps)
   /// ServoXXD hardware only supports 200-step motors (confirmed by community reports)
   static constexpr float BASE_STEPS_PER_REVOLUTION = 200.0f;

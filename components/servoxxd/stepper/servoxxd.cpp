@@ -3,6 +3,7 @@
 #include "servoxxd_stepper_engine.h"
 #include "servoxxd_command_decoder.h"
 #include "servoxxd_commands.h"
+#include <cmath>
 
 namespace esphome {
 namespace servoxxd {
@@ -49,9 +50,15 @@ void ServoXxd::set_control_mode(ControlMode mode) {
 // ============================================================================
 
 void ServoXxd::set_target(int32_t steps) {
-  // Convert int32_t steps to Position and delegate to set_target_pos
+  // Convert int32_t steps to Position object
   Position target = Position::from_steps(steps, this);
+  // Update target position (base class and internal)
   this->set_target_pos(target);
+  // Trigger movement immediately with default speed/acceleration
+  // This is called by ESPHome stepper.set_target action
+  if (this->setup_state_ == SetupState::COMPLETED && this->engine_ != nullptr) {
+    this->move_to(target);
+  }
 }
 
 void ServoXxd::set_max_speed(float speed) {
@@ -134,17 +141,11 @@ void ServoXxd::set_zero() {
 }
 
 void ServoXxd::report_position(const Position &pos) {
-  // Calculate offset: offset = desired_position - raw_encoder_position
-  // So that: current_position = raw_encoder + offset = desired_position
-
-  // Poll encoder asynchronously and calculate offset in callback
-  this->engine_->poll_encoder_position([this, pos](const Position &raw_encoder) {
-    this->position_offset_ = pos - raw_encoder;
-    set_current_pos(pos);
-
-    ESP_LOGD(TAG, "report_position: Raw=%.2f, Desired=%.2f, Offset=%.2f", raw_encoder.get_steps(), pos.get_steps(),
-             this->position_offset_.get_steps());
-  });
+  // TODO: Offset-Feature wird später implementiert
+  // Für jetzt: Setze einfach die aktuelle Position direkt
+  set_current_pos(pos);
+  ESP_LOGW(TAG, "report_position: Feature not yet implemented - just setting current_position to %.0f steps",
+           pos.get_steps());
 }
 
 // ============================================================================
@@ -337,7 +338,7 @@ void ServoXxd::loop() {
   if (this->engine_ != nullptr) {
     // State machine update (high frequency for smooth motion control)
     // Also processes CommandQueue and hardware polling (poll_interval_ms_)
-      this->engine_->update();
+    this->engine_->update();
   }
 
   // Only process user commands after setup is complete
@@ -356,15 +357,8 @@ void ServoXxd::loop() {
     return;  // Don't process user commands yet
   }
 
-  // Setup complete - process user commands
-  if (this->engine_ != nullptr) {
-    // Check if target_position was changed externally (via ESPHome action)
-    if (this->target_position != static_cast<int32_t>(this->target_pos_.get_steps())) {
-      Position position(this->target_position, PositionUnit::STEPS, this);
-      set_target_pos(position);
-      move_to(position);
-    }
-  }
+  // Note: No need to poll target_position here
+  // ESPHome stepper.set_target action calls set_target(), which directly triggers move_to()
 }
 
 void ServoXxd::dump_config() {

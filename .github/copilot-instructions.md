@@ -85,7 +85,7 @@ esphome compile tests/esphome/test_compile.yaml
 **Hardware validation** (requires ESP32 + motor):
 ```bash
 esphome compile tests/esphome/test_hardware.yaml
-esphome upload tests/esphome/test_hardware.yaml
+esphome upload tests/esphome/test_hardware.yaml # Do not use esphome run!
 timeout 30s esphome logs tests/esphome/test_hardware.yaml  # Always wrap logs in timeout
 ```
 

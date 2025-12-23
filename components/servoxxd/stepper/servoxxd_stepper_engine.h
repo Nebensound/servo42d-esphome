@@ -347,36 +347,6 @@ class StepperEngine {
   // Callbacks
   // ============================================================================
 
-  /**
-   * @brief Register callback for position updates
-   *
-   * Callback is invoked whenever position changes (polled every 100ms).
-   *
-   * @param cb Callback function
-   */
-  void set_position_update_callback(std::function<void(Position)> cb);
-
-  /**
-   * @brief Register callback for speed updates
-   *
-   * @param cb Callback function
-   */
-  void set_speed_update_callback(std::function<void(Speed)> cb);
-
-  /**
-   * @brief Register callback for protection triggered
-   *
-   * @param cb Callback function
-   */
-  void set_protection_callback(std::function<void()> cb);
-
-  /**
-   * @brief Register callback for motor enabled/disabled
-   *
-   * @param cb Callback function (parameter: true = enabled, false = disabled)
-   */
-  void set_motor_status_callback(std::function<void(bool)> cb);
-
  private:
   // ============================================================================
   // Private Members
@@ -389,17 +359,10 @@ class StepperEngine {
 
   // Status tracking
   Speed current_speed_;        ///< Last known motor speed (RPM)
-  bool motor_enabled_;         ///< Motor enabled status
   bool protection_triggered_;  ///< Protection triggered flag
 
   // State timing
   uint32_t state_enter_time_;  ///< State entry timestamp for timeout tracking
-
-  // Callbacks
-  std::function<void(Position)> position_callback_;
-  std::function<void(Speed)> speed_callback_;
-  std::function<void()> protection_callback_;
-  std::function<void(bool)> motor_status_callback_;
 
   // Buffered commands (for commands that need to be deferred)
   bool disable_pending_;  ///< Disable command buffered (execute after stop)
@@ -459,9 +422,9 @@ class StepperEngine {
   /**
    * @brief Process motor status update
    *
-   * Updates motor_enabled_, invokes callback.
+   * Sets Motor Status
    *
-   * @param enabled Motor enabled (true/false)
+   * @param status Motor status enum
    */
   void process_motor_status_update(CommandDecoder::MotorStatus status);
 

@@ -22,7 +22,6 @@ StepperEngine::StepperEngine(ServoXxd *parent, ITransport *transport, uint32_t c
       state_(State::SettingUp),
       emergency_flag_(false),
       current_speed_(0.0f, SpeedUnit::RPM, parent),
-      motor_enabled_(false),
       protection_triggered_(false),
       state_enter_time_(0),
       disable_pending_(false) {
@@ -57,7 +56,7 @@ void StepperEngine::poll_motor_speed() {
       CommandFactory::read_current_speed(),
       [this](bool success, const Command &cmd) {
         if (success) {
-          Speed speed = CommandDecoder::read_current_speed(cmd);
+          Speed speed = CommandDecoder::read_current_speed(cmd, parent_);
           process_speed_update(speed);
         }
       },
@@ -65,8 +64,9 @@ void StepperEngine::poll_motor_speed() {
 }
 
 void StepperEngine::poll_motor_status() {
-  // Enqueue read command for motor status (Commandtype 0x3A READ_MOTOR_STATUS)
-  // Expected response: status (uint8_t, 0=STOP, 1=MOVING, 2=HOMING) = 2 bytes (1 register)
+  // Enqueue read command for motor status (Commandtype 0xF1 READ_MOTOR_STATUS)
+  // Expected response: status (uint8_t: 0=fail, 1=stop, 2=speed_up, 3=speed_down, 4=full_speed, 5=homing,
+  // 6=calibrating)
   queue_->enqueue(
       CommandFactory::read_motor_status(),
       [this](bool success, const Command &cmd) {
@@ -178,15 +178,6 @@ void StepperEngine::setup_motor() {
     ESP_LOGCONFIG(TAG_ENGINE, "Checking which configuration values need updates...");
     // Get desired config from parent
     ConfigData desired_config = parent_->config_;
-
-    // Hardware limitation: SET_SUBDIVISION (0x84) is not supported in vFOC modes
-    // Force subdivision to match motor's current value to avoid unnecessary diff
-    if (desired_config.mode == ControlMode::CR_VFOC || desired_config.mode == ControlMode::SR_VFOC) {
-      ESP_LOGD(TAG_ENGINE, "  vFOC mode detected - subdivision cannot be changed (hardware limitation)");
-      ESP_LOGD(TAG_ENGINE, "  Using motor's current subdivision value: %u", config.subdivision);
-      desired_config.subdivision = config.subdivision;
-    }
-
     // Get list of commands that need to be executed
     std::vector<Commandtype> update_commands = config.get_update_command_types(desired_config);
 
@@ -464,8 +455,47 @@ void StepperEngine::setup_motor() {
             break;
           }
 
-          case Commandtype::SET_HOMING_PARAMETERS:
-          case Commandtype::SET_NOLIMIT_HOMING_PARAMS:
+          case Commandtype::SET_HOMING_PARAMETERS: {
+            // Only configure if ENDSTOP mode is enabled
+            auto &homing = parent_->homing_;
+            if (homing.mode != HomingMode::ENDSTOP) {
+              break;  // Skip if not ENDSTOP mode
+            }
+
+            ESP_LOGD(TAG_ENGINE, "  Homing parameters: mode=ENDSTOP, trigger=%s, dir=%s, speed=%.1f RPM",
+                     homing.endstop_trigger == EndstopTrigger::TRIGGER_LOW ? "LOW" : "HIGH",
+                     homing.direction == HomingDirection::CW ? "CW" : "CCW", homing.speed.rpm());
+
+            // Convert HomingDirection to Direction
+            Direction dir = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
+
+            // Enable EndLimit for ENDSTOP homing mode (required for GO_HOME to work)
+            queue_->enqueue(CommandFactory::set_homing_parameters(homing.endstop_trigger, dir, homing.speed, false),
+                            [this](bool success, const Command &) {
+                              if (state_ == State::Error) {
+                                return;  // Setup already aborted
+                              }
+                              if (success) {
+                                ESP_LOGD(TAG_ENGINE, "✓ Homing parameters configured (EndLimit enabled)");
+                              } else {
+                                ESP_LOGE(TAG_ENGINE, "✗ Failed to configure homing parameters");
+                                transition_to(State::Error);
+                                parent_->status_set_error("Failed to configure homing parameters");
+                                parent_->mark_failed();
+                                if (queue_) {
+                                  queue_->clear();
+                                }
+                              }
+                            });
+            break;
+          }
+
+          case Commandtype::SET_NOLIMIT_HOMING_PARAMS: {
+            // TODO: Implement SENSORLESS homing setup
+            ESP_LOGW(TAG_ENGINE, "  SENSORLESS homing setup not yet implemented");
+            break;
+          }
+
           case Commandtype::SET_LIMIT_PORT_REMAP:
           case Commandtype::SET_ZERO_MODE:
             // TODO: Implement handlers for these command types
@@ -518,6 +548,13 @@ void StepperEngine::setup_motor() {
           if (state_ == State::SettingUp) {
             transition_to(State::Idle);
           }
+
+          // Execute homing at startup if configured
+          if (parent_->homing_.at_startup && parent_->homing_.mode != HomingMode::NO_HOMING) {
+            ESP_LOGI(TAG_ENGINE, "Executing homing at startup (mode=%d)", static_cast<int>(parent_->homing_.mode));
+            // Delay homing slightly to ensure motor is fully ready
+            parent_->set_timeout("homing_at_startup", 5000, [this]() { this->home(); });
+          }
         },
         Priority::NORMAL);
   });
@@ -550,11 +587,11 @@ void StepperEngine::update() {
 // ============================================================================
 
 void StepperEngine::poll_hardware() {
-  if (parent_->setup_state_ != SetupState::COMPLETED) {
+  if (parent_->setup_state_ == SetupState::COMPLETED) {
     // Poll all status values in sequence
     poll_encoder_position();
     poll_motor_speed();
-    poll_motor_status();  // Also handles homing state detection
+    poll_motor_status();  // Handles homing completion: HOMING(5) → STOP(1)
     // TODO: Register 0x3E might not exist in hardware - investigate
     // poll_protection_status();
   }
@@ -576,14 +613,25 @@ void StepperEngine::move_to(const Position &target, std::optional<Speed> speed, 
   ESP_LOGD(TAG_ENGINE, "move_to(): target=%lld steps, speed=%.2f RPM, accel=%.2f RPM/s",
            static_cast<long long>(target.get_steps()), speed_units.rpm(), accel_units.get_rpm_per_sec());
 
-  // Note: target_pos_ already updated by caller (ServoXxd::move_to or set_target_pos)
-  // Simply send new move command - hardware will update mid-movement
-  queue_->enqueue(CommandFactory::move_position_mode_2(target, speed_units, accel_units), nullptr);
+  // Update target position for target-reached detection
+  parent_->set_target_pos(target);
 
-  if (state_ == State::Moving || state_ == State::Stopping) {
-    return;
-  }
-  transition_to(State::Moving);
+  // Send move command to hardware using Mode 4 (absolute by encoder ticks)
+  // Mode 4 uses absolute encoder position - target is sent directly to hardware
+  queue_->enqueue(CommandFactory::move_position_mode_4(speed_units, accel_units, target),
+                  [this](bool success, const Command &) {
+                    if (!success) {
+                      ESP_LOGW(TAG_ENGINE, "move_to: Failed to send move command to hardware");
+                      return;
+                    }
+
+                    // Only transition to Moving if not already in motion
+                    // During Moving/Stopping: just update target (override behavior)
+                    if (state_ == State::Moving) {
+                      return;
+                    }
+                    transition_to(State::Moving);
+                  });
 }
 
 void StepperEngine::stop(std::optional<Acceleration> decel) {
@@ -640,7 +688,7 @@ void StepperEngine::home() {
 
   switch (homing.mode) {
     case HomingMode::VIRTUAL: {
-      // TODO: Implement VIRTUAL homing properly
+      // TODO: Implement VIRTUAL homing - Move to position 0 using move_to()
       ESP_LOGW(TAG_ENGINE, "VIRTUAL homing not yet implemented");
       /*
       // Virtual homing: Move to position 0 using normal positioning
@@ -731,23 +779,21 @@ void StepperEngine::home() {
       // ENDSTOP homing: Trigger homing sequence (parameters already set in setup)
       ESP_LOGD(TAG_ENGINE, "ENDSTOP homing: Starting sequence (speed=%.1f RPM)", homing.speed.rpm());
 
-      // TODO: Temporarily disabled for setup testing - GO_HOME command fails with 0xFFFF
-      ESP_LOGW(TAG_ENGINE, "GO_HOME temporarily disabled for setup testing");
-      /*
       queue_->enqueue(CommandFactory::go_home(), [this](bool success, const Command &) {
         if (success) {
-          ESP_LOGD(TAG_ENGINE, "✓ ENDSTOP homing started");
+          ESP_LOGD(TAG_ENGINE, "✓ ENDSTOP homing command sent");
+          // Transition to Homing state - poll_homing_status() will monitor completion
+          transition_to(State::Homing);
         } else {
           transition_to(State::Error);
           ESP_LOGW(TAG_ENGINE, "✗ Failed to start ENDSTOP homing");
         }
       });
-      */
       break;
     }
 
     case HomingMode::SENSORLESS: {
-      // TODO: Implement SENSORLESS homing properly
+      // TODO: Implement SENSORLESS homing - Use stall detection with no-limit parameters
       ESP_LOGW(TAG_ENGINE, "SENSORLESS homing not yet implemented");
       /*
       // SENSORLESS homing: Start movement (stall detection parameters already set)
@@ -783,7 +829,8 @@ void StepperEngine::home() {
       return;
   }
 
-  transition_to(State::Homing);
+  // Note: State transition to Homing happens in the callback for ENDSTOP mode
+  // For VIRTUAL/SENSORLESS modes (when implemented), they handle transitions themselves
 }
 
 void StepperEngine::run_continuous(std::optional<Speed> speed, std::optional<Acceleration> accel) {
@@ -954,9 +1001,9 @@ void StepperEngine::set_zero() {
       return;
     }
 
-    // Hardware confirmed - reset parent's offset and position tracking
+    // Hardware confirmed - reset position tracking to zero
     parent_->position_offset_ = Position(0.0f, PositionUnit::STEPS, parent_);
-    parent_->current_position = 0;
+    parent_->set_current_pos(Position(0.0f, PositionUnit::STEPS, parent_));
 
     ESP_LOGI(TAG_ENGINE, "set_zero: Hardware confirmed, encoder and offset reset to zero");
   });
@@ -995,18 +1042,6 @@ const char *StepperEngine::state_to_string(State state) {
       return "Unknown";
   }
 }
-
-// ============================================================================
-// Callbacks Registration
-// ============================================================================
-
-void StepperEngine::set_position_update_callback(std::function<void(Position)> cb) { position_callback_ = cb; }
-
-void StepperEngine::set_speed_update_callback(std::function<void(Speed)> cb) { speed_callback_ = cb; }
-
-void StepperEngine::set_protection_callback(std::function<void()> cb) { protection_callback_ = cb; }
-
-void StepperEngine::set_motor_status_callback(std::function<void(bool)> cb) { motor_status_callback_ = cb; }
 
 // ============================================================================
 // Transport Access
@@ -1133,11 +1168,6 @@ void StepperEngine::poll_encoder_position(std::function<void(const Position &)> 
           auto position = CommandDecoder::read_encoder_carry(cmd, parent_);
           process_encoder_update(position);
           parent_->set_current_pos(position);
-
-          // Invoke user callback if provided
-          if (callback) {
-            callback(position);
-          }
         }
       },
       Priority::BACKGROUND);
@@ -1157,9 +1187,10 @@ void StepperEngine::process_encoder_update(const Position &position) {
     transition_to(State::Idle);
   }
 
-  // Invoke callback if position changed (polled every 100ms, no threshold needed)
-  if (parent_->current_pos_.get_steps() != old_position.get_steps() && position_callback_) {
-    position_callback_(parent_->current_pos_);
+  // Check if homing completed (in Homing state)
+  if (state_ == State::Homing && parent_->current_position == 0) {
+    ESP_LOGI(TAG_ENGINE, "✓ Homing completed successfully (position reached zero)");
+    transition_to(State::Idle);
   }
 }
 
@@ -1172,34 +1203,17 @@ void StepperEngine::process_speed_update(const Speed &speed) {
     ESP_LOGV(TAG_ENGINE, "Standstill reached (speed=0), transitioning to Idle");
     transition_to(State::Idle);
   }
-
-  // Invoke callback if speed changed
-  if (speed.rpm() != old_speed.rpm() && speed_callback_) {
-    speed_callback_(current_speed_);
-  }
 }
 
 void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus status) {
-  // Track motor enable state for callback
-  bool enabled = (status != CommandDecoder::MotorStatus::STOP && status != CommandDecoder::MotorStatus::FAIL);
-  bool old_enabled = motor_enabled_;
-  motor_enabled_ = enabled;
-
-  // Notify parent if motor enable state changed
-  if (enabled != old_enabled && motor_status_callback_) {
-    motor_status_callback_(enabled);
-  }
-
   // Hardware status validates Engine state - Engine state is leading
   // Only handle critical errors or completion signals
   switch (status) {
     case CommandDecoder::MotorStatus::FAIL:
-      // Critical error: Always transition to Error state
-      if (state_ != State::Error) {
-        ESP_LOGW(TAG_ENGINE, "Motor status: FAIL - Hardware reports failure");
-        ESP_LOGW(TAG_ENGINE, "  Possible causes: locked rotor, motor not connected, calibration needed");
-        transition_to(State::Error);
-      }
+      // Hardware docs: FAIL (status=0) means "read fail" - no valid status available
+      // This is NORMAL when motor is idle/disabled, not an error condition
+      // Only log at VERBOSE level to avoid spam
+      ESP_LOGVV(TAG_ENGINE, "Motor status: FAIL (no valid status available - motor idle/disabled)");
       break;
 
     case CommandDecoder::MotorStatus::STOP:
@@ -1214,7 +1228,20 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
         ESP_LOGV(TAG_ENGINE, "Motor status: STOP confirmed, transitioning to Idle");
         transition_to(State::Idle);
       }
-      // If Engine is Homing/Calibrating and hardware stopped → Check completion separately
+      // If Engine is Homing and hardware stopped → Homing completed successfully
+      else if (state_ == State::Homing) {
+        ESP_LOGI(TAG_ENGINE, "✓ Homing completed successfully (status: HOMING → STOP)");
+        // Reset position to zero after successful homing
+        Position zero_pos = Position::from_steps(0, parent_);
+        parent_->set_current_pos(zero_pos);
+        parent_->set_target_pos(zero_pos);
+        transition_to(State::Idle);
+      }
+      // If Engine is Calibrating and hardware stopped → Calibration completed
+      else if (state_ == State::Calibrating) {
+        ESP_LOGI(TAG_ENGINE, "✓ Calibration completed (status: CALIBRATING → STOP)");
+        transition_to(State::Idle);
+      }
       break;
 
     case CommandDecoder::MotorStatus::SPEED_UP:
@@ -1229,10 +1256,22 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
       break;
 
     case CommandDecoder::MotorStatus::HOMING:
-      // Hardware reports homing - validate against Engine expectations
+      // Hardware reports homing in progress
+      // If Engine is in Homing state → Check if homing completed (position reached zero/endstop)
+      if (state_ == State::Homing) {
+        // Motor stays in HOMING status until manually stopped or endstop reached
+        // Check if position is at zero (homing completed)
+        ESP_LOGD(TAG_ENGINE, "HOMING status: current_position=%d, checking for completion...", parent_->current_position);
+        if (parent_->current_position == 0) {
+          ESP_LOGI(TAG_ENGINE, "✓ Homing completed successfully (position reached zero)");
+          transition_to(State::Idle);
+        } else {
+          ESP_LOGV(TAG_ENGINE, "Homing still in progress (position=%d)", parent_->current_position);
+        }
+      }
       // If Engine is NOT in Homing state → Someone else started homing (physical buttons?)
       // CRITICAL: Ignore hardware status sync during SettingUp to prevent state overwrites
-      if (state_ != State::Homing && state_ != State::SettingUp) {
+      else if (state_ != State::SettingUp) {
         ESP_LOGW(TAG_ENGINE, "Unexpected homing: Hardware homing but engine state is %s", state_to_string(state_));
         ESP_LOGW(TAG_ENGINE, "  Possible cause: Manual homing via physical buttons");
         // Sync engine state to hardware reality
@@ -1262,18 +1301,15 @@ void StepperEngine::process_protection_update(uint8_t protected_status) {
   if (protection_triggered_ && !old_protection) {
     ESP_LOGE(TAG_ENGINE, "Protection triggered! Status=0x%02X", protected_status);
     handle_error("Locked-rotor protection triggered");
-
-    if (protection_callback_) {
-      protection_callback_();
-    }
   }
 }
 
 bool StepperEngine::is_target_reached() {
   // Check if current position is within tolerance of target
-  float tolerance = 5.0f;  // steps
-  float delta = std::abs(parent_->current_pos_.get_steps() - parent_->target_pos_.get_steps());
-  return delta <= tolerance;
+  Position delta = parent_->current_pos_ - parent_->target_pos_;
+  Position tolerance = Position::from_degrees(1.0f, parent_);
+  // Use absolute value to check distance in both directions
+  return delta.abs() <= tolerance;
 }
 
 void StepperEngine::handle_error(const char *error_message) {

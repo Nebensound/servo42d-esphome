@@ -740,7 +740,10 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_EN_PIN_ACTIVE, default="LOW"): cv.enum(
                 EN_PIN_ACTIVE_VALUES, upper=True
             ),
-            cv.Optional(CONF_AUTO_SCREEN_OFF, default="AUTO_OFF"): cv.enum(SCREEN_MODES, upper=True),
+            cv.Optional(CONF_AUTO_SCREEN_OFF, default="AUTO_OFF"): cv.All(
+                cv.Any(cv.boolean, cv.enum(SCREEN_MODES, upper=True)),
+                lambda value: "AUTO_OFF" if value is True else ("ALWAYS_ON" if value is False else value)
+            ),
             cv.Optional(CONF_LOCK_KEYS_AT_STARTUP, default="UNLOCKED"): cv.enum(KEYPAD_LOCK_VALUES, upper=True),
             # Operating mode
             cv.Optional(CONF_MODE, default="POSITION"): cv.enum(
@@ -912,7 +915,7 @@ async def to_code(config):
     holding_enum = HOLDING_CURRENT_PERCENT_VALUES[holding_percent_int]
     cg.add(var.set_holding_current_percent(holding_enum))
     cg.add(var.set_en_pin_active(config[CONF_EN_PIN_ACTIVE]))
-    cg.add(var.set_auto_screen_off(config[CONF_AUTO_SCREEN_OFF]))
+    cg.add(var.set_auto_screen_off(SCREEN_MODES[config[CONF_AUTO_SCREEN_OFF]]))
     cg.add(var.set_lock_keys_at_startup(config[CONF_LOCK_KEYS_AT_STARTUP]))
 
     # Set operating mode

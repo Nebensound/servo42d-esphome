@@ -48,17 +48,18 @@ class CommandDecoder {
    * Response: 2 bytes - [speed_hi][speed_lo] (int16_t RPM)
    *
    * @param cmd Command object with command_type=READ_CURRENT_SPEED and response data
+   * @param parent Parent ServoXxd pointer for speed context (required for steps/sec conversion)
    * @return Speed object with current motor speed in RPM, or default Speed on error
    */
-  static Speed read_current_speed(const Command &cmd) {
+  static Speed read_current_speed(const Command &cmd, const ServoXxd *parent) {
     if (!validate_command_type(cmd, Commandtype::READ_CURRENT_SPEED))
-      return Speed(nullptr);
+      return Speed(parent);
 
     const auto &data = cmd.response;
     if (data.size() < 2)
-      return Speed(nullptr);
+      return Speed(parent);
     int16_t rpm = static_cast<int16_t>((static_cast<int16_t>(data[0]) << 8) | data[1]);
-    return Speed::from_rpm(rpm, nullptr);
+    return Speed::from_rpm(rpm, parent);
   }
 
   /**
@@ -69,18 +70,19 @@ class CommandDecoder {
    * Response: 4 bytes - [count_b3][count_b2][count_b1][count_b0] (int32_t)
    *
    * @param cmd Command object with command_type=READ_PULSE_COUNT and response data
+   * @param parent Parent ServoXxd pointer for position context (required for steps conversion)
    * @return Position object with pulse count in ticks, or default Position on error
    */
-  static Position read_pulse_count(const Command &cmd) {
+  static Position read_pulse_count(const Command &cmd, const ServoXxd *parent) {
     if (!validate_command_type(cmd, Commandtype::READ_PULSE_COUNT))
-      return Position(nullptr);
+      return Position(parent);
 
     const auto &data = cmd.response;
     if (data.size() < 4)
-      return Position(nullptr);
+      return Position(parent);
     int32_t ticks = (static_cast<int32_t>(data[0]) << 24) | (static_cast<int32_t>(data[1]) << 16) |
                     (static_cast<int32_t>(data[2]) << 8) | static_cast<int32_t>(data[3]);
-    return Position::from_ticks(ticks);
+    return Position::from_ticks(ticks, parent);
   }
 
   /**
@@ -91,15 +93,16 @@ class CommandDecoder {
    * Response: 6 bytes - int48_t position (signed)
    *
    * @param cmd Command object with command_type=READ_ENCODER_ADDITION and response data
+   * @param parent Parent ServoXxd pointer for position context (required for steps conversion)
    * @return Position object with encoder position in ticks (int48_t), or default Position on error
    */
-  static Position read_encoder_addition(const Command &cmd) {
+  static Position read_encoder_addition(const Command &cmd, const ServoXxd *parent) {
     if (!validate_command_type(cmd, Commandtype::READ_ENCODER_ADDITION))
-      return Position(nullptr);
+      return Position(parent);
 
     const auto &data = cmd.response;
     if (data.size() < 6)
-      return Position(nullptr);
+      return Position(parent);
     int64_t ticks = 0;
     for (size_t i = 0; i < 6; i++) {
       ticks = (ticks << 8) | data[i];
@@ -107,7 +110,7 @@ class CommandDecoder {
     if (ticks & 0x800000000000LL) {
       ticks |= 0xFFFF000000000000LL;
     }
-    return Position::from_ticks(ticks);
+    return Position::from_ticks(ticks, parent);
   }
 
   /**
@@ -118,18 +121,19 @@ class CommandDecoder {
    * Response: Same format as pulse count (4 bytes)
    *
    * @param cmd Command object with command_type=READ_ANGLE_ERROR and response data
+   * @param parent Parent ServoXxd pointer for position context (required for steps conversion)
    * @return Position object with angle error in ticks, or default Position on error
    */
-  static Position read_angle_error(const Command &cmd) {
+  static Position read_angle_error(const Command &cmd, const ServoXxd *parent) {
     if (!validate_command_type(cmd, Commandtype::READ_ANGLE_ERROR))
-      return Position(nullptr);
+      return Position(parent);
 
     const auto &data = cmd.response;
     if (data.size() < 4)
-      return Position(nullptr);
+      return Position(parent);
     int32_t ticks = (static_cast<int32_t>(data[0]) << 24) | (static_cast<int32_t>(data[1]) << 16) |
                     (static_cast<int32_t>(data[2]) << 8) | static_cast<int32_t>(data[3]);
-    return Position::from_ticks(ticks);
+    return Position::from_ticks(ticks, parent);
   }
 
   /**
@@ -311,10 +315,10 @@ class CommandDecoder {
    * Note: Use read_encoder_addition() for direct int48_t position (Commandtype 0x31).
    *
    * @param cmd Command object with command_type=READ_ENCODER_CARRY and response data
-   * @param parent Optional ServoXxd parent for position conversion context
+   * @param parent Parent ServoXxd pointer for position conversion context
    * @return Position object with absolute encoder position in ticks, or default Position on error
    */
-  static Position read_encoder_carry(const Command &cmd, const ServoXxd *parent = nullptr) {
+  static Position read_encoder_carry(const Command &cmd, const ServoXxd *parent) {
     if (!validate_command_type(cmd, Commandtype::READ_ENCODER_CARRY))
       return Position(parent);
 
@@ -334,8 +338,8 @@ class CommandDecoder {
   /**
    * @brief Motor status states
    *
-   * Hardware response values for READ_MOTOR_STATUS (0x3A):
-   * 0 = FAIL       - Motor read fail
+   * Hardware response values for READ_MOTOR_STATUS (0xF1):
+   * 0 = FAIL       - Motor read fail (motor idle/disabled)
    * 1 = STOP       - Motor is stopped
    * 2 = SPEED_UP   - Motor is accelerating
    * 3 = SPEED_DOWN - Motor is decelerating
