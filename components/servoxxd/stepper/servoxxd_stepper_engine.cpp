@@ -101,7 +101,7 @@ void StepperEngine::setup_motor() {
   transition_to(State::SettingUp);
 
   if (!queue_) {
-    parent_->status_set_error("CommandQueue not initialized");
+    parent_->status_set_error(LOG_STR("CommandQueue not initialized"));
     parent_->mark_failed();
     return;
   }
@@ -124,7 +124,7 @@ void StepperEngine::setup_motor() {
     if (!success) {
       ESP_LOGE(TAG_ENGINE, "✗ Failed to read motor configuration - aborting setup!");
       transition_to(State::Error);
-      parent_->status_set_error("Failed to read motor configuration");
+      parent_->status_set_error(LOG_STR("Failed to read motor configuration"));
       parent_->mark_failed();
       // Clear all pending commands to abort setup sequence
       if (queue_) {
@@ -157,7 +157,7 @@ void StepperEngine::setup_motor() {
                               if (!success) {
                                 ESP_LOGE(TAG_ENGINE, "Failed to update control mode");
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to update control mode");
+                                parent_->status_set_error(LOG_STR("Failed to update control mode"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -178,7 +178,7 @@ void StepperEngine::setup_motor() {
                               if (!success) {
                                 ESP_LOGE(TAG_ENGINE, "Failed to update holding current");
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to update holding current");
+                                parent_->status_set_error(LOG_STR("Failed to update holding current"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -199,7 +199,7 @@ void StepperEngine::setup_motor() {
                               if (!success) {
                                 ESP_LOGE(TAG_ENGINE, "Failed to update working current");
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to update working current");
+                                parent_->status_set_error(LOG_STR("Failed to update working current"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -223,7 +223,7 @@ void StepperEngine::setup_motor() {
                                 ESP_LOGE(TAG_ENGINE, "Failed to update microstepping to %u - Motor in vFOC mode?",
                                          desired_microstepping);
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to update microstepping");
+                                parent_->status_set_error(LOG_STR("Failed to update microstepping"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -244,7 +244,7 @@ void StepperEngine::setup_motor() {
                               if (!success) {
                                 ESP_LOGE(TAG_ENGINE, "Failed to update EN pin active level");
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to update EN pin active level");
+                                parent_->status_set_error(LOG_STR("Failed to update EN pin active level"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -265,7 +265,7 @@ void StepperEngine::setup_motor() {
                               if (!success) {
                                 ESP_LOGE(TAG_ENGINE, "Failed to update direction");
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to update direction");
+                                parent_->status_set_error(LOG_STR("Failed to update direction"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -286,7 +286,7 @@ void StepperEngine::setup_motor() {
                               if (!success) {
                                 ESP_LOGE(TAG_ENGINE, "Failed to update auto screen off");
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to update auto screen off");
+                                parent_->status_set_error(LOG_STR("Failed to update auto screen off"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -307,7 +307,7 @@ void StepperEngine::setup_motor() {
                               if (!success) {
                                 ESP_LOGE(TAG_ENGINE, "Failed to update protection mode");
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to update protection mode");
+                                parent_->status_set_error(LOG_STR("Failed to update protection mode"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -328,7 +328,7 @@ void StepperEngine::setup_motor() {
                               if (!success) {
                                 ESP_LOGE(TAG_ENGINE, "Failed to update key lock");
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to update key lock");
+                                parent_->status_set_error(LOG_STR("Failed to update key lock"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -346,7 +346,7 @@ void StepperEngine::setup_motor() {
               if (!success) {
                 ESP_LOGE(TAG_ENGINE, "Failed to set EN trigger configuration");
                 transition_to(State::Error);
-                parent_->status_set_error("Failed to set EN trigger configuration");
+                parent_->status_set_error(LOG_STR("Failed to set EN trigger configuration"));
                 parent_->mark_failed();
                 if (queue_) {
                   queue_->clear();
@@ -375,7 +375,7 @@ void StepperEngine::setup_motor() {
                               if (!success) {
                                 ESP_LOGE(TAG_ENGINE, "Failed to configure homing parameters");
                                 transition_to(State::Error);
-                                parent_->status_set_error("Failed to configure homing parameters");
+                                parent_->status_set_error(LOG_STR("Failed to configure homing parameters"));
                                 parent_->mark_failed();
                                 if (queue_) {
                                   queue_->clear();
@@ -418,7 +418,7 @@ void StepperEngine::setup_motor() {
             ESP_LOGE(TAG_ENGINE, "✗ Motor setup failed - final status check unsuccessful");
             transition_to(State::Error);
             parent_->setup_state_ = SetupState::FAILED;
-            parent_->status_set_error("Motor setup failed");
+            parent_->status_set_error(LOG_STR("Motor setup failed"));
             parent_->mark_failed();
             return;
           }
