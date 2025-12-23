@@ -205,15 +205,14 @@ inline Command set_working_current(uint16_t mA) {
 
 /**
  * @brief Set microstepping subdivision
- * @param microsteps Microstep resolution (1, 2, 4, 8, 16, 32, 64, etc.)
+ * @param microsteps Microstep resolution (1-256, menu supports: 1,2,4,8,16,32,64,128,256)
  * @return Command object with encoded payload
  *
  * @details Payload: 1 byte - [microsteps]
  */
-inline Command set_subdivision(uint8_t microsteps) {
+inline Command set_subdivision(uint16_t microsteps) {
   std::vector<uint8_t> data;
-  uint16_t steps = microsteps;
-  detail::encode_uint16_be(data, steps);
+  detail::encode_uint16_be(data, microsteps);
   return Command(Commandtype::SET_SUBDIVISION, data);
 }
 
@@ -582,7 +581,7 @@ inline Command read_zero_return_status() { return Command(Commandtype::READ_ZERO
  * Note: This is an advanced command. Use individual setters for normal configuration.
  */
 inline Command write_all_config(ControlMode mode, uint8_t holding_current_percent, uint16_t working_current_ma,
-                                uint8_t subdivision, EnPinActive en_pin_active, bool shaft_reversed,
+                                uint16_t subdivision, EnPinActive en_pin_active, bool shaft_reversed,
                                 bool auto_screen_off, uint8_t protect_enable, bool mplyer, uint8_t baud_rate,
                                 uint8_t slave_address, uint8_t group_address, bool respond_enable, bool active_enable,
                                 bool modbus_enable, bool key_lock, EndstopTrigger homing_trigger,
