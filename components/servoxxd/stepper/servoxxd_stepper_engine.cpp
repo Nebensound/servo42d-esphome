@@ -386,8 +386,36 @@ void StepperEngine::setup_motor() {
           }
 
           case Commandtype::SET_NOLIMIT_HOMING_PARAMS: {
-            // TODO: Implement SENSORLESS homing setup
-            ESP_LOGW(TAG_ENGINE, "  SENSORLESS homing setup not yet implemented");
+            // Only configure when SENSORLESS homing is selected
+            auto &homing = parent_->homing_;
+            if (homing.mode != HomingMode::SENSORLESS) {
+              break;
+            }
+
+            // Fallback to typical reverse angle if none provided
+            Position reverse_angle = desired_config.nolimit_reverse_angle_ticks;
+            if (reverse_angle.get_ticks() == 0) {
+              reverse_angle = Position::from_ticks(2000, parent_);
+            }
+
+            // Use explicit homing current when provided, otherwise default config value
+            uint16_t homing_current = homing.current_ma != 0 ? homing.current_ma : desired_config.nolimit_current_ma;
+
+            queue_->enqueue(CommandFactory::set_nolimit_homing_params(reverse_angle, true, homing_current),
+                            [this](bool success, const Command &) {
+                              if (state_ == State::Error) {
+                                return;  // Setup already aborted
+                              }
+                              if (!success) {
+                                ESP_LOGE(TAG_ENGINE, "Failed to configure sensorless homing parameters");
+                                transition_to(State::Error);
+                                parent_->status_set_error(LOG_STR("Failed to configure sensorless homing parameters"));
+                                parent_->mark_failed();
+                                if (queue_) {
+                                  queue_->clear();
+                                }
+                              }
+                            });
             break;
           }
 
