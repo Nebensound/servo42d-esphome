@@ -1,0 +1,133 @@
+substitutions:
+  gears:
+    motor: 9.0
+    valve: 44.0
+
+esphome:
+  name: holz-vergaser
+  friendly_name: Holzvergaser
+  on_boot:
+    priority: -100  # Late boot, after all components initialized
+    then:
+      - delay: 5s  # Wait for motor setup to complete
+      - lambda: |-
+          ESP_LOGI("boot", "Restoring valve position after motor setup");
+          auto* valve = id(valve_hk_i);
+          if (valve && valve->position.has_value()) {
+            float pos = valve->position.value();
+            ESP_LOGI("boot", "Calling valve position action with: %.2f", pos);
+            auto call = valve->make_call();
+            call.set_position(pos);
+            call.perform();
+          }
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+status_led:
+  pin: GPIO15
+
+packages:
+  common: !include common/common.yaml
+
+external_components:
+  - source: github://Nebensound/servoxxd-esphome@develop
+    components: [servoxxd]
+    refresh: 0s
+
+uart:
+  - id: rs485
+    tx_pin: GPIO13
+    rx_pin: GPIO16
+    baud_rate: 9600
+
+modbus:
+  uart_id: rs485
+  send_wait_time: 1000ms
+
+stepper:
+  - platform: servoxxd
+    id: stepper_hk_i
+    servo_type: SERVO42D
+    mode: POSITION
+    address: 0x02
+    speed: 10 revolutions/min
+    acceleration: 1 revolutions/s^2
+    homing:
+      mode: ENDSTOP
+      at_startup: true
+      direction: CCW
+      speed: 10 revolutions/min
+      endstop_trigger: HIGH
+
+# Update valve position periodically instead of in every loop
+interval:
+  - interval: 500ms
+    then:
+      - lambda: |-
+          auto* motor = id(stepper_hk_i);
+          if (!motor) {
+            return;
+          }
+          
+          float pos_in_rev = motor->get_current_position_revolutions();
+          
+          if (std::isnan(pos_in_rev)) {
+            return;
+          }
+          
+          const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+          const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+          
+          float range = pos_open - pos_closed;
+          if (std::abs(range) < 0.001) {
+            return;
+          }
+          
+          float pos = (pos_in_rev - pos_closed) / range;
+          
+          // Clamp to 0-1
+          pos = std::max(0.0f, std::min(1.0f, pos));
+          
+          // Update valve state
+          auto* valve = id(valve_hk_i);
+          if (valve) {
+            valve->publish_state(pos);
+          }
+
+valve:
+  - platform: template
+    name: "Heizkreis I"
+    id: valve_hk_i
+    device_class: water
+    open_action:
+      - stepper.set_target:
+          id: stepper_hk_i
+          target:
+            value: !lambda |-
+              const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+              const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+              return pos_open;
+            unit: REVOLUTIONS
+    close_action:
+      - stepper.set_target:
+          id: stepper_hk_i
+          target:
+            value: !lambda |-
+              const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+              const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+              return pos_closed;
+            unit: REVOLUTIONS
+    position_action:
+      - stepper.set_target:
+          id: stepper_hk_i
+          target:
+            value: !lambda |-
+              const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+              const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+              return pos_closed + pos * 0.5*${gears.valve}/${gears.motor}/4.0;
+            unit: REVOLUTIONS
+    has_position: true
+    restore_mode: RESTORE

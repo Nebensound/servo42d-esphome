@@ -1144,6 +1144,10 @@ void StepperEngine::process_protection_update(uint8_t protected_status) {
   // Transition to Error state if protection triggered
   if (protection_triggered_ && !old_protection) {
     ESP_LOGE(TAG_ENGINE, "Protection triggered! Status=0x%02X", protected_status);
+    ESP_LOGE(TAG_ENGINE, "  Current state: %s", state_to_string(state_));
+    ESP_LOGE(TAG_ENGINE, "  Current position: %s, Target position: %s", parent_->current_pos_.to_string().c_str(),
+             parent_->target_pos_.to_string().c_str());
+    ESP_LOGE(TAG_ENGINE, "  Current speed: %.2f RPM", current_speed_.rpm());
     handle_error("Locked-rotor protection triggered");
   }
 }
@@ -1158,6 +1162,7 @@ bool StepperEngine::is_target_reached() {
 
 void StepperEngine::handle_error(const char *error_message) {
   ESP_LOGE(TAG_ENGINE, "Error: %s", error_message);
+  ESP_LOGE(TAG_ENGINE, "  Previous state: %s", state_to_string(state_));
   transition_to(State::Error);
 }
 

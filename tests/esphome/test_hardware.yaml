@@ -103,13 +103,118 @@ script:
       - delay: 1s
 
   # ========================================
-  # TEST 3: Move away and Home again
+  # TEST 3: Race Condition Test - Valve RESTORE_AND_CALL during motor setup
   # ========================================
-  - id: test_3_move_and_home
+  - id: test_3_race_condition
     mode: single
     then:
       - lambda: 'ESP_LOGI("test", "==========================================");'
-      - lambda: 'ESP_LOGI("test", "TEST 3: Move Away and Return Home");'
+      - lambda: 'ESP_LOGI("test", "TEST 3: Race Condition - Early Valve Commands");'
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - delay: 1s
+
+      - lambda: 'ESP_LOGI("test", "  -> Simulating valve RESTORE_AND_CALL scenario...");'
+      - lambda: 'ESP_LOGI("test", "  -> Will send position commands while motor is in various states");'
+      
+      # Test 1: Command during Disabled state
+      - lambda: 'ESP_LOGI("test", "  -> Test 3a: Command while Disabled");'
+      - stepper.disable: test_motor
+      - delay: 500ms
+      - lambda: |-
+          ESP_LOGI("test", "     Motor state: %s", id(test_motor)->get_state_string().c_str());
+          ESP_LOGI("test", "     Sending set_target command...");
+      - stepper.set_target:
+          id: test_motor
+          target:
+            value: 0.5
+            unit: REVOLUTIONS
+      - delay: 1s
+      - lambda: |-
+          ESP_LOGI("test", "     Motor state after command: %s", id(test_motor)->get_state_string().c_str());
+          if (id(test_motor)->get_state() == esphome::servoxxd::State::Error) {
+            ESP_LOGE("test", "  ✗ TEST 3a FAILED - Motor in Error state");
+          } else {
+            ESP_LOGI("test", "  ✓ TEST 3a PASSED - Motor handled command gracefully");
+          }
+      
+      # Re-enable for next test
+      - stepper.enable: test_motor
+      - delay: 1s
+      
+      # Test 2: Rapid successive commands (simulating valve restore + user action)
+      - lambda: 'ESP_LOGI("test", "  -> Test 3b: Rapid successive commands");'
+      - stepper.set_target:
+          id: test_motor
+          target:
+            value: 0.25
+            unit: REVOLUTIONS
+      - delay: 100ms  # Very short delay
+      - stepper.set_target:
+          id: test_motor
+          target:
+            value: 0.75
+            unit: REVOLUTIONS
+      - delay: 100ms
+      - stepper.set_target:
+          id: test_motor
+          target:
+            value: 0.5
+            unit: REVOLUTIONS
+      - delay: 2s
+      - lambda: |-
+          ESP_LOGI("test", "     Motor state after rapid commands: %s", id(test_motor)->get_state_string().c_str());
+          if (id(test_motor)->get_state() == esphome::servoxxd::State::Error) {
+            ESP_LOGE("test", "  ✗ TEST 3b FAILED - Motor crashed on rapid commands");
+          } else {
+            ESP_LOGI("test", "  ✓ TEST 3b PASSED - Motor handled rapid commands");
+          }
+      
+      # Wait for movement to complete
+      - wait_until:
+          condition:
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;"
+          timeout: 15s
+      
+      # Test 3: Command immediately after restart simulation
+      - lambda: 'ESP_LOGI("test", "  -> Test 3c: Command after disable/enable cycle (simulates restart)");'
+      - stepper.disable: test_motor
+      - delay: 500ms
+      - stepper.enable: test_motor
+      - delay: 50ms  # Very short delay - mimics boot scenario
+      - lambda: |-
+          ESP_LOGI("test", "     Motor state: %s", id(test_motor)->get_state_string().c_str());
+          ESP_LOGI("test", "     Sending command immediately after enable...");
+      - stepper.set_target:
+          id: test_motor
+          target:
+            value: 1.0
+            unit: REVOLUTIONS
+      - delay: 2s
+      - lambda: |-
+          ESP_LOGI("test", "     Motor state after early command: %s", id(test_motor)->get_state_string().c_str());
+          if (id(test_motor)->get_state() == esphome::servoxxd::State::Error) {
+            ESP_LOGE("test", "  ✗ TEST 3c FAILED - Motor crashed on early command after enable");
+          } else {
+            ESP_LOGI("test", "  ✓ TEST 3c PASSED - Motor handled early command");
+          }
+      
+      # Wait for movement to complete
+      - wait_until:
+          condition:
+            lambda: "return id(test_motor)->get_state() == esphome::servoxxd::State::Idle;"
+          timeout: 15s
+      
+      - lambda: 'ESP_LOGI("test", "  ✓ TEST 3 COMPLETE - Check results above");'
+      - delay: 1s
+
+  # ========================================
+  # TEST 4: Move away and Home again
+  # ========================================
+  - id: test_4_move_and_home
+    mode: single
+    then:
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - lambda: 'ESP_LOGI("test", "TEST 4: Move Away and Return Home");'
       - lambda: 'ESP_LOGI("test", "==========================================");'
       - delay: 1s
 
@@ -175,17 +280,21 @@ script:
       - script.execute: test_2_small_movement
       - script.wait: test_2_small_movement
 
-      # Run TEST 3 - Homing
-      # - script.execute: test_3_move_and_home
-      # - script.wait: test_3_move_and_home
+      # Run TEST 3 - Race Condition Test (NEW!)
+      - script.execute: test_3_race_condition
+      - script.wait: test_3_race_condition
+
+      # Run TEST 4 - Homing
+      # - script.execute: test_4_move_and_home
+      # - script.wait: test_4_move_and_home
 
       # All tests complete
-      # - delay: 2s
-      # - lambda: 'ESP_LOGI("test", "==========================================");'
-      # - lambda: 'ESP_LOGI("test", "  ALL TESTS COMPLETED!");'
-      # - lambda: 'ESP_LOGI("test", "==========================================");'#
-      # - delay: 5s
-      # - lambda: 'ESP_LOGI("test", "System will restart in 3 seconds...");'
+      - delay: 2s
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - lambda: 'ESP_LOGI("test", "  ALL TESTS COMPLETED!");'
+      - lambda: 'ESP_LOGI("test", "==========================================");'
+      - delay: 5s
+      - lambda: 'ESP_LOGI("test", "System will restart in 3 seconds...");'
       - delay: 3s
       - button.press: restart_esp
 
@@ -371,9 +480,14 @@ button:
       - script.execute: test_2_small_movement
 
   - platform: template
-    name: "Run Test 3 - Homing"
+    name: "Run Test 3 - Race Condition"
     on_press:
-      - script.execute: test_3_move_and_home
+      - script.execute: test_3_race_condition
+
+  - platform: template
+    name: "Run Test 4 - Homing"
+    on_press:
+      - script.execute: test_4_move_and_home
 
   - platform: template
     name: "Manual Home"

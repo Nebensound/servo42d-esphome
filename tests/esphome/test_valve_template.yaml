@@ -1,0 +1,241 @@
+substitutions:
+  gears:
+    motor: 9.0
+    valve: 44.0
+
+esphome:
+  name: valve-template-test
+  friendly_name: Valve Template Test
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+  logs:
+    component: DEBUG
+
+# WiFi
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Valve Test Fallback"
+    password: !secret fallback_ap_password
+
+# Enable Home Assistant API0
+api:
+
+# Enable OTA updates
+ota:
+  - platform: esphome
+
+# UART configuration for RS485
+uart:
+  id: rs485_uart
+  tx_pin: GPIO13
+  rx_pin: GPIO16
+  baud_rate: 9600
+
+# Modbus configuration
+modbus:
+  id: modbus_rs485
+  uart_id: rs485_uart
+  send_wait_time: 50ms
+
+# External component (local path)
+external_components:
+  - source:
+      type: local
+      path: ../../components
+    components: [servoxxd]
+
+# ServoXxD Stepper Motor
+stepper:
+  - platform: servoxxd
+    id: test_motor
+    modbus_id: modbus_rs485
+    address: 0x02
+    servo_type: SERVO42D
+    mode: POSITION
+    speed: 1 revolutions/s
+    acceleration: 100 revolutions/s^2
+    homing:
+      mode: ENDSTOP
+      at_startup: false
+      direction: CCW
+      speed: 2 rpm
+      endstop_trigger: HIGH
+
+# Test Sensors - Verify position methods work
+sensor:
+  - platform: template
+    name: "Motor Position Steps"
+    lambda: |-
+      auto* motor = id(test_motor);
+      if (!motor) {
+        ESP_LOGW("test", "Motor not initialized");
+        return NAN;
+      }
+      float pos = motor->get_current_position_steps();
+      ESP_LOGI("test", "Position in steps: %.2f", pos);
+      return pos;
+    update_interval: 2s
+    unit_of_measurement: "steps"
+
+  - platform: template
+    name: "Motor Position Revolutions"
+    lambda: |-
+      auto* motor = id(test_motor);
+      if (!motor) {
+        ESP_LOGW("test", "Motor not initialized");
+        return NAN;
+      }
+      float pos_rev = motor->get_current_position_revolutions();
+      ESP_LOGI("test", "Position in revolutions: %.4f", pos_rev);
+      return pos_rev;
+    update_interval: 2s
+    unit_of_measurement: "rev"
+    accuracy_decimals: 4
+
+# Text sensor for motor state
+text_sensor:
+  - platform: template
+    name: "Motor State"
+    lambda: |-
+      auto* motor = id(test_motor);
+      if (!motor) {
+        return {"NOT_INITIALIZED"};
+      }
+      return motor->get_state_string();
+    update_interval: 1s
+
+# Test Valve Template - Using interval instead of lambda to avoid excessive updates
+valve:
+  - platform: template
+    name: "Test Valve"
+    id: test_valve
+    device_class: water
+    # No lambda here - we'll update via interval
+    open_action:
+      - logger.log: "Valve OPEN action triggered"
+      - stepper.set_target:
+          id: test_motor
+          target:
+            value: !lambda |-
+              const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+              const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+              ESP_LOGI("valve", "Moving to OPEN position: %.4f rev", pos_open);
+              return pos_open;
+            unit: REVOLUTIONS
+    close_action:
+      - logger.log: "Valve CLOSE action triggered"
+      - stepper.set_target:
+          id: test_motor
+          target:
+            value: !lambda |-
+              const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+              const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+              ESP_LOGI("valve", "Moving to CLOSED position: %.4f rev", pos_closed);
+              return pos_closed;
+            unit: REVOLUTIONS
+    position_action:
+      - logger.log:
+          format: "Valve POSITION action triggered: %.2f%%"
+          args: ["pos * 100.0f"]
+      - stepper.set_target:
+          id: test_motor
+          target:
+            value: !lambda |-
+              const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+              const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+              float target = pos_closed + pos * (pos_open - pos_closed);
+              ESP_LOGI("valve", "Moving to position %.2f%% = %.4f rev", pos * 100.0f, target);
+              return target;
+            unit: REVOLUTIONS
+    has_position: true
+    restore_mode: NO_RESTORE
+
+# Update valve position periodically instead of in every loop
+interval:
+  - interval: 500ms
+    then:
+      - lambda: |-
+          ESP_LOGD("valve", "=== Updating Valve Position ===");
+
+          auto* motor = id(test_motor);
+          if (!motor) {
+            ESP_LOGW("valve", "Motor pointer is NULL!");
+            return;
+          }
+
+          float pos_in_rev = motor->get_current_position_revolutions();
+          ESP_LOGD("valve", "Position in revolutions: %.4f", pos_in_rev);
+
+          if (std::isnan(pos_in_rev)) {
+            ESP_LOGW("valve", "Position is NAN!");
+            return;
+          }
+
+          const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;  // -0.6111 revolutions
+          const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;  // 0.0 revolutions
+
+          ESP_LOGD("valve", "pos_closed=%.4f, pos_open=%.4f", pos_closed, pos_open);
+
+          float range = pos_open - pos_closed;
+          if (std::abs(range) < 0.001) {
+            ESP_LOGW("valve", "Range too small: %.4f", range);
+            return;
+          }
+
+          float pos = (pos_in_rev - pos_closed) / range;
+          ESP_LOGD("valve", "Calculated position: %.4f", pos);
+
+          // Clamp to 0-1
+          pos = std::max(0.0f, std::min(1.0f, pos));
+          ESP_LOGI("valve", "Final valve position: %.2f%%", pos * 100.0f);
+
+          // Update valve state
+          auto* valve = id(test_valve);
+          if (valve) {
+            valve->publish_state(pos);
+          }
+
+# Test buttons
+button:
+  - platform: restart
+    name: "Restart ESP"
+
+  - platform: template
+    name: "Test Valve Open"
+    on_press:
+      - valve.open: test_valve
+
+  - platform: template
+    name: "Test Valve Close"
+    on_press:
+      - valve.close: test_valve
+
+  - platform: template
+    name: "Test Valve 50%"
+    on_press:
+      - valve.control:
+          id: test_valve
+          position: 0.5
+
+  - platform: template
+    name: "Enable Motor"
+    on_press:
+      - stepper.enable: test_motor
+      - logger.log: "Motor enabled"
+
+  - platform: template
+    name: "Set Zero Position"
+    on_press:
+      - stepper.report_position:
+          id: test_motor
+          position: 0
+      - logger.log: "Zero position set"

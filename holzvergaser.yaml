@@ -1,0 +1,971 @@
+substitutions:
+  gears:
+    motor: 9.0
+    valve: 44.0
+
+esphome:
+  name: holz-vergaser
+  friendly_name: Holzvergaser
+  # TODO: Remove this on_boot workaround once motor race condition is fixed
+  # Currently needed because RESTORE_AND_CALL crashes when motor is not ready
+  on_boot:
+    priority: -100  # Late boot, after all components initialized
+    then:
+      - delay: 5s  # Wait for motor setup to complete
+      - lambda: |-
+          ESP_LOGI("boot", "Restoring valve position after motor setup");
+          auto* valve = id(valve_hk_i);
+          if (valve && !std::isnan(valve->position)) {
+            float pos = valve->position;
+            ESP_LOGI("boot", "Calling valve position action with: %.2f", pos);
+            auto call = valve->make_call();
+            call.set_position(pos);
+            call.perform();
+          }
+  on_shutdown:
+    then:
+      - lambda: |-
+          id(saved_avarage_temperature_outside) = id(avarage_temperature_outside).state;
+          id(last_save_time) = id(my_time).now().timestamp;
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+status_led:
+  pin: GPIO15
+
+packages:
+  common: !include common/common.yaml
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [layered_storage] #three_way_valve
+  - source: github://Nebensound/servoxxd-esphome@develop
+    components: [servoxxd]
+    refresh: 0s
+
+web_server:
+
+uart:
+  - id: rs485
+    tx_pin: GPIO13
+    rx_pin: GPIO16
+    baud_rate: 9600
+
+modbus:
+  uart_id: rs485
+  send_wait_time: 1000ms
+
+stepper:
+  - platform: servoxxd
+    id: stepper_hk_i
+    servo_type: SERVO42D
+    mode: POSITION
+    address: 0x02
+    speed: 10 revolutions/min
+    acceleration: 1 revolutions/s^2
+    homing:
+      mode: ENDSTOP
+      at_startup: true
+      direction: CCW
+      speed: 10 revolutions/min
+      endstop_trigger: HIGH
+
+text_sensor:
+  - platform: template
+    name: "Motor State"
+    lambda: |-
+      auto* motor = id(stepper_hk_i);
+      if (!motor) return {};  // Motor nicht initialisiert
+      return motor->get_state_string();
+    update_interval: 1s
+
+# Update valve position periodically instead of in every loop
+interval:
+  - interval: 500ms
+    then:
+      - lambda: |-
+          auto* motor = id(stepper_hk_i);
+          if (!motor) {
+            return;
+          }
+          
+          float pos_in_rev = motor->get_current_position_revolutions();
+          
+          if (std::isnan(pos_in_rev)) {
+            return;
+          }
+          
+          const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;  // -0.6111 revolutions
+          const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;  // 0.0 revolutions
+          
+          float range = pos_open - pos_closed;
+          if (std::abs(range) < 0.001) {
+            return;
+          }
+          
+          float pos = (pos_in_rev - pos_closed) / range;
+          
+          // Clamp to 0-1
+          pos = std::max(0.0f, std::min(1.0f, pos));
+          
+          // Update valve state
+          auto* valve = id(valve_hk_i);
+          if (valve) {
+            valve->publish_state(pos);
+          }
+
+valve:
+#  - platform: three_way_valve
+#    name: "Heizkreis I"
+#    id: valve_hk_i
+#    stepper: stepper_hk_i
+#    gear_ratio: ${gears.valve / gears.motor}
+#    motor_steps_per_rev: 200
+#    ports:
+#      supply: 1
+#      buffer: 2
+#      return: 3
+  - platform: template
+    name: "Heizkreis I"
+    id: valve_hk_i
+    device_class: water
+    # No lambda here - position is updated via interval above
+    open_action:
+      - stepper.set_target:
+          id: stepper_hk_i
+          target:
+            value: !lambda |-
+              const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+              const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+              return pos_open;
+            unit: REVOLUTIONS
+    close_action:
+      - stepper.set_target:
+          id: stepper_hk_i
+          target:
+            value: !lambda |-
+              const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+              const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+              return pos_closed;
+            unit: REVOLUTIONS
+    position_action:
+      - stepper.set_target:
+          id: stepper_hk_i
+          target:
+            value: !lambda |-
+              const float pos_closed = -0.5*${gears.valve}/${gears.motor}/4.0;
+              const float pos_open = pos_closed + 0.5*${gears.valve}/${gears.motor}/4.0;
+              return pos_closed + pos * 0.5*${gears.valve}/${gears.motor}/4.0;
+            unit: REVOLUTIONS
+    has_position: true
+    # TODO: Change back to RESTORE_AND_CALL once motor race condition is fixed
+    # Currently RESTORE_AND_CALL crashes system when valve restores before motor is ready
+    restore_mode: RESTORE
+
+climate:
+  - platform: pid
+    id: hk_i
+    sensor: temp_vorlauf_hk_i
+    default_target_temperature: 50°C
+    heat_output: valve_hk_i_output
+    control_parameters:
+      kp: 0.14816 # 0.04939
+      ki: 0.00396 # 0.00132
+      kd: 1.38519 # 1.15433
+      output_averaging_samples: 2
+      derivative_averaging_samples: 2
+  - platform: pid
+    id: hk_i_ruecklauf
+    sensor: temp_ruecklauf_hk_i
+    default_target_temperature: 50°C
+    heat_output: no_output
+    cool_output: no_output
+    control_parameters:
+      kp: 0.01481
+      ki: 0.00022 # 0.00039
+      kd: 0.13851
+      output_averaging_samples: 2
+      derivative_averaging_samples: 2
+select:
+  - platform: template
+    name: "HK1 Steuerart"
+    id: hk_i_control_mode
+    optimistic: true
+    restore_value: true
+    options:
+      - Vorlauf
+      - Rücklauf
+    initial_option: Vorlauf
+button:
+  - platform: template
+    name: "PID HK I Autotune"
+    entity_category: config
+    on_press:
+      - climate.pid.autotune:
+          id: hk_i
+          positive_output: 0.8
+          negative_output: 0
+          noiseband: 0.5
+  - platform: template
+    name: "PID HK I Rücklauf Autotune"
+    entity_category: config
+    on_press:
+      - climate.pid.autotune:
+          id: hk_i_ruecklauf
+          positive_output: 0.5
+          negative_output: -0.5
+          noiseband: 1
+  - platform: template
+    name: "Außentemperatur gemittelt Reset"
+    entity_category: config
+    on_press:
+      - globals.set:
+          id: initiated_avarage_temperature_outside
+          value: "false"
+      - globals.set:
+          id: last_save_time
+          value: "-1"
+
+# i2c:
+#   sda: GPIO4
+#   scl:
+#     number: GPIO5
+#     ignore_strapping_warning: true
+
+# pcf8574:
+#   - id: inputs_1_8
+#     address: 0x22
+#   - id: inputs_9_16
+#     address: 0x21
+#   - id: outputs_1_8
+#     address: 0x24
+#   - id: outputs_9_16
+#     address: 0x25
+
+one_wire:
+  - platform: gpio
+    id: HT1
+    pin: GPIO32
+  - platform: gpio
+    id: HT2
+    pin: GPIO33
+  - platform: gpio
+    id: HT3
+    pin: GPIO14
+
+output:
+  - platform: template
+    id: valve_hk_i_output
+    type: float
+    write_action:
+      - valve.control:
+          id: valve_hk_i
+          position: !lambda |-
+            return state;
+          # position: !lambda |-
+          #   const float k = 7.241;  // Optimierter Wert
+          #   const float x0 = 0.5;  // Verschiebung
+          #   const float scale = 1 / (1 + exp(-k * (1 - x0))) - 1 / (1 + exp(-k * (-x0)));
+          #   const float shift = 1 / (1 + exp(-k * (-x0)));
+          #   float x = state;
+          #   float y = (1 / (1 + exp(-k * (x - x0))) - shift) / scale;
+          #   return y;
+      #      - logger.log:
+      #          format: "Output should be %.1f"
+      #          args: ["state"]
+      # - stepper.set_target:
+      #     id: stepper_hk_i
+      #     target: !lambda |-
+      #       const float pos_closed = (3200.0*44.0/9.0)*(25.282/360.0)- 3200.0*44.0/9.0/4.0;
+      #       const float k = 7.241;  // Optimierter Wert
+      #       const float x0 = 0.5;  // Verschiebung
+      #       const float scale = 1 / (1 + exp(-k * (1 - x0))) - 1 / (1 + exp(-k * (-x0)));
+      #       const float shift = 1 / (1 + exp(-k * (-x0)));
+      #       float x = state;
+      #       float y = (1 / (1 + exp(-k * (x - x0))) - shift) / scale;
+      #       int pos_in_steps = pos_closed + y * 3200.0 * 44.0 / 9.0 / 4.0;
+      #       return pos_in_steps;
+  - platform: template
+    id: no_output
+    type: float
+    write_action:
+      []
+      #      - logger.log:
+      #          format: "Output should be %.1f"
+      #          args: ["state"]
+
+sensor:
+  #   - platform: mcp9600
+  #     hot_junction:
+  #       name: "Temperatur Abgas"
+  #       id: temp_abgas
+  #     cold_junction:
+  #       name: "Raumtemperatur"
+  #     thermocouple_type: K
+  #     update_interval: 10s
+  - platform: dallas_temp
+    one_wire_id: HT3
+    address: 0x9D02131AE010AA28
+    name: "Temperatur Speicher I unten"
+    id: temp_speicher_i_unten
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT1
+    address: 0x5500000afff64728
+    name: "Temperatur Ventiel Gehäuse"
+    id: temp_valve_inside
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT3
+    address: 0xDF02131B28A2AA28
+    name: "Temperatur Speicher I mitte unten"
+    id: temp_speicher_i_mitte_unten
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT3
+    address: 0x193c01e076252f28
+    name: "Temperatur Speicher I mitte oben"
+    id: temp_speicher_i_mitte_oben
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT3
+    address: 0x9B000000019F7D28
+    name: "Temperatur  Speicher I oben"
+    id: temp_speicher_i_oben
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT3
+    address: 0xd13c01e076458828
+    name: "Temperatur Speicher II oben"
+    id: temp_speicher_ii_oben
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT3
+    address: 0xf53c01e0769ce528
+    name: "Temperatur Speicher II mitte"
+    id: temp_speicher_ii_mitte
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT3
+    address: 0x203c01e076412e28
+    name: "Temperatur Speicher II unten"
+    id: temp_speicher_ii_unten
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: layered_storage
+    name: "Speicher Warmwasser"
+    tank_volume: 485.7
+    charge_temperature: 80
+    reference_temperature: 45
+    update_interval: 1s
+    temperature_sensors:
+      - sensor: temp_speicher_i_oben
+        position: 47.1%
+      - sensor: temp_speicher_i_mitte_oben
+        position: 11.8%
+    energy:
+      name: "Gespeicherte Energie Warmwasser"
+      accuracy_decimals: 3
+      entity_category: diagnostic
+  - platform: layered_storage
+    name: "Speicher Heizung"
+    id: heizung_layer
+    tank_volume: 2514.3
+    charge_temperature: 80
+    reference_temperature: !lambda |-
+      return id(temp_hk_i_vorlauf_soll).state;
+    update_interval: 10s
+    temperature_sensors:
+      - sensor: temp_speicher_i_mitte_unten
+        position: 96.6%
+      - sensor: temp_speicher_i_unten
+        position: 85.2%
+      - sensor: temp_speicher_ii_oben
+        position: 68.2%
+      - sensor: temp_speicher_ii_mitte
+        position: 43.2%
+      - sensor: temp_speicher_ii_unten
+        position: 9.1%
+    energy:
+      name: "Gespeicherte Energie Heizung"
+      accuracy_decimals: 3
+      entity_category: diagnostic
+  - platform: layered_storage
+    name: "Zustand Heizung Haus"
+    id: haus_layer
+    tank_volume: 1000
+    charge_temperature: !lambda |-
+      return id(temp_hk_i_vorlauf_soll).state - 10.0;
+    reference_temperature: !lambda |-
+      return id(temp_hk_i_vorlauf_soll).state - 20.0;
+    update_interval: 10s
+    temperature_sensors:
+      - sensor: temp_vorlauf_hk_i
+        position: 100%
+      - sensor: temp_ruecklauf_hk_i
+        position: 0%
+  - platform: dallas_temp
+    one_wire_id: HT2
+    address: 0x9001205f1f04e828
+    name: "Temperatur Vorlauf"
+    id: temp_vorlauf
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT2
+    address: 0x8701205fc44c8128
+    name: "Temperatur Rücklauf"
+    id: temp_ruecklauf
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT2
+    address: 0xd401205f10700f28
+    name: "Temperatur Kessel"
+    id: temp_kessel
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: dallas_temp
+    one_wire_id: HT1
+    address: 0xe000000002701a28
+    name: "Temperatur HK I Vorlauf"
+    id: temp_vorlauf_hk_i
+    update_interval: 1s
+  - platform: dallas_temp
+    one_wire_id: HT1
+    address: 0xea3c01e076311328
+    name: "Temperatur HK I Rücklauf"
+    id: temp_ruecklauf_hk_i
+    update_interval: 1s
+  - platform: dallas_temp
+    one_wire_id: HT2
+    address: 0x1f01205f4975d628
+    name: "Temperatur Vorlauf gemischt"
+    id: temp_vorlauf_gemischt
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+  - platform: homeassistant
+    name: "Außentemperatur"
+    id: current_temperature_outside
+    entity_id: weather.weierhof
+    attribute: temperature
+    internal: false
+    filters:
+      - heartbeat: 10s
+    unit_of_measurement: °C
+    device_class: temperature
+    state_class: measurement
+  - platform: template
+    name: "Außentemperatur gemittelt"
+    id: avarage_temperature_outside
+    update_interval: 1 min
+    lambda: |-
+      float x = id(current_temperature_outside).state;
+      float last_x = id(avarage_temperature_outside).state;
+      const float alpha = 1.0 - exp(-1 / id(timeconstant).state);
+      if (!id(initiated_avarage_temperature_outside)){
+        if ((id(my_time).now().timestamp - id(last_save_time)) < (id(timeconstant).state * 60 / 2) && !std::isnan(id(saved_avarage_temperature_outside))){
+          last_x = id(saved_avarage_temperature_outside);
+        } else {
+          last_x = NAN;
+        }
+        id(initiated_avarage_temperature_outside) = true;
+      }
+      if (std::isnan(x) && std::isnan(last_x)){
+        return NAN;
+      } else if (std::isnan(x)){
+        x = last_x;
+      } else if (std::isnan(last_x)){
+        // x = x;
+      } else {
+        x = alpha * x + (1.0 - alpha) * last_x;
+      }
+      if ((id(my_time).now().timestamp - id(last_save_time)) > ((id(timeconstant).state * 60 / 2)-1)){
+        id(saved_avarage_temperature_outside) = x;
+        id(last_save_time) = id(my_time).now().timestamp;
+      }
+      return x;
+    unit_of_measurement: °C
+    device_class: temperature
+    state_class: measurement
+  - platform: template
+    name: "Temperatur HK I Vorlauf Soll Raw"
+    id: temp_hk_i_vorlauf_soll_raw
+    lambda: |-
+      float avarage_outsidetemp = id(avarage_temperature_outside).state;
+      float outsidetemp = id(current_temperature_outside).state;
+      float room_temp = id(room_temp_hk_i).state;
+      float offset = id(offset_hk_i).state;
+      float gradient = id(gradient_hk_i).state;
+      if (std::isnan(avarage_outsidetemp)||std::isnan(outsidetemp)||std::isnan(room_temp)||std::isnan(offset)||std::isnan(gradient)){
+        return {};
+      }
+      float gemischte_at = avarage_outsidetemp * 0.7 + outsidetemp * 0.3;
+      float dar = gemischte_at - room_temp;
+      return room_temp + offset - gradient * dar * (1.4347 + 0.021 * dar + 0.0002479 * dar * dar);
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+    unit_of_measurement: °C
+    device_class: temperature
+    state_class: measurement
+    on_value:
+      - if:
+          condition:
+            lambda: "return !std::isnan(id(delta_hk_i).state);"
+          then:
+            - climate.control:
+                id: hk_i_ruecklauf
+                target_temperature: !lambda |-
+                  return x - id(delta_hk_i).state;
+  - platform: pid
+    name: "Temperatur HK I Vorlauf Soll"
+    id: temp_hk_i_vorlauf_soll
+    type: RESULT
+    climate_id: hk_i_ruecklauf
+    filters:
+      - lambda: |-
+
+          auto control_mode = id(hk_i_control_mode).current_option();
+          if (control_mode == "Rücklauf") {
+              float soll = id(temp_hk_i_vorlauf_soll_raw).state;
+              float delta = id(delta_hk_i).state;
+              if (std::isnan(soll) || std::isnan(delta) || std::isnan(x)) {
+                  return {};
+              }
+              float offset = std::max(std::min(x, (float)100.0), (float)-100.0) / 100.0 * delta * 0.5;
+              return soll + offset;
+          } else if (control_mode == "Vorlauf") {
+              float soll = id(temp_hk_i_vorlauf_soll_raw).state;
+              if (std::isnan(soll)) {
+                  return {};
+              }
+              return soll;
+          } else {
+              return {};
+          }
+
+    unit_of_measurement: °C
+    device_class: temperature
+    state_class: measurement
+    on_value:
+      - climate.control:
+          id: hk_i
+          target_temperature: !lambda "return x;"
+    icon: mdi:thermometer
+  - platform: template
+    name: "Position Stepper"
+    id: position
+    update_interval: 1s
+    lambda: !lambda "return id(stepper_hk_i)->get_current_position_steps();"
+    state_class: measurement
+  - platform: template
+    name: "Ziel Position Stepper"
+    id: targetposition
+    update_interval: 1s
+    lambda: !lambda "return id(stepper_hk_i)->get_target_position_steps();"
+    state_class: measurement
+  - platform: template
+    name: "Temperatur Delta"
+    lambda: |-
+      return id(temp_ruecklauf).state - id(temp_vorlauf_gemischt).state;
+    update_interval: 1s
+    filters:
+      - throttle_average: 10s
+    unit_of_measurement: °C
+    device_class: temperature
+    state_class: measurement
+  - platform: adc
+    name: Anlagendruck
+    device_class: "pressure"
+    pin: GPIO36
+    unit_of_measurement: bar
+    attenuation: 6db
+    samples: 10
+    update_interval: 1s
+    filters:
+      - calibrate_linear:
+          - 0.6 -> 0.0
+          - 3.0 -> 10.0
+      - clamp:
+          min_value: 0.0
+          max_value: 10.0
+          ignore_out_of_range: true
+      - throttle_average: 1s
+#   - platform: adc
+#     name: Analog 2
+#     pin: GPIO34
+#   - platform: adc
+#     name: Analog 3
+#     pin: GPIO35
+#   - platform: adc
+#     name: Analog 4
+#     pin: GPIO39
+globals:
+  - id: last_save_time
+    type: int
+    restore_value: yes
+    initial_value: "-1"
+  - id: saved_avarage_temperature_outside
+    type: float
+    restore_value: yes
+  - id: initiated_avarage_temperature_outside
+    type: bool
+    initial_value: "false"
+number:
+  - platform: template
+    name: "Neigung HK I"
+    id: gradient_hk_i
+    optimistic: true
+    min_value: 0.2
+    max_value: 3.5
+    step: 0.1
+    restore_value: true
+    initial_value: 1.5
+  - platform: template
+    name: "Niveau HK I"
+    id: offset_hk_i
+    optimistic: true
+    min_value: -5
+    max_value: 5
+    step: 0.1
+    restore_value: true
+    initial_value: 0
+  - platform: template
+    name: "Raumtemperatur Soll HK I"
+    id: room_temp_hk_i
+    optimistic: true
+    min_value: 12
+    max_value: 36
+    step: 0.1
+    restore_value: true
+    initial_value: 22
+  - platform: template
+    name: "Spreizung HK I"
+    id: delta_hk_i
+    optimistic: true
+    min_value: 5
+    max_value: 20
+    step: 0.1
+    restore_value: true
+    initial_value: 10
+  - platform: template
+    name: "Zeitkonstante HK I"
+    id: timeconstant
+    optimistic: true
+    min_value: 1
+    max_value: 2000
+    step: 10
+    restore_value: true
+    unit_of_measurement: "min"
+    initial_value: 1280
+# binary_sensor:
+
+#   - platform: gpio
+#     name: "KC868-A16-HT2"
+#     pin:
+#       number: GPIO33
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-HT3"
+#     pin:
+#       number: GPIO14
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X01"
+#     pin:
+#       pcf8574: inputs_1_8
+#       number: 0
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X02"
+#     pin:
+#       pcf8574: inputs_1_8
+#       number: 1
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X03"
+#     pin:
+#       pcf8574: inputs_1_8
+#       number: 2
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X04"
+#     pin:
+#       pcf8574: inputs_1_8
+#       number: 3
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X05"
+#     pin:
+#       pcf8574: inputs_1_8
+#       number: 4
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X06"
+#     pin:
+#       pcf8574: inputs_1_8
+#       number: 5
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X07"
+#     pin:
+#       pcf8574: inputs_1_8
+#       number: 6
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X08"
+#     pin:
+#       pcf8574: inputs_1_8
+#       number: 7
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X09"
+#     pin:
+#       pcf8574: inputs_9_16
+#       number: 0
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X10"
+#     pin:
+#       pcf8574: inputs_9_16
+#       number: 1
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X11"
+#     pin:
+#       pcf8574: inputs_9_16
+#       number: 2
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X12"
+#     pin:
+#       pcf8574: inputs_9_16
+#       number: 3
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X13"
+#     pin:
+#       pcf8574: inputs_9_16
+#       number: 4
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X14"
+#     pin:
+#       pcf8574: inputs_9_16
+#       number: 5
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X15"
+#     pin:
+#       pcf8574: inputs_9_16
+#       number: 6
+#       mode: INPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-X16"
+#     pin:
+#       pcf8574: inputs_9_16
+#       number: 7
+#       mode: INPUT
+#       inverted: true
+
+# switch:
+#   - platform: gpio
+#     name: "KC868-A16-Y01"
+#     id: out_y01
+#     pin:
+#       pcf8574: outputs_1_8
+#       number: 0
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y02"
+#     id: out_y02
+#     pin:
+#       pcf8574: outputs_1_8
+#       number: 1
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y03"
+#     id: out_y03
+#     pin:
+#       pcf8574: outputs_1_8
+#       number: 2
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y04"
+#     id: out_y04
+#     pin:
+#       pcf8574: outputs_1_8
+#       number: 3
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y05"
+#     id: out_y05
+#     pin:
+#       pcf8574: outputs_1_8
+#       number: 4
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y06"
+#     id: out_y06
+#     pin:
+#       pcf8574: outputs_1_8
+#       number: 5
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y07"
+#     id: out_y07
+#     pin:
+#       pcf8574: outputs_1_8
+#       number: 6
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y08"
+#     id: out_y08
+#     pin:
+#       pcf8574: outputs_1_8
+#       number: 7
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y09"
+#     id: out_y09
+#     pin:
+#       pcf8574: outputs_9_16
+#       number: 0
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y10"
+#     id: out_y10
+#     pin:
+#       pcf8574: outputs_9_16
+#       number: 1
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y11"
+#     id: out_y11
+#     pin:
+#       pcf8574: outputs_9_16
+#       number: 2
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y12"
+#     id: out_y12
+#     pin:
+#       pcf8574: outputs_9_16
+#       number: 3
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y13"
+#     id: out_y13
+#     pin:
+#       pcf8574: outputs_9_16
+#       number: 4
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y14"
+#     id: out_y14
+#     pin:
+#       pcf8574: outputs_9_16
+#       number: 5
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y15"
+#     id: out_y15
+#     pin:
+#       pcf8574: outputs_9_16
+#       number: 6
+#       mode: OUTPUT
+#       inverted: true
+
+#   - platform: gpio
+#     name: "KC868-A16-Y16"
+#     id: out_y16
+#     pin:
+#       pcf8574: outputs_9_16
+#       number: 7
+#       mode: OUTPUT
+#       inverted: true
