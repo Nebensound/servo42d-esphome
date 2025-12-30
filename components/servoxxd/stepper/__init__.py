@@ -192,7 +192,6 @@ OPERATING_MODES = {
 # Configuration constants
 CONF_MODBUS_ID = "modbus_id"
 CONF_ADDRESS = "address"
-CONF_STEPS_PER_REVOLUTION = "steps_per_revolution"
 CONF_MICROSTEPS = "microsteps"
 CONF_SERVO_TYPE = "servo_type"
 CONF_CONTROL_MODE = "control_mode"
@@ -222,18 +221,6 @@ def validate_modbus_address(value):
     if value < 1 or value > 247:
         raise cv.Invalid(
             f"Modbus address must be between 0x01 and 0xF7 (1-247), got {hex(value)}"
-        )
-    return value
-
-
-def validate_steps_per_revolution(value):
-    """Validate steps per revolution - must be positive float."""
-    value = cv.positive_float(value)
-    if value <= 0:
-        raise cv.Invalid(
-            "steps_per_revolution must be > 0! "
-            "This is critical for all unit conversions. "
-            "Calculate as: base_steps * microsteps (e.g., 200 * 16 = 3200)"
         )
     return value
 

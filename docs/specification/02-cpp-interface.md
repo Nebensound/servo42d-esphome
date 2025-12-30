@@ -21,6 +21,65 @@ Purpose: Provide a clear, cohesive design for the C++ classes, methods, responsi
 - Explicit units for all public methods; centralized conversions internally
 - Safe defaults and clamps to hardware limits; protect mechanics on stop
 
+## Design Principles
+
+### Type-Safe Unit System
+
+**Core Principle:** All physical quantities (Speed, Acceleration, Position, and future extensions like Torque, Current, etc.) **MUST** use strongly-typed wrapper classes instead of raw numeric types.
+
+**Design Philosophy:**
+
+1. **Compile-time safety:** Prevent unit confusion at API boundaries (cannot pass `float rpm` as degrees)
+2. **Runtime flexibility:** Users specify any supported unit in YAML, conversions happen transparently
+3. **Single source of truth:** Internal storage in canonical/hardware-native format, conversions via named constructors/getters
+4. **Memory efficiency:** Minimize footprint by storing hardware-native values (e.g., `uint8_t` for acceleration)
+5. **Parent coupling:** Runtime parameters (microsteps, steps_per_rev) accessed via parent pointer, not duplicated
+
+**Implementation Pattern:**
+
+```cpp
+class PhysicalQuantity {
+ public:
+  // Named constructors for all supported units
+  static PhysicalQuantity from_unit_a(float value, const ServoXxd* parent);
+  static PhysicalQuantity from_unit_b(float value, const ServoXxd* parent);
+  
+  // Typed getters for all supported units
+  float get_unit_a() const;
+  float get_unit_b() const;
+  
+ private:
+  <hardware_type> canonical_value_;  // Hardware-native storage
+  const ServoXxd* parent_{nullptr};  // For runtime config access
+};
+```
+
+**Critical Rules:**
+
+- ✅ **DO:** Use wrapper types in all public APIs (actions, config setters, getters)
+- ✅ **DO:** Store hardware-native values internally (e.g., RPM as `int16_t`, acceleration as `uint8_t`)
+- ✅ **DO:** Provide conversions for all units users might specify in YAML
+- ❌ **DON'T:** Use raw `float`/`int` for physical quantities at API boundaries
+- ❌ **DON'T:** Duplicate parent configuration (microsteps, steps_per_rev) in wrapper classes
+- ❌ **DON'T:** Perform unit conversions without going through the wrapper class
+
+**Current Implementation:**
+
+- `Speed` - 7 units (RPM, steps/s, rev/s, deg/s, rad/s, deg/min, deg/h)
+- `Acceleration` - 5 units (RPM/s, steps/s², rev/s², deg/s², rad/s²)
+- `Position` - 6 units (steps, revolutions, degrees, radians, arcminutes, arcseconds)
+
+**Future Extensions:**
+
+When adding new physical quantities (e.g., Torque, Current), follow the same pattern:
+
+1. Create `class NewQuantity` with canonical storage format
+2. Add `static NewQuantity from_<unit>(...)` for each supported unit
+3. Add `<type> get_<unit>() const` for each supported unit
+4. Store parent pointer if runtime config needed (microsteps, etc.)
+5. Update YAML validation in `__init__.py` to recognize new unit names
+6. Document hardware encoding quirks (like acceleration's inverse time mapping)
+
 ## High-level architecture
 
 **Component Name:** `servoxxd` (transport-agnostic platform name)
