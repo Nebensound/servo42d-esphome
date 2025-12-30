@@ -210,56 +210,6 @@ class CommandDecoder {
     return zs;
   }
 
-  struct DetailedMotorStatus {
-    enum State { FAIL = 0, STOP = 1, SPEED_UP = 2, SPEED_DOWN = 3, FULL_SPEED = 4, HOMING = 5, CALIBRATING = 6 };
-    State state{FAIL};
-  };
-
-  /**
-   * @brief Decode detailed motor status
-   *
-   * @details Commandtype::READ_DETAILED_STATUS (0x35)
-   * Function: 0x04 (Read Input Registers)
-   * Response: 2 bytes - [0x00][status] (0=FAIL, 1=STOP, 2=SPEED_UP, 3=SPEED_DOWN, 4=FULL_SPEED, 5=HOMING,
-   * 6=CALIBRATING)
-   *
-   * @param data Response data vector (2 bytes minimum)
-   * @return DetailedMotorStatus struct with state (FAIL, STOP, SPEED_UP, SPEED_DOWN, FULL_SPEED, HOMING, or
-   * CALIBRATING)
-   */
-  static DetailedMotorStatus read_detailed_motor_status(const std::vector<uint8_t> &data) {
-    DetailedMotorStatus dms{};
-    if (data.size() >= 2) {
-      uint8_t status = data[1];
-      switch (status) {
-        case 0:
-          dms.state = DetailedMotorStatus::FAIL;
-          break;
-        case 1:
-          dms.state = DetailedMotorStatus::STOP;
-          break;
-        case 2:
-          dms.state = DetailedMotorStatus::SPEED_UP;
-          break;
-        case 3:
-          dms.state = DetailedMotorStatus::SPEED_DOWN;
-          break;
-        case 4:
-          dms.state = DetailedMotorStatus::FULL_SPEED;
-          break;
-        case 5:
-          dms.state = DetailedMotorStatus::HOMING;
-          break;
-        case 6:
-          dms.state = DetailedMotorStatus::CALIBRATING;
-          break;
-        default:
-          dms.state = DetailedMotorStatus::FAIL;
-      }
-    }
-    return dms;
-  }
-
   struct CommandResponse {
     enum Status { FAIL = 0, SUCCESS = 1, RUNNING = 2, ENDLIMIT_STOPPED = 3 };
     Status status{FAIL};
@@ -382,10 +332,12 @@ class CommandDecoder {
       return MotorStatus::FAIL;
 
     const auto &data = cmd.response;
-    if (data.empty())
+    // Response format: [Reserved:0x00][Status] - 2 bytes (1 Modbus register)
+    if (data.size() < 2)
       return MotorStatus::FAIL;
 
-    switch (data[0]) {
+    uint8_t status = data[1];  // Status is in second byte (data[0] is reserved)
+    switch (status) {
       case 0:
         return MotorStatus::FAIL;
       case 1:
@@ -401,7 +353,7 @@ class CommandDecoder {
       case 6:
         return MotorStatus::CALIBRATING;
       default:
-        ESP_LOGW(TAG, "Unknown motor status value: %u", data[0]);
+        ESP_LOGW(TAG, "Unknown motor status value: %u", status);
         return MotorStatus::FAIL;
     }
   }
@@ -444,29 +396,18 @@ class CommandDecoder {
     if (data.empty())
       return ZeroReturnStatus::FAIL;
 
-    switch (data[0]) {
+    uint8_t status = data[1];  // Status is in second byte (data[0] is reserved)
+    switch (status) {
       case 0:
         return ZeroReturnStatus::IN_PROGRESS;
-        break;
       case 1:
         return ZeroReturnStatus::SUCCESS;
-        break;
       case 2:
         return ZeroReturnStatus::FAIL;
       default:
-        break;
+        return ZeroReturnStatus::FAIL;
     }
-    return ZeroReturnStatus::FAIL;
   }
-
-  // Legacy alias for backward compatibility
-  using HomingStatus = ZeroReturnStatus;
-  /**
-   * @brief Legacy alias for read_zero_return_status
-   * @param cmd Command object with command_type=READ_ZERO_RETURN_STATUS and response data
-   * @return HomingStatus enum (same as ZeroReturnStatus)
-   */
-  static HomingStatus read_homing_status(const Command &cmd) { return read_zero_return_status(cmd); }
 
   struct ProtectionStatus {
     bool protected_state{false};
@@ -488,7 +429,9 @@ class CommandDecoder {
       return ps;
 
     const auto &data = cmd.response;
-    ps.protected_state = (!data.empty() && data[0] != 0);
+    // Response format: [Reserved:0x00][Status] - 2 bytes (1 Modbus register)
+    // Status: 0=OK, 1=Protected
+    ps.protected_state = (data.size() >= 2 && data[1] != 0);
     return ps;
   }
 

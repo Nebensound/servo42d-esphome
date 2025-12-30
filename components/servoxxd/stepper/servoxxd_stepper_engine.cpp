@@ -502,12 +502,7 @@ void StepperEngine::setup_motor() {
               // Signal ESPHome that setup is complete
               parent_->setup_state_ = SetupState::COMPLETED;
 
-              // Start hardware polling NOW (not in setup())
-              parent_->set_interval("hardware_poll", 200, [this]() {
-                if (parent_->engine_ != nullptr) {
-                  parent_->engine_->poll_hardware();
-                }
-              });
+              // Hardware polling is handled in update() with rate limiting
 
               ESP_LOGCONFIG("servoxxd", "ServoXxd Modbus setup complete");
 
@@ -555,6 +550,14 @@ void StepperEngine::update() {
     disable_pending_ = false;
     disable();  // Execute buffered disable
   }
+
+  // 4. Hardware polling with rate limiting (max every 200ms)
+  static uint32_t last_poll_time = 0;
+  uint32_t now = millis();
+  if (now - last_poll_time >= 200) {
+    last_poll_time = now;
+    poll_hardware();
+  }
 }
 
 // ============================================================================
@@ -566,7 +569,7 @@ void StepperEngine::poll_hardware() {
     // Poll all status values in sequence
     poll_encoder_position();
     poll_motor_speed();
-    poll_motor_status();  // Handles homing completion: HOMING(5) → STOP(1)
+    poll_motor_status();
     // TODO: Register 0x3E might not exist in hardware - investigate
     // poll_protection_status();
   }
@@ -754,7 +757,7 @@ void StepperEngine::home() {
               ESP_LOGW(TAG_ENGINE, "✗ Failed to start ENDSTOP homing");
             }
           },
-          Priority::SETUP);
+          Priority::SETUP, 1000);  // 1 second timeout for go_home command
       break;
     }
 
@@ -1118,25 +1121,14 @@ void StepperEngine::process_encoder_update(const Position &position) {
   parent_->set_current_pos(position);
 
   // Check if target reached (in Moving state)
-  if (state_ == State::Moving && is_target_reached()) {
-    transition_to(State::Idle);
-  }
-
-  // Check if homing completed (in Homing state)
-  if (state_ == State::Homing && parent_->current_position == 0) {
-    ESP_LOGI(TAG_ENGINE, "✓ Homing completed successfully (position reached zero)");
-    transition_to(State::Idle);
-  }
+  // if (state_ == State::Moving && is_target_reached()) {
+  //   transition_to(State::Idle);
+  // }
 }
 
 void StepperEngine::process_speed_update(const Speed &speed) {
   Speed old_speed = current_speed_;
   current_speed_ = speed;
-
-  // Check if standstill reached (in Stopping state)
-  if (state_ == State::Stopping && speed.rpm() == 0) {
-    transition_to(State::Idle);
-  }
 }
 
 void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus status) {
@@ -1188,15 +1180,10 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
 
     case CommandDecoder::MotorStatus::HOMING:
       // Hardware reports homing in progress
-      // If Engine is in Homing state → Check if homing completed (position reached zero/endstop)
       if (state_ == State::Homing) {
-        // Motor stays in HOMING status until manually stopped or endstop reached
-        // Check if position is at zero (homing completed)
-        if (parent_->current_position == 0) {
-          ESP_LOGI(TAG_ENGINE, "✓ Homing completed successfully (position reached zero)");
-          transition_to(State::Idle);
-        } else {
-        }
+        // Motor is still homing - stay in Homing state
+        // Completion is detected when hardware transitions to STOP (handled above)
+        // Do NOT check position here - position may not be zero yet during homing
       }
       // If Engine is NOT in Homing state → Someone else started homing (physical buttons?)
       // CRITICAL: Ignore hardware status sync during SettingUp to prevent state overwrites
@@ -1218,6 +1205,9 @@ void StepperEngine::process_motor_status_update(CommandDecoder::MotorStatus stat
         // Sync engine state to hardware reality
         transition_to(State::Calibrating);
       }
+      break;
+    default:
+      ESP_LOGW(TAG_ENGINE, "Unknown motor status received: %d", static_cast<int>(status));
       break;
   }
 }

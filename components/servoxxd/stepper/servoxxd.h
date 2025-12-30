@@ -29,18 +29,18 @@ enum class State;
 
 // Setup completion states
 enum class SetupState : uint8_t {
-  NOT_STARTED = 0,  // setup() not yet called
-  IN_PROGRESS = 1,  // setup_motor() running
-  COMPLETED = 2,    // setup_motor() succeeded
-  FAILED = 3        // setup_motor() failed
+  NOT_STARTED,  // setup() not yet called
+  IN_PROGRESS,  // setup_motor() running
+  COMPLETED,    // setup_motor() succeeded
+  FAILED        // setup_motor() failed
 };
 
 // Enum definitions for YAML configuration
 enum class ServoType : uint8_t {
-  SERVO28D = 0,
-  SERVO35D = 1,
-  SERVO42D = 2,
-  SERVO57D = 3,
+  SERVO28D,
+  SERVO35D,
+  SERVO42D,
+  SERVO57D,
 };
 
 enum class ControlMode : uint8_t {

@@ -16,7 +16,8 @@ static int tests_passed = 0;
       tests_passed++; \
     } else { \
       std::cerr << "  ✗ FAILED: " << msg << std::endl; \
-      std::cerr << "    Expected: " << static_cast<int>(expected) << ", Got: " << static_cast<int>(actual) << std::endl; \
+      std::cerr << "    Expected: " << static_cast<int>(expected) << ", Got: " << static_cast<int>(actual) \
+                << std::endl; \
       exit(1); \
     } \
   } while (0)
@@ -289,58 +290,58 @@ void test_read_zeroing_status() {
 }
 
 /**
- * Test read_detailed_motor_status decoder
+ * Test read_motor_status decoder
  * Hardware Doc: Section 8.1.10 - Read the motor status
  * Register: 0xF1, Function: 0x04, Response: 2 bytes [0x00][status]
  * status: 0=FAIL, 1=STOP, 2=SPEED_UP, 3=SPEED_DOWN, 4=FULL_SPEED, 5=HOMING, 6=CALIBRATING
  */
 void test_read_detailed_motor_status() {
-  std::cout << "\n=== read_detailed_motor_status Tests (Register 0xF1) ===" << std::endl;
+  std::cout << "\n=== read_motor_status Tests (Register 0xF1) ===" << std::endl;
 
   // Test FAIL state
   std::vector<uint8_t> data0 = {0x00, 0x00};  // read fail
-  auto dms0 = CommandDecoder::read_detailed_motor_status(data0);
-  ASSERT_TRUE(dms0.state == CommandDecoder::DetailedMotorStatus::FAIL, "Decode FAIL (0)");
+  auto dms0 = CommandDecoder::read_motor_status(data0);
+  ASSERT_TRUE(dms0.state == CommandDecoder::MotorStatus::FAIL, "Decode FAIL (0)");
 
   // Test STOP state
   std::vector<uint8_t> data1 = {0x00, 0x01};  // motor stop
-  auto dms1 = CommandDecoder::read_detailed_motor_status(data1);
-  ASSERT_TRUE(dms1.state == CommandDecoder::DetailedMotorStatus::STOP, "Decode STOP (1)");
+  auto dms1 = CommandDecoder::read_motor_status(data1);
+  ASSERT_TRUE(dms1.state == CommandDecoder::MotorStatus::STOP, "Decode STOP (1)");
 
   // Test SPEED_UP state
   std::vector<uint8_t> data2 = {0x00, 0x02};  // motor speed up
-  auto dms2 = CommandDecoder::read_detailed_motor_status(data2);
-  ASSERT_TRUE(dms2.state == CommandDecoder::DetailedMotorStatus::SPEED_UP, "Decode SPEED_UP (2)");
+  auto dms2 = CommandDecoder::read_motor_status(data2);
+  ASSERT_TRUE(dms2.state == CommandDecoder::MotorStatus::SPEED_UP, "Decode SPEED_UP (2)");
 
   // Test SPEED_DOWN state
   std::vector<uint8_t> data3 = {0x00, 0x03};  // motor speed down
-  auto dms3 = CommandDecoder::read_detailed_motor_status(data3);
-  ASSERT_TRUE(dms3.state == CommandDecoder::DetailedMotorStatus::SPEED_DOWN, "Decode SPEED_DOWN (3)");
+  auto dms3 = CommandDecoder::read_motor_status(data3);
+  ASSERT_TRUE(dms3.state == CommandDecoder::MotorStatus::SPEED_DOWN, "Decode SPEED_DOWN (3)");
 
   // Test FULL_SPEED state
   std::vector<uint8_t> data4 = {0x00, 0x04};  // motor full speed
-  auto dms4 = CommandDecoder::read_detailed_motor_status(data4);
-  ASSERT_TRUE(dms4.state == CommandDecoder::DetailedMotorStatus::FULL_SPEED, "Decode FULL_SPEED (4)");
+  auto dms4 = CommandDecoder::read_motor_status(data4);
+  ASSERT_TRUE(dms4.state == CommandDecoder::MotorStatus::FULL_SPEED, "Decode FULL_SPEED (4)");
 
   // Test HOMING state
   std::vector<uint8_t> data5 = {0x00, 0x05};  // motor is homing
-  auto dms5 = CommandDecoder::read_detailed_motor_status(data5);
-  ASSERT_TRUE(dms5.state == CommandDecoder::DetailedMotorStatus::HOMING, "Decode HOMING (5)");
+  auto dms5 = CommandDecoder::read_motor_status(data5);
+  ASSERT_TRUE(dms5.state == CommandDecoder::MotorStatus::HOMING, "Decode HOMING (5)");
 
   // Test CALIBRATING state
   std::vector<uint8_t> data6 = {0x00, 0x06};  // motor is Cal...
-  auto dms6 = CommandDecoder::read_detailed_motor_status(data6);
-  ASSERT_TRUE(dms6.state == CommandDecoder::DetailedMotorStatus::CALIBRATING, "Decode CALIBRATING (6)");
+  auto dms6 = CommandDecoder::read_motor_status(data6);
+  ASSERT_TRUE(dms6.state == CommandDecoder::MotorStatus::CALIBRATING, "Decode CALIBRATING (6)");
 
   // Test invalid status (should default to FAIL)
   std::vector<uint8_t> data7 = {0x00, 0xFF};  // invalid
-  auto dms7 = CommandDecoder::read_detailed_motor_status(data7);
-  ASSERT_TRUE(dms7.state == CommandDecoder::DetailedMotorStatus::FAIL, "Invalid status defaults to FAIL");
+  auto dms7 = CommandDecoder::read_motor_status(data7);
+  ASSERT_TRUE(dms7.state == CommandDecoder::MotorStatus::FAIL, "Invalid status defaults to FAIL");
 
   // Test invalid data size
   std::vector<uint8_t> data8 = {0x00};  // Only 1 byte
-  auto dms8 = CommandDecoder::read_detailed_motor_status(data8);
-  ASSERT_TRUE(dms8.state == CommandDecoder::DetailedMotorStatus::FAIL, "Invalid data returns default state");
+  auto dms8 = CommandDecoder::read_motor_status(data8);
+  ASSERT_TRUE(dms8.state == CommandDecoder::MotorStatus::FAIL, "Invalid data returns default state");
 }
 
 /**
@@ -399,7 +400,7 @@ void test_read_all_config() {
       // REG18: 0_Mode + Reserve (bytes 34-35)
       0x00, 0xFF,  // disabled, reserved
       // REG19: 0_Speed + 0_Dir (bytes 36-37)
-      0x02, 0x00   // medium speed, CW
+      0x02, 0x00  // medium speed, CW
   };
 
   auto config1 = CommandDecoder::read_all_config(cmd1, mock_parent);
