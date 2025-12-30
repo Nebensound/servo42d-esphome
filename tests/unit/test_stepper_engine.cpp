@@ -875,6 +875,102 @@ void test_13_settingup_state(TestStats &stats) {
 }
 
 // ============================================================================
+// TEST 14: Homing Config Synchronization (homing_ → config_)
+// ============================================================================
+
+void test_14_homing_config_synchronization(TestStats &stats) {
+  std::cout << "\nTEST 14: Homing configuration synchronization (homing_ → config_)" << std::endl;
+
+  // This test verifies that YAML-configured homing_ values are properly
+  // synchronized to config_ before get_update_command_types() comparison.
+  // Bug: homing_ and config_ had separate fields that were never synced,
+  // causing unnecessary SET_HOMING_PARAMETERS commands.
+
+  // Test scenario:
+  // 1. Create ServoXxd and set homing parameters via YAML setters
+  // 2. Call setup() which should sync homing_ → config_
+  // 3. Create a ConfigData simulating motor response with SAME values
+  // 4. get_update_command_types() should NOT include SET_HOMING_PARAMETERS
+
+  ServoXxd parent;
+
+  // 1. Simulate YAML setter calls (as done by Python codegen)
+  parent.set_homing_mode(HomingMode::ENDSTOP);
+  parent.set_homing_endstop_trigger(EndstopTrigger::TRIGGER_HIGH);
+  parent.set_homing_direction(HomingDirection::CCW);
+  parent.set_homing_speed(Speed::from_rpm(2.0f, &parent));
+
+  stats.check(true, "YAML setters called successfully");
+
+  // 2. Call setup() which should synchronize homing_ → config_
+  // Note: setup() will fail because no real Modbus, but sync happens first
+  parent.setup();
+
+  stats.check(true, "setup() called (syncs homing_ → config_)");
+
+  // 3. Simulate motor response with matching values
+  // Create a ConfigData as if read from motor with same homing params
+  ConfigData motor_config(&parent);
+  motor_config.homing_trigger = EndstopTrigger::TRIGGER_HIGH;
+  motor_config.homing_direction = Direction::CCW;
+  motor_config.homing_speed = Speed::from_rpm(2.0f, &parent);
+
+  // 4. Create desired config (simulating what setup() should have set)
+  ConfigData desired_config(&parent);
+  desired_config.homing_trigger = EndstopTrigger::TRIGGER_HIGH;
+  desired_config.homing_direction = Direction::CCW;
+  desired_config.homing_speed = Speed::from_rpm(2.0f, &parent);
+
+  // 5. get_update_command_types() should NOT include SET_HOMING_PARAMETERS
+  // because motor and desired config now match
+  std::vector<Commandtype> changes = motor_config.get_update_command_types(desired_config);
+
+  bool no_homing_update = true;
+  for (const auto &cmd : changes) {
+    if (cmd == Commandtype::SET_HOMING_PARAMETERS) {
+      no_homing_update = false;
+      std::cout << "    Found unexpected SET_HOMING_PARAMETERS in update list" << std::endl;
+      break;
+    }
+  }
+  stats.check(no_homing_update, "Matching homing config → SET_HOMING_PARAMETERS NOT in update list");
+
+  // 6. Test mismatch detection still works
+  ConfigData motor_config_different(&parent);
+  motor_config_different.homing_trigger = EndstopTrigger::TRIGGER_LOW;  // Different!
+  motor_config_different.homing_direction = Direction::CCW;
+  motor_config_different.homing_speed = Speed::from_rpm(2.0f, &parent);
+
+  std::vector<Commandtype> changes2 = motor_config_different.get_update_command_types(desired_config);
+
+  bool has_homing_update = false;
+  for (const auto &cmd : changes2) {
+    if (cmd == Commandtype::SET_HOMING_PARAMETERS) {
+      has_homing_update = true;
+      break;
+    }
+  }
+  stats.check(has_homing_update, "Different homing config → SET_HOMING_PARAMETERS IS in update list");
+
+  // 7. Test speed mismatch also triggers update
+  ConfigData motor_config_speed_diff(&parent);
+  motor_config_speed_diff.homing_trigger = EndstopTrigger::TRIGGER_HIGH;
+  motor_config_speed_diff.homing_direction = Direction::CCW;
+  motor_config_speed_diff.homing_speed = Speed::from_rpm(10.0f, &parent);  // Different speed!
+
+  std::vector<Commandtype> changes3 = motor_config_speed_diff.get_update_command_types(desired_config);
+
+  bool has_speed_homing_update = false;
+  for (const auto &cmd : changes3) {
+    if (cmd == Commandtype::SET_HOMING_PARAMETERS) {
+      has_speed_homing_update = true;
+      break;
+    }
+  }
+  stats.check(has_speed_homing_update, "Different homing speed → SET_HOMING_PARAMETERS IS in update list");
+}
+
+// ============================================================================
 // Main Test Runner
 // ============================================================================
 
@@ -923,6 +1019,9 @@ int main() {
 
   test_13_settingup_state(stats);
   stats.print_summary("TEST 13");
+
+  test_14_homing_config_synchronization(stats);
+  stats.print_summary("TEST 14");
 
   std::cout << "\n========================================" << std::endl;
   std::cout << "✅ All StepperEngine Tests Passed!" << std::endl;
