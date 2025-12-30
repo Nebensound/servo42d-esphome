@@ -494,16 +494,16 @@ void StepperEngine::setup_motor() {
 
               ESP_LOGCONFIG("servoxxd", "ServoXxd Modbus setup complete");
 
-              // Transition to Idle (ready for commands)
-              if (state_ == State::SettingUp) {
-                transition_to(State::Idle);
-              }
-
               // Execute homing at startup if configured
               if (parent_->homing_.at_startup && parent_->homing_.mode != HomingMode::NO_HOMING) {
                 ESP_LOGI(TAG_ENGINE, "Executing homing at startup (mode=%d)", static_cast<int>(parent_->homing_.mode));
-                // Delay homing slightly to ensure motor is fully ready
-                parent_->set_timeout("homing_at_startup", 5000, [this]() { this->home(); });
+                // Start homing immediately after setup completes (skip Idle state)
+                this->home();
+              } else {
+                // Only transition to Idle if no homing at startup
+                if (state_ == State::SettingUp) {
+                  transition_to(State::Idle);
+                }
               }
             },
             Priority::SETUP);
