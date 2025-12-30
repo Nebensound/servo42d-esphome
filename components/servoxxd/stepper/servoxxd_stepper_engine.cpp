@@ -120,391 +120,395 @@ void StepperEngine::setup_motor() {
 
   // 1. Read all current configuration from motor (after restart)
   // This allows us to verify the motor's current state before applying new settings
-  queue_->enqueue(CommandFactory::read_all_config(), [this](bool success, const Command &cmd) {
-    if (!success) {
-      ESP_LOGE(TAG_ENGINE, "✗ Failed to read motor configuration - aborting setup!");
-      transition_to(State::Error);
-      parent_->status_set_error(LOG_STR("Failed to read motor configuration"));
-      parent_->mark_failed();
-      // Clear all pending commands to abort setup sequence
-      if (queue_) {
-        queue_->clear();
-      }
-      return;
-    }
-
-    // Decode configuration values
-    auto config = CommandDecoder::read_all_config(cmd, parent_);
-
-    // Generate list of command types needed to update configuration
-    // Get desired config from parent
-    ConfigData desired_config = parent_->config_;
-    // Get list of commands that need to be executed
-    std::vector<Commandtype> update_commands = config.get_update_command_types(desired_config);
-
-    if (!update_commands.empty()) {
-      // Process each command type in the optimal order (already sorted by get_update_command_types)
-      for (const auto &cmd_type : update_commands) {
-        switch (cmd_type) {
-          case Commandtype::SET_WORK_MODE: {
-            ControlMode desired_mode = desired_config.mode;
-
-            queue_->enqueue(
-                CommandFactory::set_control_mode(desired_config.mode),
-                [this, desired_mode](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to update control mode");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to update control mode"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
+  queue_->enqueue(
+      CommandFactory::read_all_config(),
+      [this](bool success, const Command &cmd) {
+        if (!success) {
+          ESP_LOGE(TAG_ENGINE, "✗ Failed to read motor configuration - aborting setup!");
+          transition_to(State::Error);
+          parent_->status_set_error(LOG_STR("Failed to read motor configuration"));
+          parent_->mark_failed();
+          // Clear all pending commands to abort setup sequence
+          if (queue_) {
+            queue_->clear();
           }
-
-          case Commandtype::SET_HOLDING_CURRENT_PERCENT: {
-            HoldingCurrentPercent desired_holding_current = desired_config.holding_current_percent;
-
-            queue_->enqueue(
-                CommandFactory::set_holding_current_percent(desired_holding_current),
-                [this, desired_holding_current](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to update holding current");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to update holding current"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_WORKING_CURRENT_RUNTIME: {
-            uint16_t desired_current_ma = desired_config.working_current_ma;
-
-            queue_->enqueue(
-                CommandFactory::set_working_current(desired_current_ma),
-                [this, desired_current_ma](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to update working current");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to update working current"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_SUBDIVISION: {
-            uint8_t desired_microstepping = desired_config.subdivision;
-
-            queue_->enqueue(
-                CommandFactory::set_subdivision(desired_microstepping),
-                [this, desired_microstepping](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    // Motor rejected SET_SUBDIVISION command
-                    // This is expected in vFOC modes (hardware limitation per manual)
-                    ESP_LOGE(TAG_ENGINE, "Failed to update microstepping to %u - Motor in vFOC mode?",
-                             desired_microstepping);
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to update microstepping"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_EN_PIN_ACTIVE: {
-            EnPinActive desired_en_pin = desired_config.en_pin_active;
-
-            queue_->enqueue(
-                CommandFactory::set_en_pin_active(desired_en_pin),
-                [this, desired_en_pin](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to update EN pin active level");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to update EN pin active level"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_DIR_MOTOR_ROTATION: {
-            Direction desired_direction = desired_config.direction;
-
-            queue_->enqueue(
-                CommandFactory::set_dir_motor_rotation(desired_direction),
-                [this, desired_direction](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to update direction");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to update direction"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_AUTO_SCREEN_OFF: {
-            ScreenMode desired_screen_mode = desired_config.screen_mode;
-
-            queue_->enqueue(
-                CommandFactory::set_auto_screen_off(desired_screen_mode),
-                [this, desired_screen_mode](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to update auto screen off");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to update auto screen off"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_PROTECT_ENABLE: {
-            ProtectionMode desired_protection = desired_config.protection;
-
-            queue_->enqueue(
-                CommandFactory::set_protect_enable(protection_mode_to_bool(desired_protection)),
-                [this, desired_protection](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to update protection mode");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to update protection mode"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_LOCK_KEYS: {
-            KeypadLock desired_keypad_lock = desired_config.keypad_lock;
-
-            queue_->enqueue(
-                CommandFactory::set_lock_keys(desired_keypad_lock),
-                [this, desired_keypad_lock](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to update key lock");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to update key lock"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_EN_TRIGGER_CONFIG: {
-            queue_->enqueue(
-                CommandFactory::set_en_trigger_config(),
-                [this](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to set EN trigger configuration");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to set EN trigger configuration"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_HOMING_PARAMETERS: {
-            // Only configure if ENDSTOP mode is enabled
-            auto &homing = parent_->homing_;
-            if (homing.mode != HomingMode::ENDSTOP) {
-              break;  // Skip if not ENDSTOP mode
-            }
-
-            // Convert HomingDirection to Direction
-            Direction dir = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
-
-            // Enable EndLimit for ENDSTOP homing mode (required for GO_HOME to work)
-            queue_->enqueue(
-                CommandFactory::set_homing_parameters(homing.endstop_trigger, dir, homing.speed, false),
-                [this](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to configure homing parameters");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to configure homing parameters"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_NOLIMIT_HOMING_PARAMS: {
-            // Only configure when SENSORLESS homing is selected
-            auto &homing = parent_->homing_;
-            if (homing.mode != HomingMode::SENSORLESS) {
-              break;
-            }
-
-            // Fallback to typical reverse angle if none provided
-            Position reverse_angle = desired_config.nolimit_reverse_angle_ticks;
-            if (reverse_angle.get_ticks() == 0) {
-              reverse_angle = Position::from_ticks(2000, parent_);
-            }
-
-            // Use explicit homing current when provided, otherwise default config value
-            uint16_t homing_current = homing.current_ma != 0 ? homing.current_ma : desired_config.nolimit_current_ma;
-
-            queue_->enqueue(
-                CommandFactory::set_nolimit_homing_params(reverse_angle, true, homing_current),
-                [this](bool success, const Command &) {
-                  if (state_ == State::Error) {
-                    return;  // Setup already aborted
-                  }
-                  if (!success) {
-                    ESP_LOGE(TAG_ENGINE, "Failed to configure sensorless homing parameters");
-                    transition_to(State::Error);
-                    parent_->status_set_error(LOG_STR("Failed to configure sensorless homing parameters"));
-                    parent_->mark_failed();
-                    if (queue_) {
-                      queue_->clear();
-                    }
-                  }
-                },
-                Priority::SETUP);
-            break;
-          }
-
-          case Commandtype::SET_LIMIT_PORT_REMAP:
-          case Commandtype::SET_ZERO_MODE:
-            // TODO: Implement handlers for these command types
-            ESP_LOGW(TAG_ENGINE, "  Command type 0x%04X not yet implemented", static_cast<uint16_t>(cmd_type));
-            break;
-
-          default:
-            ESP_LOGW(TAG_ENGINE, "  Unknown command type: 0x%04X", static_cast<uint16_t>(cmd_type));
-            break;
+          return;
         }
-      }
-    }
 
-    // Enqueue setup completion marker AFTER all config updates
-    // Queue guarantees FIFO order, so this runs after all config commands
-    queue_->enqueue(
-        CommandFactory::read_motor_status(),
-        [this](bool success, const Command &) {
-          // If already in Error state, setup was aborted by earlier failure
-          if (state_ == State::Error) {
-            return;  // Don't overwrite original error message
-          }
+        // Decode configuration values
+        auto config = CommandDecoder::read_all_config(cmd, parent_);
 
-          if (!success) {
-            ESP_LOGE(TAG_ENGINE, "✗ Motor setup failed - final status check unsuccessful");
-            transition_to(State::Error);
-            parent_->setup_state_ = SetupState::FAILED;
-            parent_->status_set_error(LOG_STR("Motor setup failed"));
-            parent_->mark_failed();
-            return;
-          }
+        // Generate list of command types needed to update configuration
+        // Get desired config from parent
+        ConfigData desired_config = parent_->config_;
+        // Get list of commands that need to be executed
+        std::vector<Commandtype> update_commands = config.get_update_command_types(desired_config);
 
-          // All setup commands completed successfully
-          ESP_LOGI(TAG_ENGINE, "✓ Motor setup completed successfully");
+        if (!update_commands.empty()) {
+          // Process each command type in the optimal order (already sorted by get_update_command_types)
+          for (const auto &cmd_type : update_commands) {
+            switch (cmd_type) {
+              case Commandtype::SET_WORK_MODE: {
+                ControlMode desired_mode = desired_config.mode;
 
-          // Signal ESPHome that setup is complete
-          parent_->setup_state_ = SetupState::COMPLETED;
+                queue_->enqueue(
+                    CommandFactory::set_control_mode(desired_config.mode),
+                    [this, desired_mode](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to update control mode");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to update control mode"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
 
-          // Start hardware polling NOW (not in setup())
-          parent_->set_interval("hardware_poll", 200, [this]() {
-            if (parent_->engine_ != nullptr) {
-              parent_->engine_->poll_hardware();
+              case Commandtype::SET_HOLDING_CURRENT_PERCENT: {
+                HoldingCurrentPercent desired_holding_current = desired_config.holding_current_percent;
+
+                queue_->enqueue(
+                    CommandFactory::set_holding_current_percent(desired_holding_current),
+                    [this, desired_holding_current](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to update holding current");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to update holding current"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_WORKING_CURRENT_RUNTIME: {
+                uint16_t desired_current_ma = desired_config.working_current_ma;
+
+                queue_->enqueue(
+                    CommandFactory::set_working_current(desired_current_ma),
+                    [this, desired_current_ma](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to update working current");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to update working current"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_SUBDIVISION: {
+                uint8_t desired_microstepping = desired_config.subdivision;
+
+                queue_->enqueue(
+                    CommandFactory::set_subdivision(desired_microstepping),
+                    [this, desired_microstepping](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        // Motor rejected SET_SUBDIVISION command
+                        // This is expected in vFOC modes (hardware limitation per manual)
+                        ESP_LOGE(TAG_ENGINE, "Failed to update microstepping to %u - Motor in vFOC mode?",
+                                 desired_microstepping);
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to update microstepping"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_EN_PIN_ACTIVE: {
+                EnPinActive desired_en_pin = desired_config.en_pin_active;
+
+                queue_->enqueue(
+                    CommandFactory::set_en_pin_active(desired_en_pin),
+                    [this, desired_en_pin](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to update EN pin active level");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to update EN pin active level"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_DIR_MOTOR_ROTATION: {
+                Direction desired_direction = desired_config.direction;
+
+                queue_->enqueue(
+                    CommandFactory::set_dir_motor_rotation(desired_direction),
+                    [this, desired_direction](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to update direction");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to update direction"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_AUTO_SCREEN_OFF: {
+                ScreenMode desired_screen_mode = desired_config.screen_mode;
+
+                queue_->enqueue(
+                    CommandFactory::set_auto_screen_off(desired_screen_mode),
+                    [this, desired_screen_mode](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to update auto screen off");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to update auto screen off"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_PROTECT_ENABLE: {
+                ProtectionMode desired_protection = desired_config.protection;
+
+                queue_->enqueue(
+                    CommandFactory::set_protect_enable(protection_mode_to_bool(desired_protection)),
+                    [this, desired_protection](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to update protection mode");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to update protection mode"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_LOCK_KEYS: {
+                KeypadLock desired_keypad_lock = desired_config.keypad_lock;
+
+                queue_->enqueue(
+                    CommandFactory::set_lock_keys(desired_keypad_lock),
+                    [this, desired_keypad_lock](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to update key lock");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to update key lock"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_EN_TRIGGER_CONFIG: {
+                queue_->enqueue(
+                    CommandFactory::set_en_trigger_config(),
+                    [this](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to set EN trigger configuration");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to set EN trigger configuration"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_HOMING_PARAMETERS: {
+                // Only configure if ENDSTOP mode is enabled
+                auto &homing = parent_->homing_;
+                if (homing.mode != HomingMode::ENDSTOP) {
+                  break;  // Skip if not ENDSTOP mode
+                }
+
+                // Convert HomingDirection to Direction
+                Direction dir = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
+
+                // Enable EndLimit for ENDSTOP homing mode (required for GO_HOME to work)
+                queue_->enqueue(
+                    CommandFactory::set_homing_parameters(homing.endstop_trigger, dir, homing.speed, false),
+                    [this](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to configure homing parameters");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to configure homing parameters"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_NOLIMIT_HOMING_PARAMS: {
+                // Only configure when SENSORLESS homing is selected
+                auto &homing = parent_->homing_;
+                if (homing.mode != HomingMode::SENSORLESS) {
+                  break;
+                }
+
+                // Fallback to typical reverse angle if none provided
+                Position reverse_angle = desired_config.nolimit_reverse_angle_ticks;
+                if (reverse_angle.get_ticks() == 0) {
+                  reverse_angle = Position::from_ticks(2000, parent_);
+                }
+
+                // Use explicit homing current when provided, otherwise default config value
+                uint16_t homing_current =
+                    homing.current_ma != 0 ? homing.current_ma : desired_config.nolimit_current_ma;
+
+                queue_->enqueue(
+                    CommandFactory::set_nolimit_homing_params(reverse_angle, true, homing_current),
+                    [this](bool success, const Command &) {
+                      if (state_ == State::Error) {
+                        return;  // Setup already aborted
+                      }
+                      if (!success) {
+                        ESP_LOGE(TAG_ENGINE, "Failed to configure sensorless homing parameters");
+                        transition_to(State::Error);
+                        parent_->status_set_error(LOG_STR("Failed to configure sensorless homing parameters"));
+                        parent_->mark_failed();
+                        if (queue_) {
+                          queue_->clear();
+                        }
+                      }
+                    },
+                    Priority::SETUP);
+                break;
+              }
+
+              case Commandtype::SET_LIMIT_PORT_REMAP:
+              case Commandtype::SET_ZERO_MODE:
+                // TODO: Implement handlers for these command types
+                ESP_LOGW(TAG_ENGINE, "  Command type 0x%04X not yet implemented", static_cast<uint16_t>(cmd_type));
+                break;
+
+              default:
+                ESP_LOGW(TAG_ENGINE, "  Unknown command type: 0x%04X", static_cast<uint16_t>(cmd_type));
+                break;
             }
-          });
-
-          ESP_LOGCONFIG("servoxxd", "ServoXxd Modbus setup complete");
-
-          // Transition to Idle (ready for commands)
-          if (state_ == State::SettingUp) {
-            transition_to(State::Idle);
           }
+        }
 
-          // Execute homing at startup if configured
-          if (parent_->homing_.at_startup && parent_->homing_.mode != HomingMode::NO_HOMING) {
-            ESP_LOGI(TAG_ENGINE, "Executing homing at startup (mode=%d)", static_cast<int>(parent_->homing_.mode));
-            // Delay homing slightly to ensure motor is fully ready
-            parent_->set_timeout("homing_at_startup", 5000, [this]() { this->home(); });
-          }
-        },
-        Priority::SETUP);
-  }, Priority::SETUP);
+        // Enqueue setup completion marker AFTER all config updates
+        // Queue guarantees FIFO order, so this runs after all config commands
+        queue_->enqueue(
+            CommandFactory::read_motor_status(),
+            [this](bool success, const Command &) {
+              // If already in Error state, setup was aborted by earlier failure
+              if (state_ == State::Error) {
+                return;  // Don't overwrite original error message
+              }
+
+              if (!success) {
+                ESP_LOGE(TAG_ENGINE, "✗ Motor setup failed - final status check unsuccessful");
+                transition_to(State::Error);
+                parent_->setup_state_ = SetupState::FAILED;
+                parent_->status_set_error(LOG_STR("Motor setup failed"));
+                parent_->mark_failed();
+                return;
+              }
+
+              // All setup commands completed successfully
+              ESP_LOGI(TAG_ENGINE, "✓ Motor setup completed successfully");
+
+              // Signal ESPHome that setup is complete
+              parent_->setup_state_ = SetupState::COMPLETED;
+
+              // Start hardware polling NOW (not in setup())
+              parent_->set_interval("hardware_poll", 200, [this]() {
+                if (parent_->engine_ != nullptr) {
+                  parent_->engine_->poll_hardware();
+                }
+              });
+
+              ESP_LOGCONFIG("servoxxd", "ServoXxd Modbus setup complete");
+
+              // Transition to Idle (ready for commands)
+              if (state_ == State::SettingUp) {
+                transition_to(State::Idle);
+              }
+
+              // Execute homing at startup if configured
+              if (parent_->homing_.at_startup && parent_->homing_.mode != HomingMode::NO_HOMING) {
+                ESP_LOGI(TAG_ENGINE, "Executing homing at startup (mode=%d)", static_cast<int>(parent_->homing_.mode));
+                // Delay homing slightly to ensure motor is fully ready
+                parent_->set_timeout("homing_at_startup", 5000, [this]() { this->home(); });
+              }
+            },
+            Priority::SETUP);
+      },
+      Priority::SETUP);
 
   ESP_LOGCONFIG(TAG_ENGINE, "Setup: Motor initialization sequence enqueued");
 }
