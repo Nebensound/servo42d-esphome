@@ -85,8 +85,8 @@ void StepperEngine::poll_protection_status() {
       CommandFactory::read_protection_status(),
       [this](bool success, const Command &cmd) {
         if (success) {
-          auto ps = CommandDecoder::read_protection_status(cmd);
-          process_protection_update(ps.protected_state ? 1 : 0);
+          bool protected_state = CommandDecoder::read_protection_status(cmd);
+          process_protection_update(protected_state ? 1 : 0);
         }
       },
       Priority::BACKGROUND);

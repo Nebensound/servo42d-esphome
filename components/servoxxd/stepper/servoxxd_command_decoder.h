@@ -409,30 +409,24 @@ class CommandDecoder {
     }
   }
 
-  struct ProtectionStatus {
-    bool protected_state{false};
-  };
-
   /**
    * @brief Decode protection status
    *
    * @details Commandtype::READ_PROTECTION_STATUS (0x3E)
    * Function: 0x04 (Read Input Registers)
-   * Response: 1 byte - [status] (0=OK, 1=Protected/Error)
+   * Response: 2 bytes - [0x00][status] (0=OK, 1=Protected/Error)
    *
    * @param cmd Command object with command_type=READ_PROTECTION_STATUS and response data
-   * @return ProtectionStatus struct with protected_state boolean (true if protected/error)
+   * @return true if motor is protected/error, false if OK
    */
-  static ProtectionStatus read_protection_status(const Command &cmd) {
-    ProtectionStatus ps{};
+  static bool read_protection_status(const Command &cmd) {
     if (!validate_command_type(cmd, Commandtype::READ_PROTECTION_STATUS))
-      return ps;
+      return false;
 
     const auto &data = cmd.response;
     // Response format: [Reserved:0x00][Status] - 2 bytes (1 Modbus register)
     // Status: 0=OK, 1=Protected
-    ps.protected_state = (data.size() >= 2 && data[1] != 0);
-    return ps;
+    return (data.size() >= 2 && data[1] != 0);
   }
 
   /**
