@@ -995,14 +995,6 @@ void StepperEngine::transition_to(State new_state) {
     return;  // No change
   }
 
-  // During SettingUp, only allow transitions to Idle (success) or Error (failure)
-  // This ensures setup completes fully before any other state can be entered
-  if (state_ == State::SettingUp && new_state != State::Idle && new_state != State::Error) {
-    ESP_LOGW(TAG_ENGINE, "transition_to(%s): Blocked during setup - only Idle/Error allowed",
-             state_to_string(new_state));
-    return;
-  }
-
   [[maybe_unused]] State old_state = state_;
   state_ = new_state;
   state_enter_time_ = millis();  // Track state entry time for timeout monitoring
