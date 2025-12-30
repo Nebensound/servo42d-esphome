@@ -404,7 +404,24 @@ void StepperEngine::setup_motor() {
                         if (queue_) {
                           queue_->clear();
                         }
+                        return;
                       }
+
+                      // Manual requires GoHome after setting/changing homing parameters
+                      // Execute GoHome immediately after successful parameter configuration
+                      ESP_LOGI(TAG_ENGINE, "Homing parameters set - executing GoHome as required by hardware");
+                      queue_->enqueue(
+                          CommandFactory::go_home(),
+                          [this](bool go_home_success, const Command &) {
+                            if (go_home_success) {
+                              ESP_LOGI(TAG_ENGINE, "GoHome started after parameter configuration");
+                              transition_to(State::Homing);
+                            } else {
+                              ESP_LOGW(TAG_ENGINE, "GoHome after parameter configuration failed");
+                              // Don't fail setup - homing can be retried later
+                            }
+                          },
+                          Priority::SETUP);
                     },
                     Priority::SETUP);
                 break;
@@ -494,7 +511,14 @@ void StepperEngine::setup_motor() {
 
               ESP_LOGCONFIG("servoxxd", "ServoXxd Modbus setup complete");
 
-              // Execute homing at startup if configured
+              // Check if homing was already started during setup (SET_HOMING_PARAMETERS triggers GoHome)
+              // In that case, state is already Homing - don't transition to Idle, let homing complete
+              if (state_ == State::Homing) {
+                ESP_LOGI(TAG_ENGINE, "Homing in progress from setup - waiting for completion");
+                return;  // Homing will transition to Idle via process_motor_status_update()
+              }
+
+              // Execute homing at startup if configured (and not already started)
               if (parent_->homing_.at_startup && parent_->homing_.mode != HomingMode::NO_HOMING) {
                 ESP_LOGI(TAG_ENGINE, "Executing homing at startup (mode=%d)", static_cast<int>(parent_->homing_.mode));
                 // Start homing immediately after setup completes (skip Idle state)
@@ -719,15 +743,18 @@ void StepperEngine::home() {
     case HomingMode::ENDSTOP: {
       // ENDSTOP homing: Trigger homing sequence (parameters already set in setup)
 
-      queue_->enqueue(CommandFactory::go_home(), [this](bool success, const Command &) {
-        if (success) {
-          // Transition to Homing state - poll_homing_status() will monitor completion
-          transition_to(State::Homing);
-        } else {
-          transition_to(State::Error);
-          ESP_LOGW(TAG_ENGINE, "✗ Failed to start ENDSTOP homing");
-        }
-      });
+      queue_->enqueue(
+          CommandFactory::go_home(),
+          [this](bool success, const Command &) {
+            if (success) {
+              // Transition to Homing state - poll_homing_status() will monitor completion
+              transition_to(State::Homing);
+            } else {
+              transition_to(State::Error);
+              ESP_LOGW(TAG_ENGINE, "✗ Failed to start ENDSTOP homing");
+            }
+          },
+          Priority::SETUP);
       break;
     }
 
