@@ -609,13 +609,18 @@ void test_11_stopping_state_transitions(TestStats &stats) {
   process_updates(transport, engine);
   stats.check(engine.get_state() == State::Stopping, "State transitions to Stopping after stop()");
 
-  // Test 2: move_to() rejected during Stopping
+  // Test 2: move_to() accepted during Stopping (target override per spec)
+  // Per 02b-layer2-stepper-engine.md: "move_to() require Position Mode + Idle/Moving/Stopping state"
   Position new_target = Position::from_steps(5000, nullptr);
   engine.move_to(new_target);
   process_updates(transport, engine);
-  stats.check(engine.get_state() == State::Stopping, "move_to() rejected - state still Stopping");
+  stats.check(engine.get_state() == State::Moving, "move_to() accepted - state changes to Moving (target override)");
 
-  // Test 3: run_continuous() rejected during Stopping
+  // Reset to Stopping for next test
+  engine.stop();
+  process_updates(transport, engine);
+
+  // Test 3: run_continuous() rejected during Stopping (different mode)
   Speed run_speed = Speed::from_rpm(100, nullptr);
   engine.run_continuous(run_speed);
   process_updates(transport, engine);
@@ -816,21 +821,12 @@ void test_13_settingup_state(TestStats &stats) {
   process_updates(transport, engine);
   stats.check(engine.get_state() == State::SettingUp, "home() rejected - state still SettingUp");
 
-  // Test 3: Critical commands allowed (emergency_stop, stop, release_protection)
-  // Note: These don't change state from SettingUp, just verify they don't crash
+  // Test 3: stop() during SettingUp - blocked by transition_to() guard
+  // Per code: "During SettingUp, only allow transitions to Idle (success) or Error (failure)"
   engine.stop();
   process_updates(transport, engine);
-  // stop() will transition to Stopping
-  stats.check(engine.get_state() == State::Stopping, "stop() accepted during SettingUp - transitioned to Stopping");
-
-  // Simulate stop completion to get back to testable state
-  transport.hw_speed_rpm_ = 0;
-  transport.hw_motor_status_detail_ = 1;  // STOP
-  engine.poll_motor_speed();
-  engine.poll_motor_status();
-  process_updates(transport, engine);
-  // After stop completes, should go to Idle (not SettingUp)
-  stats.check(engine.get_state() == State::Idle, "Stopping → Idle after stop completes");
+  // stop() is blocked - state remains SettingUp
+  stats.check(engine.get_state() == State::SettingUp, "stop() blocked during SettingUp - state still SettingUp");
 
   // Test 4: 30s timeout → Error state
   // Reset time BEFORE creating engine2 so state_enter_time_ is initialized correctly

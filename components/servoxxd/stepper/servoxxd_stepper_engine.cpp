@@ -1036,8 +1036,7 @@ bool StepperEngine::validate_command(const char *func_name, std::initializer_lis
   // Special handling for SettingUp state: Only allow critical commands
   if (state_ == State::SettingUp) {
     // During setup, only allow emergency stop, normal stop, and protection release
-    bool is_critical = (strcmp(func_name, "emergency_stop") == 0 || strcmp(func_name, "stop") == 0 ||
-                        strcmp(func_name, "release_protection") == 0);
+    bool is_critical = (strcmp(func_name, "emergency_stop") == 0);
 
     if (!is_critical) {
       ESP_LOGW(TAG_ENGINE, "%s(): Rejected during setup - motor still initializing", func_name);
