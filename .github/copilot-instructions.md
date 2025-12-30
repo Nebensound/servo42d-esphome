@@ -16,24 +16,24 @@ Layer 4 (Transport)        → Modbus/Serial abstraction (Command enum, ITranspo
 ```
 
 **Key files by layer:**
-- L1: [servoxxd.{h,cpp}](components/servoxxd/stepper/servoxxd.h)
-- L2: [servoxxd_stepper_engine.{h,cpp}](components/servoxxd/stepper/servoxxd_stepper_engine.h)
-- L3: [servoxxd_command_queue.{h,cpp}](components/servoxxd/stepper/servoxxd_command_queue.h)
-- L4: [servoxxd_transport.h](components/servoxxd/stepper/servoxxd_transport.h), [servoxxd_modbus.{h,cpp}](components/servoxxd/stepper/servoxxd_modbus.h), [servoxxd_command_decoder.{h,cpp}](components/servoxxd/stepper/servoxxd_command_decoder.h)
+- L1: [servoxxd.{h,cpp}](../components/servoxxd/stepper/servoxxd.h)
+- L2: [servoxxd_stepper_engine.{h,cpp}](../components/servoxxd/stepper/servoxxd_stepper_engine.h)
+- L3: [servoxxd_command_queue.{h,cpp}](../components/servoxxd/stepper/servoxxd_command_queue.h)
+- L4: [servoxxd_transport.h](../components/servoxxd/stepper/servoxxd_transport.h), [servoxxd_modbus.{h,cpp}](../components/servoxxd/stepper/servoxxd_modbus.h), [servoxxd_command_decoder.{h,cpp}](../components/servoxxd/stepper/servoxxd_command_decoder.h)
 
 **Design principles:**
 - Each layer communicates only with adjacent layers
 - Layer 2 is transport-agnostic (enables future Serial/CAN support)
 - Commands flow down; callbacks flow up
-- Read [docs/specification/02-cpp-interface.md](docs/specification/02-cpp-interface.md) before architectural changes
+- Read [docs/specification/02-cpp-interface.md](../docs/specification/02-cpp-interface.md) before architectural changes
 
 ## Type-Safe Unit System
 
 **Three wrapper classes** handle all physical quantities with compile-time unit safety:
 
-1. **Speed** ([servoxxd_speed.{h,cpp}](components/servoxxd/stepper/servoxxd_speed.h)) - 7 units: RPM, steps/s, rev/s, deg/s, rad/s, deg/min, deg/h
-2. **Acceleration** ([servoxxd_acceleration.{h,cpp}](components/servoxxd/stepper/servoxxd_acceleration.h)) - 5 units: RPM/s, steps/s², rev/s², deg/s², rad/s²
-3. **Position** ([servoxxd_position.{h,cpp}](components/servoxxd/stepper/servoxxd_position.h)) - 6 units: steps, revolutions, degrees, radians, arcminutes, arcseconds
+1. **Speed** ([servoxxd_speed.{h,cpp}](../components/servoxxd/stepper/servoxxd_speed.h)) - 7 units: RPM, steps/s, rev/s, deg/s, rad/s, deg/min, deg/h
+2. **Acceleration** ([servoxxd_acceleration.{h,cpp}](../components/servoxxd/stepper/servoxxd_acceleration.h)) - 5 units: RPM/s, steps/s², rev/s², deg/s², rad/s²
+3. **Position** ([servoxxd_position.{h,cpp}](../components/servoxxd/stepper/servoxxd_position.h)) - 6 units: steps, revolutions, degrees, radians, arcminutes, arcseconds
 
 **Pattern:** Internal storage in canonical units (RPM, RPM/s, steps), conversions via named constructors:
 ```cpp
@@ -46,7 +46,7 @@ Position::from_degrees(90.0f, steps_per_rev);
 
 ## Working with Specifications
 
-**Critical**: This project is specification-driven. The specs in [docs/specification/](docs/specification/) are authoritative.
+**Critical**: This project is specification-driven. The specs in [../docs/specification/](../docs/specification/) are authoritative.
 
 **Purpose of specifications:**
 - Quickly grasp high-level concepts (for AI and human developers)
@@ -54,7 +54,7 @@ Position::from_degrees(90.0f, steps_per_rev);
 - Define "what" and "why", not "how" - keep specs concise, no implementation details
 
 **Workflow:**
-1. **Before changes**: Read relevant spec first ([01-yaml-api.md](docs/specification/01-yaml-api.md), [02-cpp-interface.md](docs/specification/02-cpp-interface.md))
+1. **Before changes**: Read relevant spec first ([01-yaml-api.md](../docs/specification/01-yaml-api.md), [02-cpp-interface.md](../docs/specification/02-cpp-interface.md))
 2. **When changes needed**: Discuss with user, update spec first
 3. **Implementation**: Follow spec exactly - spec is the contract
 4. **Never**: Implement features not in spec without updating spec first
@@ -63,7 +63,7 @@ Position::from_degrees(90.0f, steps_per_rev);
 - Spec describes interfaces, behaviors, contracts
 - Implementation lives in code, not in spec
 - If unsure where something belongs: Ask user
-- Rough Guidline: If something is implementation only and does not affect other layer do not add it to the spec. Basicly everthing else should go into the spec.
+- Rough Guideline: If something is implementation only and does not affect other layer do not add it to the spec. Basically everything else should go into the spec.
 
 ## Development Workflows
 
@@ -94,31 +94,31 @@ timeout 30s esphome logs tests/esphome/test_hardware.yaml  # Always wrap logs in
 **Critical**: Determine the appropriate layer first - the separation is fundamental!
 
 **For internal/transport-only commands** (Layer 4, no YAML exposure):
-1. Add enum to `Command` in [servoxxd_transport.h](components/servoxxd/stepper/servoxxd_transport.h)
-2. Implement encoder/decoder in [servoxxd_command_decoder.{h,cpp}](components/servoxxd/stepper/servoxxd_command_decoder.cpp)
-3. Write unit test in [tests/unit/test_command_decoder.cpp](tests/unit/test_command_decoder.cpp)
+1. Add enum to `Command` in [servoxxd_transport.h](../components/servoxxd/stepper/servoxxd_transport.h)
+2. Implement encoder/decoder in [servoxxd_command_decoder.{h,cpp}](../components/servoxxd/stepper/servoxxd_command_decoder.cpp)
+3. Write unit test in [tests/unit/test_command_decoder.cpp](../tests/unit/test_command_decoder.cpp)
 4. If affects movement: Update state machine in StepperEngine (Layer 2)
 5. If async: Add to CommandQueue (Layer 3)
 
 **For user-facing commands** (exposed in YAML/ESPHome):
-1. **Update specification first** - Discuss with user, modify [docs/specification/01-yaml-api.md](docs/specification/01-yaml-api.md)
+1. **Update specification first** - Discuss with user, modify [docs/specification/01-yaml-api.md](../docs/specification/01-yaml-api.md)
 2. Follow all steps above (Layer 4 → Layer 3 → Layer 2)
-3. Add public API to ServoXxd (Layer 1) in [servoxxd.h](components/servoxxd/stepper/servoxxd.h)
-4. Implement Python validation in [components/servoxxd/__init__.py](components/servoxxd/__init__.py)
-5. Add YAML action/config example to [examples/](examples/)
-6. Update user docs in [README.md](README.md)
+3. Add public API to ServoXxd (Layer 1) in [servoxxd.h](../components/servoxxd/stepper/servoxxd.h)
+4. Implement Python validation in [components/servoxxd/__init__.py](../components/servoxxd/__init__.py)
+5. Add YAML action/config example to [examples/](../examples/)
+6. Update user docs in [README.md](../README.md)
 
 **Pattern**: Commands flow Layer 4 → Layer 3 → Layer 2 → Layer 1 → YAML (if user-facing)
 
 ### YAML API Changes
 
-**Specification-driven**: YAML API is defined in [docs/specification/01-yaml-api.md](docs/specification/01-yaml-api.md)
+**Specification-driven**: YAML API is defined in [docs/specification/01-yaml-api.md](../docs/specification/01-yaml-api.md)
 
 1. Update specification first
-2. Implement Python validation in [components/servoxxd/__init__.py](components/servoxxd/__init__.py)
-3. Update C++ config structs in [servoxxd.h](components/servoxxd/stepper/servoxxd.h)
-4. Add example to [examples/](examples/)
-5. Update [README.md](README.md) user documentation
+2. Implement Python validation in [components/servoxxd/__init__.py](../components/servoxxd/__init__.py)
+3. Update C++ config structs in [servoxxd.h](../components/servoxxd/stepper/servoxxd.h)
+4. Add example to [examples/](../examples/)
+5. Update [README.md](../README.md) user documentation
 
 ## Critical Conventions
 
@@ -147,7 +147,7 @@ States: `Disabled`, `Idle`, `Moving`, `Running`, `Homing`, `Stopping`, `Error`
 - Layer 2 (StepperEngine) is protocol-independent - uses `ITransport` interface
 
 **Modbus RTU specifics**:
-- Register addresses: 0x0000-0x00FF (see [docs/servo_hardware_doc/AI/](docs/servo_hardware_doc/AI/))
+- Register addresses: 0x0000-0x00FF (see [docs/servo_hardware_doc/AI/](../docs/servo_hardware_doc/AI/))
 - All multi-byte values are big-endian (Modbus standard)
 - Position uses split format: encoder_carry (int16) + encoder_addition (uint16)
 - Speed hardware encoding: RPM directly as uint16
@@ -157,7 +157,7 @@ States: `Disabled`, `Idle`, `Moving`, `Running`, `Homing`, `Stopping`, `Error`
 **Unit tests** for pure logic (type conversions, command encoding, queue behavior):
 - Fast (<1s), no hardware needed
 - 160+ assertions across 6 test suites
-- Mock ESPHome dependencies via [tests/unit/esphome/](tests/unit/esphome/)
+- Mock ESPHome dependencies via [tests/unit/esphome/](../tests/unit/esphome/)
 
 **ESPHome tests** for integration/compilation:
 - `test_compile.yaml` - Full ESP32 build validation
@@ -171,7 +171,7 @@ States: `Disabled`, `Idle`, `Moving`, `Running`, `Homing`, `Stopping`, `Error`
 2. **Layer violations** - Layer 1 never calls Transport directly; always through Layer 2
 3. **Missing microstep conversion** - Speed/Position conversions require `steps_per_revolution` parameter
 4. **Arduino macro conflicts** - Always `#undef degrees` and `#undef radians` in headers
-5. **Ignoring specifications** - Read [docs/specification/](docs/specification/) before changing public APIs
+5. **Ignoring specifications** - Read [docs/specification/](../docs/specification/) before changing public APIs
 6. **Hardcoded units** - User can specify any supported unit in YAML; validate in Python, convert in C++
 
 ## File Organization
@@ -207,6 +207,6 @@ examples/
 
 ## References
 
-- **Hardware manual**: [docs/servo_hardware_doc/AI/MKS_SERVO42D57D_RS485_User_Manual_V1.0.6.txt](docs/servo_hardware_doc/AI/)
+- **Hardware manual**: [docs/servo_hardware_doc/AI/MKS_SERVO42D57D_RS485_User_Manual_V1.0.6.txt](../docs/servo_hardware_doc/AI/MKS_SERVO42D57D_RS485_User_Manual_V1.0.6.txt)
 - **Modbus RTU**: Standard for RS485 communication (addresses 0x01-0xF7)
 - **ESPHome docs**: https://esphome.io/ (especially stepper, modbus, component)
