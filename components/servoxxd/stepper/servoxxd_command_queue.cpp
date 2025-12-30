@@ -305,8 +305,11 @@ namespace esphome
       case Priority::CRITICAL:
         return 0; // Always first (smallest value)
 
+      case Priority::SETUP:
+        return 1; // After CRITICAL, before any NORMAL command
+
       case Priority::NORMAL:
-        return cmd.enqueued_time; // FIFO after CRITICAL
+        return cmd.enqueued_time; // FIFO after SETUP
 
       case Priority::BACKGROUND:
         return cmd.enqueued_time + BACKGROUND_PENALTY_MS;

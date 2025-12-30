@@ -19,6 +19,7 @@ namespace esphome
      *
      * Time-penalty based scheduling with automatic age-promotion:
      * - CRITICAL: Emergency stop (effective_time = 0, always first)
+     * - SETUP: Motor initialization commands (effective_time = 1, before NORMAL)
      * - NORMAL: Movements, configuration (effective_time = enqueued_time, FIFO)
      * - BACKGROUND: Important status reads like position (effective_time = enqueued_time + penalty)
      * - IDLE: Debug/UI data like temperature (effective_time = enqueued_time + penalty)
@@ -26,9 +27,10 @@ namespace esphome
     enum class Priority : uint8_t
     {
       CRITICAL = 0,   // Emergency - always first (no penalty)
-      NORMAL = 1,     // Standard - FIFO (no penalty)
-      BACKGROUND = 2, // Important reads - penalty configured
-      IDLE = 3        // Debug/UI reads - penalty configured
+      SETUP = 1,      // Setup commands - before NORMAL, ensures setup completes first
+      NORMAL = 2,     // Standard - FIFO (no penalty)
+      BACKGROUND = 3, // Important reads - penalty configured
+      IDLE = 4        // Debug/UI reads - penalty configured
     };
 
     /**
