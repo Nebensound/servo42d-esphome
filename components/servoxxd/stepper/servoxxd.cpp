@@ -294,6 +294,15 @@ void ServoXxd::setup() {
     return;
   }
 
+  // Synchronize homing_ values to config_ for proper comparison in get_update_command_types()
+  // homing_ is set by YAML setters, config_ is used for hardware comparison
+  if (this->homing_.mode == HomingMode::ENDSTOP) {
+    this->config_.homing_trigger = this->homing_.endstop_trigger;
+    this->config_.homing_direction =
+        (this->homing_.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
+    this->config_.homing_speed = this->homing_.speed;
+  }
+
   // Create Layer 4: ModbusTransport
   this->transport_ = new ModbusTransport(this);
   if (this->transport_ == nullptr) {

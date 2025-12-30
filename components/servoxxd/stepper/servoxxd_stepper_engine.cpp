@@ -389,7 +389,7 @@ void StepperEngine::setup_motor() {
                 // Convert HomingDirection to Direction
                 Direction dir = (homing.direction == HomingDirection::CW) ? Direction::CW : Direction::CCW;
 
-                // Enable EndLimit for ENDSTOP homing mode (required for GO_HOME to work)
+                // Configure homing parameters (EndLimit=false allows motor to rotate past endstop)
                 queue_->enqueue(
                     CommandFactory::set_homing_parameters(homing.endstop_trigger, dir, homing.speed, false),
                     [this](bool success, const Command &) {
