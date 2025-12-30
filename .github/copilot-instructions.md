@@ -36,6 +36,10 @@ User identifies need → Discussion with user → User approves spec change → 
 
 ESPHome external component for controlling MKS ServoXXD (28D/35D/42D/57D) closed-loop stepper motors via RS485/Modbus RTU. Provides position and speed control through YAML configuration and Home Assistant integration.
 
+## ESPHome YAML Configuration
+
+All specifications for YAML configuration are detailed in the [ESPHome Component Specification](../docs/specification/01-yaml-api.md). Documentation for the end user is available at [ESPHome ServoXXD Component Docs](../README.md).
+
 ## Architecture: 4-Layer Design
 
 **Layered architecture with strict boundaries** ([detailed specification](../docs/specification/02-cpp-interface.md#high-level-architecture)):

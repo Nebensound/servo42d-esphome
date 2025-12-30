@@ -220,6 +220,31 @@ When move_to() called during Moving/Stopping, two strategies:
 
 Developer must test hardware and implement one strategy permanently.
 
+## Runtime State Members
+
+**Architectural Decision:** StepperEngine (Layer 2) owns all movement-related runtime state.
+Layer 1 (ServoXxd) is a Facade and delegates state queries to the engine.
+
+```cpp
+// Core state
+ServoXxd* parent_;              // Parent component (configuration, helpers)
+CommandQueue* queue_;           // Command queue for serial execution
+State state_;                   // Current state machine state
+bool emergency_flag_;           // Emergency stop flag (cleared by release_protection)
+
+// Status tracking (from hardware polling)
+Speed current_speed_;           // Last known motor speed from hardware (RPM)
+bool protection_triggered_;     // Protection status (locked-rotor, etc.)
+
+// State timing
+uint32_t state_enter_time_;     // State entry timestamp for timeout tracking
+
+// Buffered commands
+bool disable_pending_;          // Disable command deferred (execute after stop)
+```
+
+**Note:** Position tracking (`current_pos_`, `target_pos_`) remains in Layer 1 for ESPHome base class compatibility (`stepper::Stepper::current_position`, `target_position`).
+
 ## Interface to ServoXxd (Layer 1)
 
 - Constructor: `StepperEngine(ServoXxd* parent, ...)`
