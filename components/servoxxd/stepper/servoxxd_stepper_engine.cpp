@@ -589,8 +589,14 @@ void StepperEngine::move_to(const Position &target, std::optional<Speed> speed, 
     return;
   }
 
-  // Update target position for target-reached detection
+  // Update target position for target-reached detection (must be done before is_target_reached check)
   parent_->set_target_pos(target);
+
+  // Check if already at target position - skip command if no movement needed
+  if (is_target_reached()) {
+    ESP_LOGD(TAG_ENGINE, "move_to: Already at target position - skipping");
+    return;
+  }
 
   // Send move command to hardware using Mode 4 (absolute by encoder ticks)
   // Mode 4 uses absolute encoder position - target is sent directly to hardware
@@ -1231,7 +1237,7 @@ void StepperEngine::process_protection_update(uint8_t protected_status) {
 bool StepperEngine::is_target_reached() {
   // Check if current position is within tolerance of target
   Position delta = parent_->current_pos_ - parent_->target_pos_;
-  Position tolerance = Position::from_degrees(1.0f, parent_);
+  Position tolerance = Position::from_degrees(0.8f, parent_);
   // Use absolute value to check distance in both directions
   return delta.abs() <= tolerance;
 }
