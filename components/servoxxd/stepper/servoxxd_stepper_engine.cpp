@@ -1237,7 +1237,7 @@ void StepperEngine::process_protection_update(uint8_t protected_status) {
 bool StepperEngine::is_target_reached() {
   // Check if current position is within tolerance of target
   Position delta = parent_->current_pos_ - parent_->target_pos_;
-  Position tolerance = Position::from_degrees(0.8f, parent_);
+  Position tolerance = Position::from_ticks(1.0f, parent_);
   // Use absolute value to check distance in both directions
   return delta.abs() <= tolerance;
 }
