@@ -34,6 +34,12 @@ namespace esphome
 
     void CommandQueue::update()
     {
+      // CRITICAL: Update transport layer first to check for timeouts!
+      // Without this, transport stays stuck in WAITING_READ/WAITING_WRITE forever
+      if (transport_) {
+        transport_->update();
+      }
+
       // From spec: "Called each loop iteration to detect stuck commands"
       check_timeout();
 
