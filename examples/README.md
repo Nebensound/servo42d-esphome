@@ -2,6 +2,25 @@
 
 This directory contains example configurations for the `servo42d_rs485` ESPHome component.
 
+## Setup
+
+### WiFi Credentials
+
+1. Copy the secrets template:
+   ```bash
+   cp examples/secrets.yaml.template examples/secrets.yaml
+   ```
+
+2. Edit `examples/secrets.yaml` with your WiFi credentials:
+   ```yaml
+   wifi_ssid: "YourActualWiFiSSID"
+   wifi_password: "YourActualPassword"
+   ota_password: "YourOTAPassword"
+   fallback_ap_password: "fallback123"
+   ```
+
+3. The `secrets.yaml` file is in `.gitignore` and will not be committed.
+
 ## Prerequisites
 
 Before using these examples, ensure your MKS Servo42D/57D motor is properly configured:
@@ -36,6 +55,8 @@ Minimal configuration to get started. Shows:
 - Single motor control
 - Required configuration only
 
+Tip: Set `servo_type` to match your motor (SERVO28D | SERVO35D | SERVO42D | SERVO57D). This controls the default working current and the maximum allowed current.
+
 **Use this if:** You're setting up your first motor and want to verify communication.
 
 ### 2. `advanced_positioning.yaml`
@@ -48,6 +69,10 @@ Demonstrates advanced features including:
 
 **Use this if:** You want full Home Assistant integration with UI controls.
 
+Note on currents by model:
+- Defaults (if `working_current` omitted): 28D=600mA, 35D=800mA, 42D=1600mA, 57D=3200mA
+- Maximums: 28D/35D/42D = 3000mA, 57D = 5200mA
+
 ### 3. `multi_motor.yaml`
 Shows how to control multiple motors on one RS485 bus:
 - Three motors with different addresses
@@ -55,6 +80,8 @@ Shows how to control multiple motors on one RS485 bus:
 - Proper timing between motor commands
 
 **Use this if:** You're building a multi-axis system (CNC, 3D printer, robot arm, etc.)
+
+Each motor can have its own `servo_type` and `working_current`.
 
 ## Testing Your Setup
 

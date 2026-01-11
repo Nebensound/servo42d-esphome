@@ -11,7 +11,7 @@
 #   * MODBUS-RTU enabled (register 0x008E = 1)
 #   * Correct baud rate (38400 recommended)
 #   * Motor address (default: 1)
-#   * Work mode set to SR_vFOC (mode 5)
+#   * Work mode set to SR_VFOC (mode 5)
 
 esphome:
   name: servo42d-basic
@@ -22,11 +22,9 @@ esp32:
   framework:
     type: arduino
 
-# Load component (adjust path if needed)
+# Load component from GitHub
 external_components:
-  - source:
-      type: local
-      path: ../components
+  - source: github://Nebensound/servo42d-esphome
     components: [servo42d_rs485]
 
 # Enable logging
@@ -72,45 +70,29 @@ button:
   - platform: template
     name: "Enable Motor"
     on_press:
-      - servo42d_rs485.enable_motor:
-          id: my_stepper
-          enable: true
+      - stepper.enable: my_stepper
 
   - platform: template
     name: "Disable Motor"
     on_press:
-      - servo42d_rs485.enable_motor:
-          id: my_stepper
-          enable: false
+      - stepper.disable: my_stepper
 
   # Emergency functions
   - platform: template
     name: "Emergency Stop"
     on_press:
-      - servo42d_rs485.emergency_stop:
-          id: my_stepper
+      - stepper.emergency_stop: my_stepper
 
   - platform: template
     name: "Release Protection"
     on_press:
-      - servo42d_rs485.release_protection:
-          id: my_stepper
+      - stepper.release_protection: my_stepper
 
   # Calibration
   - platform: template
     name: "Calibrate Motor"
     on_press:
-      - servo42d_rs485.calibrate:
-          id: my_stepper
-
-  - platform: template
-    name: "Go to Zero Position"
-    on_press:
-      - servo42d_rs485.go_to_zero:
-          id: my_stepper
-          enable: true
-          speed: 500
-          direction: 0
+      - stepper.calibrate: my_stepper
 
 # =============================================================================
 # Example Script: Motor startup sequence
@@ -120,11 +102,8 @@ script:
   - id: motor_startup
     then:
       - logger.log: "Starting motor initialization..."
-      - servo42d_rs485.enable_motor:
-          id: my_stepper
-          enable: true
+      - stepper.enable: my_stepper
       - delay: 500ms
-      - servo42d_rs485.calibrate:
-          id: my_stepper
+      - stepper.calibrate: my_stepper
       - delay: 2s
       - logger.log: "Motor ready!"

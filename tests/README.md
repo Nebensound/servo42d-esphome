@@ -1,8 +1,94 @@
-# Servo42D RS485 Component Tests
+# ServoXxd Component Tests
 
-This directory contains test configurations for validating the component compilation.
+This directory contains both **ESPHome integration tests** and **C++ unit tests** for validating the component.
+
+## Directory Structure
+
+```
+tests/
+├── unit/                       # C++ unit tests for type classes
+│   ├── test_speed.cpp         # Speed class with 7 units
+│   ├── test_acceleration.cpp  # Acceleration class with 5 units
+│   ├── test_position.cpp      # Position class with 6 units
+│   ├── Makefile               # Build system for unit tests
+│   └── README.md              # Unit test documentation
+│
+└── esphome/                   # ESPHome YAML integration tests
+    ├── test_compile.yaml      # Full ESP32 compilation test
+    ├── test_compile_host.yaml # Host platform test (no hardware)
+    ├── test_hardware.yaml     # Hardware validation
+    └── hw_setup_test.yaml     # Hardware setup sequence test
+```
+
+## Quick Start
+
+### Run C++ Unit Tests
+
+```bash
+cd tests/unit
+make test
+```
+
+### Run ESPHome Tests
+
+```bash
+# Compile test (no upload)
+esphome compile tests/esphome/test_compile.yaml
+
+# Hardware test (requires ESP32 + motor)
+esphome run tests/esphome/hw_setup_test.yaml
+```
+
+## Unit Tests (C++)
+
+Fast, lightweight tests that verify unit conversion logic for all type classes.
+
+**Advantages:**
+- ⚡ Fast execution (<1 second)
+- 🔧 No hardware required
+- 📊 Comprehensive coverage (18 units total)
+- 🐛 Easy debugging
+
+**See:** [unit/README.md](unit/README.md) for details
+
+## ESPHome Tests (YAML)
+
+Integration tests that validate the component within ESPHome's build system.
+
+**Setup (for hardware tests):**
+
+1. Copy the secrets template:
+   ```bash
+   cp tests/secrets.yaml.template tests/secrets.yaml
+   ```
+
+2. Edit `tests/secrets.yaml` with your WiFi credentials:
+   ```yaml
+   wifi_ssid: "YourActualWiFiSSID"
+   wifi_password: "YourActualPassword"
+   fallback_ap_password: "test1234"
+   ```
+
+3. The `secrets.yaml` file is in `.gitignore` and will not be committed.
 
 ## Test Files
+
+### `hw_setup_test.yaml`
+**Purpose:** Hardware setup validation test (on real hardware)
+
+- Tests actual motor setup sequence (7 steps)
+- Validates UART/RS485 communication
+- Auto-runs on boot and restarts after 15 seconds
+- Requires actual MKS SERVO42D motor connected
+- **Requires secrets.yaml** for WiFi credentials
+
+**Run:** `esphome run tests/hw_setup_test.yaml`
+
+**When to use:**
+- ✅ Testing new hardware setup
+- ✅ Validating RS485 communication
+- ✅ Debugging motor initialization
+- ✅ Verifying encoder and work mode settings
 
 ### `test_compile.yaml`
 **Purpose:** Full ESP32 hardware compilation test

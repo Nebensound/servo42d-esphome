@@ -15,11 +15,9 @@ esp32:
   framework:
     type: arduino
 
-# Load component (adjust path if needed)
+# Load component from GitHub
 external_components:
-  - source:
-      type: local
-      path: ../components
+  - source: github://Nebensound/servo42d-esphome
     components: [servo42d_rs485]
 
 # WiFi for Home Assistant integration
@@ -65,6 +63,9 @@ modbus:
 stepper:
   - platform: servo42d_rs485
     id: my_stepper
+    microsteps: 16 # 200 base steps × 16 = 3200 effective steps/rev
+    # Select your motor model for proper current defaults/limits
+    servo_type: SERVO42D # SERVO28D | SERVO35D | SERVO42D | SERVO57D
     max_speed: 3000 steps/s
     acceleration: 1000 steps/s^2
     deceleration: 1000 steps/s^2
@@ -74,30 +75,30 @@ stepper:
     address: 0x01
     update_interval: 500ms
 
-    # Optional: Configure motor parameters
-    # These can override motor settings temporarily
-    # working_current: 2000  # mA (0-5200)
-    # subdivision: 16        # Microsteps (1-256)
+  # Optional: Configure motor parameters
+  # These can override motor settings temporarily
+  # working_current: 2000mA  # or 2A - Max: 3000mA (28D/35D/42D) or 5200mA (57D)
+  # microsteps: 16         # Microsteps (1-256)
 
 # Example: Button to trigger homing sequence
 button:
   - platform: template
     name: "Home Motor"
     on_press:
-      - servo42d_rs485.go_to_zero:
-          id: my_stepper
-          enable: true
-          speed: 800
-          direction: 0
+      - stepper.home: my_stepper
 
   - platform: template
     name: "Calibrate Motor"
     on_press:
-      - servo42d_rs485.calibrate:
-          id: my_stepper
+      - stepper.calibrate: my_stepper
 
   - platform: template
     name: "Emergency Stop"
+    on_press:
+      - stepper.emergency_stop: my_stepper
+
+  - platform: template
+    name: "Release Protection"
     on_press:
       - servo42d_rs485.emergency_stop:
           id: my_stepper
